@@ -13,7 +13,7 @@ mod util;
 mod vss;
 
 use frost::{
-    Party, Share,
+    Party, Share, Share2,
 };
 
 fn eval(p: &Polynomial<Point>, x: &Scalar) -> Point {
@@ -35,7 +35,7 @@ fn main() {
     const N: usize = 3;
     const T: usize = 2;
 
-    let parties: Vec<Party> = (0..N).map(|n| Party::new(&n.to_string(), T, &mut rng)).collect();
+    let mut parties: Vec<Party> = (0..N).map(|n| Party::new(&Scalar::from((n+1) as u64), T, &mut rng)).collect();
     let shares: Vec<Share> = parties.iter().map(|p| p.share(&mut rng)).collect();
 
     // everybody checks everybody's shares
@@ -54,4 +54,23 @@ fn main() {
     
     //let p = Polynomial::<Scalar>::lagrange(&xs, &ys).unwrap();
     println!("P(0) = {}", zero);
+
+    // round2
+    for i in 0..N {
+	let party = parties[i].clone();
+	for j in 0..N {
+	    let party2 = &mut parties[j];
+	    
+	    // party sends party2 the round2 share
+	    party2.send(Share2{
+		i: party2.id,
+		f_i: party.f.eval(party2.id),
+	    });
+	}
+    }
+
+    for party in &mut parties {
+	party.compute_secret();
+	println!("Party {} secret {}", &party.id, &party.secret);
+    }
 }

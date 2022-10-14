@@ -22,23 +22,44 @@ impl Share {
     }
 }
 
+#[derive(Clone)]
+pub struct Share2 {
+    pub i: Scalar,
+    pub f_i: Scalar,
+}
+
+#[derive(Clone)]
 pub struct Party {
-    pub id: String,
-    pub poly: Polynomial<Scalar>,
+    pub id: Scalar,
+    pub f: Polynomial<Scalar>,
+    pub shares: Vec<Share2>,
+    pub secret: Scalar,
 }
 
 impl Party {
-    pub fn new<RNG: RngCore+CryptoRng>(id: &String, t: usize, rng: &mut RNG) -> Self {
+    pub fn new<RNG: RngCore+CryptoRng>(id: &Scalar, t: usize, rng: &mut RNG) -> Self {
 	Self {
 	    id: id.clone(),
-	    poly: VSS::random_poly(t - 1, rng),
+	    f: VSS::random_poly(t - 1, rng),
+	    shares: Vec::new(),
+	    secret: Scalar::zero(),
 	}
     }
 
     pub fn share<RNG: RngCore+CryptoRng>(&self, rng: &mut RNG) -> Share {
 	Share {
-	    id: ID::new(&self.id, &self.poly.data()[0], rng),
-	    A: (0..self.poly.data().len()).map(|i| self.poly.data()[i] * G).collect(),
+	    id: ID::new(&self.id, &self.f.data()[0], rng),
+	    A: (0..self.f.data().len()).map(|i| self.f.data()[i] * G).collect(),
+	}
+    }
+
+    pub fn send(&mut self, share: Share2) {
+	self.shares.push(share);
+    }
+
+    pub fn compute_secret(&mut self) {
+	for share in &self.shares {
+	    self.secret += share.f_i;
 	}
     }
 }
