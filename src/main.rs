@@ -7,11 +7,13 @@ use rand_core::{
     OsRng,
 };
 
+mod frost;
 mod schnorr;
 mod util;
 mod vss;
 
 use vss::VSS;
+use util::G;
 
 fn main() {
     let _args: Vec<String> = env::args().collect();
@@ -27,7 +29,18 @@ fn main() {
 	agg_params.push(agg);
     }
 
-    let proofs: Vec<schnorr::ID> = (0..N).map(|n| schnorr::ID::new(&n.to_string(), &polys[n].data()[0], &mut rng)).collect();
+    let ids: Vec<schnorr::ID> = (0..N).map(|n| schnorr::ID::new(&n.to_string(), &polys[n].data()[0], &mut rng)).collect();
+
+    let shares: Vec<frost::Share> = (0..N).map(|n| {
+	frost::Share{
+	    id: ids[n].clone(),
+	    A: (0..T).map(|t| polys[n].data()[t] * G).collect(),
+	}}).collect();
+
+    // everybody checks everybody's shares
+    for share in &shares {
+	assert!(share.id.verify(&share.A[0]));
+    }
     
     //let p = Polynomial::<Scalar>::lagrange(&xs, &ys).unwrap();
     //println!("Lagrange poly {:?}", p.pretty("x"));
