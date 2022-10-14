@@ -1,26 +1,34 @@
-use bitvec::prelude::*;
 use curve25519_dalek::{
     scalar::Scalar,
 };
 use polynomial::Polynomial;
 use std::env;
 use rand_core::{
-    OsRng, //RngCore,
+    OsRng,
 };
+
+mod schnorr;
+mod util;
+mod vss;
+
+use vss::VSS;
 
 fn main() {
     let _args: Vec<String> = env::args().collect();
     let mut rng = OsRng::default();
-    let n = 16;
-    let mut p_i: Vec<Polynomial<Scalar>> = Vec::new();
-    let xs: Vec<Scalar> = (0..n).map(|x| Scalar::from(x as u64)).collect();
-    let ys: Vec<Scalar> = (0..n).map(|_| Scalar::random(&mut rng)).collect();
+    const N: usize = 3;
+    const T: usize = 2;
 
-    //let pow = square_and_multiply(Scalar::from(2 as u64), Scalar::from(16 as u32));
+    let polys: Vec<Polynomial<Scalar>> = (0..N).map(|_| VSS::random_poly(T-1, &mut rng)).collect();
 
-    //assert!(pow == Scalar::from(65536 as u64));
+    let mut agg_params = Vec::new();
+    for poly in &polys {
+	let agg = (0..T).fold(Scalar::zero(), |acc,x| acc + poly.data()[x]);
+	agg_params.push(agg);
+    }
+
+    let proofs: Vec<schnorr::ID> = (0..N).map(|n| schnorr::ID::new(&n.to_string(), &polys[n].data()[0], &mut rng)).collect();
     
-    let p = Polynomial::<Scalar>::lagrange(&xs, &ys).unwrap();
-    
-    println!("Lagrange poly {:?}", p);//.pretty("x"));
+    //let p = Polynomial::<Scalar>::lagrange(&xs, &ys).unwrap();
+    //println!("Lagrange poly {:?}", p.pretty("x"));
 }
