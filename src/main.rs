@@ -39,7 +39,7 @@ fn main() {
 
     // everybody checks everybody's shares
     for share in &shares {
-	assert!(share.id.verify(&share.A[0]));
+	assert!(share.verify());
     }
     
     //let p = Polynomial::<Scalar>::lagrange(&xs, &ys).unwrap();

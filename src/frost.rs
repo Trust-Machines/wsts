@@ -9,3 +9,9 @@ pub struct Share {
     pub id: ID,
     pub A: Vec<Point>,
 }
+
+impl Share {
+    pub fn verify(&self) -> bool {
+	self.id.verify(&self.A[0])
+    }
+}
