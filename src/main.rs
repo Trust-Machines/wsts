@@ -1,5 +1,5 @@
 use curve25519_dalek::{
-    ristretto::RistrettoPoint as Point,
+    ristretto::RistrettoPoint as Point, scalar::Scalar,
 };
 use polynomial::Polynomial;
 use std::env;
@@ -16,6 +16,19 @@ use frost::{
     Party, Share,
 };
 
+fn eval(p: &Polynomial<Point>, x: &Scalar) -> Point {
+    let mut y = *x;
+    let mut val = p.data()[0];
+
+    for i in 1..p.data().len() {
+	val += p.data()[i] * y;
+	y *= y;
+    }
+
+    val
+}
+
+#[allow(non_snake_case)]
 fn main() {
     let _args: Vec<String> = env::args().collect();
     let mut rng = OsRng::default();
@@ -35,8 +48,10 @@ fn main() {
 	let agg = (0..T).fold(Point::default(), |acc,x| acc + share.A[x]);
 	agg_params.push(agg);
     }
-    let agg_poly: Polynomial<Point> = Polynomial::new(agg_params);
+    let P: Polynomial<Point> = Polynomial::new(agg_params);
+
+    let zero = eval(&P, &Scalar::zero());
     
     //let p = Polynomial::<Scalar>::lagrange(&xs, &ys).unwrap();
-    //println!("Lagrange poly {:?}", agg_poly.pretty("x"));
+    println!("P(0) = {}", zero);
 }
