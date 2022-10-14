@@ -1,5 +1,5 @@
 use curve25519_dalek::{
-    scalar::Scalar,
+    ristretto::RistrettoPoint as Point,
 };
 use polynomial::Polynomial;
 use std::env;
@@ -12,8 +12,9 @@ mod schnorr;
 mod util;
 mod vss;
 
-use vss::VSS;
-use util::G;
+use frost::{
+    Party, Share,
+};
 
 fn main() {
     let _args: Vec<String> = env::args().collect();
@@ -21,27 +22,21 @@ fn main() {
     const N: usize = 3;
     const T: usize = 2;
 
-    let polys: Vec<Polynomial<Scalar>> = (0..N).map(|_| VSS::random_poly(T-1, &mut rng)).collect();
-
-    let mut agg_params = Vec::new();
-    for poly in &polys {
-	let agg = (0..T).fold(Scalar::zero(), |acc,x| acc + poly.data()[x]);
-	agg_params.push(agg);
-    }
-
-    let ids: Vec<schnorr::ID> = (0..N).map(|n| schnorr::ID::new(&n.to_string(), &polys[n].data()[0], &mut rng)).collect();
-
-    let shares: Vec<frost::Share> = (0..N).map(|n| {
-	frost::Share{
-	    id: ids[n].clone(),
-	    A: (0..T).map(|t| polys[n].data()[t] * G).collect(),
-	}}).collect();
+    let parties: Vec<Party> = (0..N).map(|n| Party::new(&n.to_string(), T, &mut rng)).collect();
+    let shares: Vec<Share> = parties.iter().map(|p| p.share(&mut rng)).collect();
 
     // everybody checks everybody's shares
     for share in &shares {
 	assert!(share.verify());
     }
     
+    let mut agg_params = Vec::new();
+    for share in &shares {
+	let agg = (0..T).fold(Point::default(), |acc,x| acc + share.A[x]);
+	agg_params.push(agg);
+    }
+    let agg_poly: Polynomial<Point> = Polynomial::new(agg_params);
+    
     //let p = Polynomial::<Scalar>::lagrange(&xs, &ys).unwrap();
-    //println!("Lagrange poly {:?}", p.pretty("x"));
+    //println!("Lagrange poly {:?}", agg_poly.pretty("x"));
 }
