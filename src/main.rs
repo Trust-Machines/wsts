@@ -1,11 +1,12 @@
 use curve25519_dalek::{
     ristretto::RistrettoPoint as Point, scalar::Scalar,
 };
+use num_traits::identities::Zero;
 use polynomial::Polynomial;
-use std::env;
 use rand_core::{
-    OsRng,
+    OsRng, RngCore,
 };
+use std::env;
 
 mod frost;
 mod schnorr;
@@ -73,4 +74,39 @@ fn main() {
 	party.compute_secret();
 	println!("Party {} secret {}", &party.id, &party.secret);
     }
+
+    // choose a random list of T parties to sign
+    let mut available_parties = parties;
+    let mut signing_parties = Vec::new();
+    while signing_parties.len() < T {
+	let i = rng.next_u64() as usize % available_parties.len();
+	signing_parties.push(available_parties[i].clone());
+	available_parties.remove(i);
+	
+    }
+
+    let msg = "It was many and many a year ago".to_string();
+    
+    let _S: Vec<Scalar> = signing_parties.iter().map(|p| p.id).collect();
+    
+    //let B: Vec<PublicNonce> = signing_parties.iter().map(|p:&mut Party| p.pop_nonce(&mut rng)).collect();
+    let mut B = Vec::new();
+    for party in &mut signing_parties {
+	B.push(party.get_nonce(&mut rng));
+    }
+
+    let rho: Vec<Scalar> = signing_parties.iter().map(|p| p.get_binding(&B, &msg)).collect();
+
+    let mut R = Point::zero();
+    for i in 0..B.len() {
+	R += B[i].D + rho[i]*B[i].E;
+    }
+
+    let mut z = Scalar::zero();
+    for (i,party) in signing_parties.iter().enumerate() {
+	let l = Party::lambda(party.id, N);
+	z += party.sign(&rho[i], &R, &msg, &l);
+    }
+
+    println!("Signature (R,z) = \n({},{})", R, z);
 }

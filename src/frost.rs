@@ -5,9 +5,14 @@ use polynomial::Polynomial;
 use rand_core::{
     RngCore, CryptoRng,
 };
+use sha3::{
+    Digest, Sha3_256, 
+};
 
 use crate::schnorr::ID;
-use crate::util::G;
+use crate::util::{
+    G, hash_to_scalar,
+};
 use crate::vss::VSS;
 
 #[allow(non_snake_case)]
@@ -29,11 +34,34 @@ pub struct Share2 {
 }
 
 #[derive(Clone)]
+pub struct Nonce {
+    d: Scalar,
+    e: Scalar,
+}
+
+#[derive(Clone)]
+#[allow(non_snake_case)]
+pub struct PublicNonce {
+    pub D: Point,
+    pub E: Point,
+}
+
+impl PublicNonce {
+    pub fn from(n: &Nonce) -> Self {
+	Self {
+	    D: n.d * G,
+	    E: n.e * G,
+	}
+    }
+}
+
+#[derive(Clone)]
 pub struct Party {
     pub id: Scalar,
     pub f: Polynomial<Scalar>,
     pub shares: Vec<Share2>,
     pub secret: Scalar,
+    pub nonces: Vec<Nonce>,
 }
 
 impl Party {
@@ -43,6 +71,7 @@ impl Party {
 	    f: VSS::random_poly(t - 1, rng),
 	    shares: Vec::new(),
 	    secret: Scalar::zero(),
+	    nonces: Vec::new(),
 	}
     }
 
@@ -61,5 +90,82 @@ impl Party {
 	for share in &self.shares {
 	    self.secret += share.f_i;
 	}
+    }
+
+    pub fn gen_nonces<RNG: RngCore+CryptoRng>(&mut self, rng: &mut RNG) {
+	const N: usize = 16;
+	self.nonces = (0..N).map(|_| Nonce {
+	    d: Scalar::random(rng),
+	    e: Scalar::random(rng),
+	}).collect();
+    }
+
+    #[allow(dead_code)]
+    pub fn pub_nonces(&self) -> Vec<PublicNonce> {
+	self.nonces.iter().map(|n| PublicNonce::from(n)).collect()
+    }
+
+    #[allow(dead_code)]
+    pub fn pub_nonce(&self) -> PublicNonce {
+	PublicNonce::from(self.nonces.last().unwrap())
+    }
+
+    pub fn get_nonce<RNG: RngCore+CryptoRng>(&mut self, rng: &mut RNG) -> PublicNonce {
+	if self.nonces.is_empty() {
+	    self.gen_nonces(rng);
+	}
+	PublicNonce::from(&self.nonces.last().unwrap())
+    }
+
+    #[allow(dead_code)]
+    pub fn pop_nonce<RNG: RngCore+CryptoRng>(&mut self, rng: &mut RNG) -> PublicNonce {
+	if self.nonces.is_empty() {
+	    self.gen_nonces(rng);
+	}
+	PublicNonce::from(&self.nonces.pop().unwrap())
+    }
+
+    #[allow(non_snake_case)]
+    pub fn get_binding(&self, B: &Vec<PublicNonce>, msg: &String) -> Scalar {
+	let mut hasher = Sha3_256::new();
+
+	hasher.update(self.id.as_bytes());
+	for b in B {
+	    hasher.update(b.D.compress().as_bytes());
+	    hasher.update(b.E.compress().as_bytes());
+	}
+	hasher.update(msg.as_bytes());
+
+	hash_to_scalar(&mut hasher)
+    }
+
+    #[allow(non_snake_case)]
+    pub fn sign(&self, rho: &Scalar, R: &Point, msg: &String, l: &Scalar) -> Scalar {
+	let nonce = self.nonces.last().unwrap();
+	let mut z = nonce.d + rho * nonce.e;
+	
+	let mut hasher = Sha3_256::new();
+
+	//hasher.update(X.compress().as_bytes());
+	hasher.update(R.compress().as_bytes());
+	hasher.update(msg.as_bytes());
+
+	z += hash_to_scalar(&mut hasher) * self.secret * l;
+
+	z
+    }
+
+    pub fn lambda(i: Scalar, n: usize) -> Scalar {
+	let mut l = Scalar::one();
+	
+	for jj in 1..n+1 {
+	    let j = Scalar::from(jj as u64);
+	    if i == j {
+		continue;
+	    }
+	    l *= j / (j - i);
+	}
+	
+	l
     }
 }
