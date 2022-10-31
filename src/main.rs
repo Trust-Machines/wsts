@@ -14,7 +14,7 @@ mod util;
 mod vss;
 
 use frost::{
-    Party, Share, Share2,
+    Party, Share, Share2, Signature,
 };
 
 fn eval(p: &Polynomial<Point>, x: &Scalar) -> Point {
@@ -56,6 +56,15 @@ fn main() {
     //let p = Polynomial::<Scalar>::lagrange(&xs, &ys).unwrap();
     println!("P(0) = {}", zero);
 
+    // compute aggregate public key X
+    
+    let mut X = Point::zero();
+    for share in &shares {
+	X = X + share.A[0];
+    }
+
+    println!("Aggregate public key X = {}", X);
+
     // round2
     for i in 0..N {
 	let party = parties[i].clone();
@@ -87,26 +96,18 @@ fn main() {
 
     let msg = "It was many and many a year ago".to_string();
     
-    let _S: Vec<Scalar> = signing_parties.iter().map(|p| p.id).collect();
+    let S: Vec<Scalar> = signing_parties.iter().map(|p| p.id).collect();
+    let mut signers = "".to_string();
+    for s in S {
+	signers += &format!("{} ", s);
+    }
+    
+    println!("Signing parties {}", signers);
     
     //let B: Vec<PublicNonce> = signing_parties.iter().map(|p:&mut Party| p.pop_nonce(&mut rng)).collect();
-    let mut B = Vec::new();
-    for party in &mut signing_parties {
-	B.push(party.get_nonce(&mut rng));
-    }
 
-    let rho: Vec<Scalar> = signing_parties.iter().map(|p| p.get_binding(&B, &msg)).collect();
+    let sig = Signature::new(&X, &msg, &mut signing_parties, N, &mut rng);
+    println!("Signature (R,z) = \n({},{})", sig.R, sig.z);
 
-    let mut R = Point::zero();
-    for i in 0..B.len() {
-	R += B[i].D + rho[i]*B[i].E;
-    }
-
-    let mut z = Scalar::zero();
-    for (i,party) in signing_parties.iter().enumerate() {
-	let l = Party::lambda(party.id, N);
-	z += party.sign(&rho[i], &R, &msg, &l);
-    }
-
-    println!("Signature (R,z) = \n({},{})", R, z);
+    assert!(sig.verify(&X, &msg));
 }

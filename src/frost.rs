@@ -1,6 +1,7 @@
 use curve25519_dalek::{
     ristretto::RistrettoPoint as Point, scalar::Scalar,
 };
+use num_traits::identities::Zero;
 use polynomial::Polynomial;
 use rand_core::{
     RngCore, CryptoRng,
@@ -140,13 +141,13 @@ impl Party {
     }
 
     #[allow(non_snake_case)]
-    pub fn sign(&self, rho: &Scalar, R: &Point, msg: &String, l: &Scalar) -> Scalar {
+    pub fn sign(&self, X: &Point, rho: &Scalar, R: &Point, msg: &String, l: &Scalar) -> Scalar {
 	let nonce = self.nonces.last().unwrap();
 	let mut z = nonce.d + rho * nonce.e;
 	
 	let mut hasher = Sha3_256::new();
 
-	//hasher.update(X.compress().as_bytes());
+	hasher.update(X.compress().as_bytes());
 	hasher.update(R.compress().as_bytes());
 	hasher.update(msg.as_bytes());
 
@@ -168,4 +169,57 @@ impl Party {
 	
 	l
     }
+}
+
+#[allow(non_snake_case)]
+pub struct Signature {
+    pub R: Point,
+    pub z: Scalar,
+}
+
+impl Signature {
+    #[allow(non_snake_case)]
+    pub fn new<RNG: RngCore+CryptoRng>(X: &Point, msg: &String, parties: &mut Vec<Party>, N: usize, rng: &mut RNG) -> Self {
+	let mut B = Vec::new();
+	for party in parties.iter_mut() {
+	    B.push(party.get_nonce(rng));
+	}
+
+	let rho: Vec<Scalar> = parties.iter().map(|p| p.get_binding(&B, &msg)).collect();
+
+	let mut R = Point::zero();
+	for i in 0..B.len() {
+	    R += B[i].D + rho[i]*B[i].E;
+	}
+
+	let mut z = Scalar::zero();
+	for (i,party) in parties.iter().enumerate() {
+	    let l = Party::lambda(party.id, N);
+	    z += party.sign(&X, &rho[i], &R, &msg, &l);
+	}
+	
+
+	Self {
+	    R: R,
+	    z: z,
+	}
+    }
+
+    // verify: R' = z * G + -c * X, pass if R' == R
+    #[allow(non_snake_case)]
+    pub fn verify(&self, X: &Point, msg: &String) -> bool {
+	let mut hasher = Sha3_256::new();
+
+	hasher.update(X.compress().as_bytes());
+	hasher.update(self.R.compress().as_bytes());
+	hasher.update(msg.as_bytes());
+
+	let c = hash_to_scalar(&mut hasher);
+	let R = self.z * G + (-c) * X;
+
+	println!("Verification R = {}", R);
+	
+	R == self.R
+    }
+    
 }
