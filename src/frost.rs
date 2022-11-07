@@ -50,8 +50,8 @@ pub struct PublicNonce {
 impl PublicNonce {
     pub fn from(n: &Nonce) -> Self {
 	Self {
-	    D: n.d * Point::G(),
-	    E: n.e * Point::G(),
+	    D: &n.d * Point::G(),
+	    E: &n.e * Point::G(),
 	}
     }
 }
@@ -79,7 +79,7 @@ impl Party {
     pub fn share<RNG: RngCore+CryptoRng>(&self, rng: &mut RNG) -> Share {
 	Share {
 	    id: ID::new(&self.id, &self.f.data()[0], rng),
-	    A: (0..self.f.data().len()).map(|i| self.f.data()[i] * Point::G()).collect(),
+	    A: (0..self.f.data().len()).map(|i| &self.f.data()[i] * Point::G()).collect(),
 	}
     }
 
@@ -89,7 +89,7 @@ impl Party {
 
     pub fn compute_secret(&mut self) {
 	for share in &self.shares {
-	    self.secret += share.f_i;
+	    self.secret += &share.f_i;
 	}
     }
 
@@ -132,8 +132,8 @@ impl Party {
 
 	hasher.update(self.id.as_bytes());
 	for b in B {
-	    hasher.update(b.D.compress().as_bytes());
-	    hasher.update(b.E.compress().as_bytes());
+	    hasher.update(b.D.clone().compress().as_bytes());
+	    hasher.update(b.E.clone().compress().as_bytes());
 	}
 	hasher.update(msg.as_bytes());
 
@@ -143,28 +143,28 @@ impl Party {
     #[allow(non_snake_case)]
     pub fn sign(&self, X: &Point, rho: &Scalar, R: &Point, msg: &String, l: &Scalar) -> Scalar {
 	let nonce = self.nonces.last().unwrap();
-	let mut z = nonce.d + rho * nonce.e;
+	let mut z = &nonce.d + rho * &nonce.e;
 	
 	let mut hasher = Sha3_256::new();
 
-	hasher.update(X.compress().as_bytes());
-	hasher.update(R.compress().as_bytes());
+	hasher.update(X.clone().compress().as_bytes());
+	hasher.update(R.clone().compress().as_bytes());
 	hasher.update(msg.as_bytes());
 
-	z += hash_to_scalar(&mut hasher) * self.secret * l;
+	z += hash_to_scalar(&mut hasher) * &self.secret * l;
 
 	z
     }
 
-    pub fn lambda(i: Scalar, n: usize) -> Scalar {
+    pub fn lambda(i: &Scalar, n: usize) -> Scalar {
 	let mut l = Scalar::one();
 	
 	for jj in 1..n+1 {
 	    let j = Scalar::from(jj as u32);
-	    if i == j {
+	    if i == &j {
 		continue;
 	    }
-	    l *= j / (j - i);
+	    l *= &j / (&j - i);
 	}
 	
 	l
@@ -189,12 +189,12 @@ impl Signature {
 
 	let mut R = Point::zero();
 	for i in 0..B.len() {
-	    R += B[i].D + rho[i]*B[i].E;
+	    R += &B[i].D + &rho[i]*&B[i].E;
 	}
 
 	let mut z = Scalar::zero();
 	for (i,party) in parties.iter().enumerate() {
-	    let l = Party::lambda(party.id, N);
+	    let l = Party::lambda(&party.id, N);
 	    z += party.sign(&X, &rho[i], &R, &msg, &l);
 	}
 
@@ -209,12 +209,12 @@ impl Signature {
     pub fn verify(&self, X: &Point, msg: &String) -> bool {
 	let mut hasher = Sha3_256::new();
 
-	hasher.update(X.compress().as_bytes());
-	hasher.update(self.R.compress().as_bytes());
+	hasher.update(X.clone().compress().as_bytes());
+	hasher.update(self.R.clone().compress().as_bytes());
 	hasher.update(msg.as_bytes());
 
 	let c = hash_to_scalar(&mut hasher);
-	let R = self.z * Point::G() + (-c) * X;
+	let R = &self.z * Point::G() + (-c) * X;
 
 	println!("Verification R = {}", R);
 	

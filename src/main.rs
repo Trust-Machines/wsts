@@ -18,12 +18,12 @@ use frost::{
 };
 
 fn eval(p: &Polynomial<Point>, x: &Scalar) -> Point {
-    let mut y = *x;
-    let mut val = p.data()[0];
+    let mut y = x.clone();
+    let mut val = p.data()[0].clone();
 
     for i in 1..p.data().len() {
-	val += p.data()[i] * y;
-	y *= y;
+	val += &p.data()[i] * &y;
+	y *= y.clone();
     }
 
     val
@@ -36,7 +36,7 @@ fn main() {
     const N: usize = 3;
     const T: usize = 2;
 
-    let mut parties: Vec<Party> = (0..N).map(|n| Party::new(&Scalar::from((n+1) as u64), T, &mut rng)).collect();
+    let mut parties: Vec<Party> = (0..N).map(|n| Party::new(&Scalar::from((n+1) as u32), T, &mut rng)).collect();
     let shares: Vec<Share> = parties.iter().map(|p| p.share(&mut rng)).collect();
 
     // everybody checks everybody's shares
@@ -46,7 +46,7 @@ fn main() {
     
     let mut agg_params = Vec::new();
     for share in &shares {
-	let agg = (0..T).fold(Point::default(), |acc,x| acc + share.A[x]);
+	let agg = (0..T).fold(Point::default(), |acc,x| acc + &share.A[x]);
 	agg_params.push(agg);
     }
     let P: Polynomial<Point> = Polynomial::new(agg_params);
@@ -60,7 +60,7 @@ fn main() {
     
     let mut X = Point::zero();
     for share in &shares {
-	X = X + share.A[0];
+	X = X + &share.A[0];
     }
 
     println!("Aggregate public key X = {}", X);
@@ -73,8 +73,8 @@ fn main() {
 	    
 	    // party sends party2 the round2 share
 	    party2.send(Share2{
-		i: party2.id,
-		f_i: party.f.eval(party2.id),
+		i: party2.id.clone(),
+		f_i: party.f.eval(party2.id.clone()),
 	    });
 	}
     }
@@ -96,7 +96,7 @@ fn main() {
 
     let msg = "It was many and many a year ago".to_string();
     
-    let S: Vec<Scalar> = signing_parties.iter().map(|p| p.id).collect();
+    let S: Vec<Scalar> = signing_parties.iter().map(|p| p.id.clone()).collect();
     let mut signers = "".to_string();
     for s in S {
 	signers += &format!("{} ", s);

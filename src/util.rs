@@ -28,7 +28,7 @@ pub fn decode_scalar(s: &String) -> Scalar {
 pub fn decode_point(s: &String) -> Point {
     let vec = hex::decode(s).unwrap();
     let compressed = Compressed::from(vec.as_slice());
-    compressed.decompress().unwrap()
+    Point::from(compressed)
 }
 
 #[allow(dead_code)]
@@ -38,5 +38,5 @@ pub fn encode_scalar(s: &Scalar) -> String {
 
 #[allow(dead_code)]
 pub fn encode_point(p: &Point) -> String {
-    hex::encode(p.compress().as_bytes())
+    hex::encode(p.clone().compress().as_bytes())
 }
