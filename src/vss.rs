@@ -1,5 +1,5 @@
-use curve25519_dalek::{
-    scalar::Scalar, 
+use secp256k1_math::{
+    scalar::Scalar,
 };
 use polynomial::Polynomial;
 use rand_core::{

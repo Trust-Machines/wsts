@@ -1,5 +1,5 @@
-use curve25519_dalek::{
-    ristretto::RistrettoPoint as Point, scalar::Scalar,
+use secp256k1_math::{
+    point::Point, scalar::Scalar,
 };
 use num_traits::identities::Zero;
 use polynomial::Polynomial;

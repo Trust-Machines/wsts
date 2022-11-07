@@ -1,7 +1,7 @@
-use curve25519_dalek::{
-    ristretto::RistrettoPoint as Point, scalar::Scalar,
+use secp256k1_math::{
+    point::Point, scalar::Scalar,
 };
-use num_traits::identities::Zero;
+use num_traits::{Zero, One};
 use polynomial::Polynomial;
 use rand_core::{
     RngCore, CryptoRng,
@@ -12,7 +12,7 @@ use sha3::{
 
 use crate::schnorr::ID;
 use crate::util::{
-    G, hash_to_scalar,
+    hash_to_scalar,
 };
 use crate::vss::VSS;
 
@@ -50,8 +50,8 @@ pub struct PublicNonce {
 impl PublicNonce {
     pub fn from(n: &Nonce) -> Self {
 	Self {
-	    D: n.d * G,
-	    E: n.e * G,
+	    D: n.d * Point::G(),
+	    E: n.e * Point::G(),
 	}
     }
 }
@@ -79,7 +79,7 @@ impl Party {
     pub fn share<RNG: RngCore+CryptoRng>(&self, rng: &mut RNG) -> Share {
 	Share {
 	    id: ID::new(&self.id, &self.f.data()[0], rng),
-	    A: (0..self.f.data().len()).map(|i| self.f.data()[i] * G).collect(),
+	    A: (0..self.f.data().len()).map(|i| self.f.data()[i] * Point::G()).collect(),
 	}
     }
 
@@ -160,7 +160,7 @@ impl Party {
 	let mut l = Scalar::one();
 	
 	for jj in 1..n+1 {
-	    let j = Scalar::from(jj as u64);
+	    let j = Scalar::from(jj as u32);
 	    if i == j {
 		continue;
 	    }
@@ -197,7 +197,6 @@ impl Signature {
 	    let l = Party::lambda(party.id, N);
 	    z += party.sign(&X, &rho[i], &R, &msg, &l);
 	}
-	
 
 	Self {
 	    R: R,
@@ -215,11 +214,10 @@ impl Signature {
 	hasher.update(msg.as_bytes());
 
 	let c = hash_to_scalar(&mut hasher);
-	let R = self.z * G + (-c) * X;
+	let R = self.z * Point::G() + (-c) * X;
 
 	println!("Verification R = {}", R);
 	
 	R == self.R
     }
-    
 }

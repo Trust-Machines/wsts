@@ -1,5 +1,5 @@
-use curve25519_dalek::{
-    scalar::Scalar, ristretto::RistrettoPoint as Point,
+use secp256k1_math::{
+    point::Point, scalar::Scalar,
 };
 use rand_core::{
     RngCore, CryptoRng,
@@ -9,7 +9,7 @@ use sha3::{
 };
 
 use crate::util::{
-    G, hash_to_scalar,
+    hash_to_scalar,
 };
 
 #[allow(non_snake_case)]
@@ -23,6 +23,7 @@ pub struct ID {
 #[allow(non_snake_case)]
 impl ID {
     pub fn new<RNG: RngCore+CryptoRng>(id: &Scalar, a: &Scalar, rng: &mut RNG) -> Self {
+	let G = Point::G();
 	let k = Scalar::random(rng);
 	let c = Self::challenge(id, &(k * G), &(a * G));
 
@@ -45,6 +46,6 @@ impl ID {
     
     pub fn verify(&self, A: &Point) -> bool {
 	let c = Self::challenge(&self.id, &self.kG, A);
-	self.kca * G == self.kG + c * A
+	self.kca * Point::G() == self.kG + c * A
     }
 }
