@@ -38,5 +38,5 @@ pub fn encode_scalar(s: &Scalar) -> String {
 
 #[allow(dead_code)]
 pub fn encode_point(p: &Point) -> String {
-    hex::encode(p.clone().compress().as_bytes())
+    hex::encode(p.compress().as_bytes())
 }

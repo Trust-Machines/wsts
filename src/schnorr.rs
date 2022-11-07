@@ -1,5 +1,8 @@
 use secp256k1_math::{
-    point::Point, scalar::Scalar,
+    point::{
+	G, Point,
+    },
+    scalar::Scalar,
 };
 use rand_core::{
     RngCore, CryptoRng,
@@ -23,7 +26,6 @@ pub struct ID {
 #[allow(non_snake_case)]
 impl ID {
     pub fn new<RNG: RngCore+CryptoRng>(id: &Scalar, a: &Scalar, rng: &mut RNG) -> Self {
-	let G = Point::G();
 	let k = Scalar::random(rng);
 	let c = Self::challenge(id, &(&k * &G), &(a * &G));
 
@@ -38,14 +40,14 @@ impl ID {
 	let mut hasher = Sha3_256::new();
 
 	hasher.update(id.as_bytes());
-	hasher.update(K.clone().compress().as_bytes());
-	hasher.update(A.clone().compress().as_bytes());
+	hasher.update(K.compress().as_bytes());
+	hasher.update(A.compress().as_bytes());
 
 	hash_to_scalar(&mut hasher)
     }
     
     pub fn verify(&self, A: &Point) -> bool {
 	let c = Self::challenge(&self.id, &self.kG, A);
-	&self.kca * &Point::G() == &self.kG + c * A
+	&self.kca * &G == &self.kG + c * A
     }
 }

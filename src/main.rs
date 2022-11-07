@@ -1,5 +1,8 @@
 use secp256k1_math::{
-    point::Point, scalar::Scalar,
+    point::{
+	Point,
+    },
+    scalar::Scalar,
 };
 use num_traits::identities::Zero;
 use polynomial::Polynomial;
@@ -23,7 +26,7 @@ fn eval(p: &Polynomial<Point>, x: &Scalar) -> Point {
 
     for i in 1..p.data().len() {
 	val += &p.data()[i] * &y;
-	y *= y.clone();
+	y *= y;
     }
 
     val
@@ -73,8 +76,8 @@ fn main() {
 	    
 	    // party sends party2 the round2 share
 	    party2.send(Share2{
-		i: party2.id.clone(),
-		f_i: party.f.eval(party2.id.clone()),
+		i: party2.id,
+		f_i: party.f.eval(party2.id),
 	    });
 	}
     }
@@ -96,7 +99,7 @@ fn main() {
 
     let msg = "It was many and many a year ago".to_string();
     
-    let S: Vec<Scalar> = signing_parties.iter().map(|p| p.id.clone()).collect();
+    let S: Vec<Scalar> = signing_parties.iter().map(|p| p.id).collect();
     let mut signers = "".to_string();
     for s in S {
 	signers += &format!("{} ", s);

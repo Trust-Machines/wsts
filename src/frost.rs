@@ -1,5 +1,8 @@
 use secp256k1_math::{
-    point::Point, scalar::Scalar,
+    point::{
+	G, Point,
+    },
+    scalar::Scalar,
 };
 use num_traits::{Zero, One};
 use polynomial::Polynomial;
@@ -50,8 +53,8 @@ pub struct PublicNonce {
 impl PublicNonce {
     pub fn from(n: &Nonce) -> Self {
 	Self {
-	    D: &n.d * Point::G(),
-	    E: &n.e * Point::G(),
+	    D: &n.d * G,
+	    E: &n.e * G,
 	}
     }
 }
@@ -68,7 +71,7 @@ pub struct Party {
 impl Party {
     pub fn new<RNG: RngCore+CryptoRng>(id: &Scalar, t: usize, rng: &mut RNG) -> Self {
 	Self {
-	    id: id.clone(),
+	    id: *id,
 	    f: VSS::random_poly(t - 1, rng),
 	    shares: Vec::new(),
 	    secret: Scalar::zero(),
@@ -79,7 +82,7 @@ impl Party {
     pub fn share<RNG: RngCore+CryptoRng>(&self, rng: &mut RNG) -> Share {
 	Share {
 	    id: ID::new(&self.id, &self.f.data()[0], rng),
-	    A: (0..self.f.data().len()).map(|i| &self.f.data()[i] * Point::G()).collect(),
+	    A: (0..self.f.data().len()).map(|i| &self.f.data()[i] * G).collect(),
 	}
     }
 
@@ -132,8 +135,8 @@ impl Party {
 
 	hasher.update(self.id.as_bytes());
 	for b in B {
-	    hasher.update(b.D.clone().compress().as_bytes());
-	    hasher.update(b.E.clone().compress().as_bytes());
+	    hasher.update(b.D.compress().as_bytes());
+	    hasher.update(b.E.compress().as_bytes());
 	}
 	hasher.update(msg.as_bytes());
 
@@ -147,8 +150,8 @@ impl Party {
 	
 	let mut hasher = Sha3_256::new();
 
-	hasher.update(X.clone().compress().as_bytes());
-	hasher.update(R.clone().compress().as_bytes());
+	hasher.update(X.compress().as_bytes());
+	hasher.update(R.compress().as_bytes());
 	hasher.update(msg.as_bytes());
 
 	z += hash_to_scalar(&mut hasher) * &self.secret * l;
@@ -209,12 +212,12 @@ impl Signature {
     pub fn verify(&self, X: &Point, msg: &String) -> bool {
 	let mut hasher = Sha3_256::new();
 
-	hasher.update(X.clone().compress().as_bytes());
-	hasher.update(self.R.clone().compress().as_bytes());
+	hasher.update(X.compress().as_bytes());
+	hasher.update(self.R.compress().as_bytes());
 	hasher.update(msg.as_bytes());
 
 	let c = hash_to_scalar(&mut hasher);
-	let R = &self.z * Point::G() + (-c) * X;
+	let R = &self.z * G + (-c) * X;
 
 	println!("Verification R = {}", R);
 	
