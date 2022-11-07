@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-secp256k1-math = { git = "https://github.com/Trust-Machines/rust-secp256k1-math", rev = "9f7d236312c88467d41dce9bba53c565dfacfcaa" }
+secp256k1-math = { git = "https://github.com/Trust-Machines/rust-secp256k1-math", rev = "6060b118d768211cfaec841c68581cedb0051a49"  }
 hex = "0.4.3"
 num-traits = "0.2"
 polynomial = "0.2.4"
