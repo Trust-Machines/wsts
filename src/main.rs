@@ -48,9 +48,12 @@ fn main() {
     }
     
     let mut agg_params = Vec::new();
-    for share in &shares {
-	let agg = (0..T).fold(Point::default(), |acc,x| acc + &share.A[x]);
-	agg_params.push(agg);
+    for i in 0..T {
+        let mut agg = Point::default();
+        for share in &shares {
+            agg +=  share.A[i];
+        }
+        agg_params.push(agg);
     }
     let P: Polynomial<Point> = Polynomial::new(agg_params);
 
