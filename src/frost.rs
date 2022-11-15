@@ -159,15 +159,13 @@ impl Party {
 	z
     }
 
-    pub fn lambda(i: &Scalar, n: usize) -> Scalar {
+    pub fn lambda(i: &Scalar, parties: &Vec<Party>) -> Scalar {
 	let mut l = Scalar::one();
 	
-	for jj in 1..n+1 {
-	    let j = Scalar::from(jj as u32);
-	    if i == &j {
-		continue;
-	    }
-	    l *= &j / (&j - i);
+	for p in parties {
+	    if i != &p.id {
+			l *= &p.id / (&p.id - i);
+		}
 	}
 	
 	l
@@ -182,7 +180,7 @@ pub struct Signature {
 
 impl Signature {
     #[allow(non_snake_case)]
-    pub fn new<RNG: RngCore+CryptoRng>(X: &Point, msg: &String, parties: &mut Vec<Party>, N: usize, rng: &mut RNG) -> Self {
+    pub fn new<RNG: RngCore+CryptoRng>(X: &Point, msg: &String, parties: &mut Vec<Party>, rng: &mut RNG) -> Self {
 	let mut B = Vec::new();
 	for party in parties.iter_mut() {
 	    B.push(party.get_nonce(rng));
@@ -197,7 +195,7 @@ impl Signature {
 
 	let mut z = Scalar::zero();
 	for (i,party) in parties.iter().enumerate() {
-	    let l = Party::lambda(&party.id, N);
+	    let l = Party::lambda(&party.id, parties);
 	    z += party.sign(&X, &rho[i], &R, &msg, &l);
 	}
 

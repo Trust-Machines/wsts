@@ -109,7 +109,7 @@ fn main() {
     
     //let B: Vec<PublicNonce> = signing_parties.iter().map(|p:&mut Party| p.pop_nonce(&mut rng)).collect();
 
-    let sig = Signature::new(&X, &msg, &mut signing_parties, N, &mut rng);
+    let sig = Signature::new(&X, &msg, &mut signing_parties, &mut rng);
     println!("Signature (R,z) = \n({},{})", sig.R, sig.z);
 
     assert!(sig.verify(&X, &msg));
