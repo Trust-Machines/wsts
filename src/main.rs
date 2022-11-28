@@ -1,114 +1,75 @@
-use secp256k1_math::{
-    point::{
-	Point,
-    },
-    scalar::Scalar,
-};
 use num_traits::identities::Zero;
-use polynomial::Polynomial;
-use rand_core::{
-    OsRng, RngCore,
-};
+use secp256k1_math::{point::Point, scalar::Scalar};
+
+use rand_core::{CryptoRng, OsRng, RngCore};
 use std::env;
 
-use frost::frost::{
-    Party, Share, Share2, Signature,
-};
+use frost::frost::{Party, PublicNonce, Share, SignatureAggregator};
 
-fn eval(p: &Polynomial<Point>, x: &Scalar) -> Point {
-    let mut y = x.clone();
-    let mut val = p.data()[0].clone();
+use std::collections::HashSet;
 
-    for i in 1..p.data().len() {
-	val += &p.data()[i] * &y;
-	y *= y;
+// This will eventually need to be replaced by rpcs
+fn distribute_secret(parties: &mut Vec<Party>) {
+    // round2
+    for i in 0..parties.len() {
+        for j in 0..parties.len() {
+            if i == j {
+                continue;
+            }
+            let i_id = parties[i].id.clone();
+            let s = parties[i].send_share(parties[j].id);
+            parties[j].receive_share(i_id, s);
+        }
     }
 
-    val
+    for party in &mut parties.into_iter() {
+        party.compute_secret();
+    }
+}
+
+fn select_parties<RNG: RngCore + CryptoRng>(N: usize, T: usize, rng: &mut RNG) -> Vec<usize> {
+    let mut indices: Vec<usize> = Vec::new();
+
+    for i in 0..N {
+        indices.push(i);
+    }
+
+    while indices.len() > T {
+        let i = rng.next_u64() as usize % indices.len();
+        indices.swap_remove(i);
+    }
+
+    indices
 }
 
 #[allow(non_snake_case)]
 fn main() {
     let _args: Vec<String> = env::args().collect();
+    let num_sigs = 1;
+    let num_nonces = 5;
+
     let mut rng = OsRng::default();
-    const N: usize = 3;
-    const T: usize = 2;
+    const N: usize = 10;
+    const T: usize = 7;
 
-    let mut parties: Vec<Party> = (0..N).map(|n| Party::new(&Scalar::from((n+1) as u32), T, &mut rng)).collect();
-    let shares: Vec<Share> = parties.iter().map(|p| p.share(&mut rng)).collect();
+    // Initial set-up
+    let mut parties: Vec<Party> = (0..N)
+        .map(|n| Party::new(&Scalar::from((n + 1) as u32), T, &mut rng))
+        .collect();
+    let A: Vec<Share> = parties.iter().map(|p| p.send_A(&mut rng)).collect();
+    let B: Vec<Vec<PublicNonce>> = parties
+        .iter_mut()
+        .map(|p| p.gen_nonces(num_nonces, &mut rng))
+        .collect();
+    distribute_secret(&mut parties); // maybe share Bs here as well?
 
-    // everybody checks everybody's shares
-    for share in &shares {
-	assert!(share.verify());
+    let mut sig_agg = SignatureAggregator::new(N, T, A, B);
+
+    for _ in 0..num_sigs {
+        let msg = "It was many and many a year ago".to_string();
+        let signers = select_parties(N, T, &mut rng);
+        let sig = sig_agg.sign(&msg, &mut parties, &signers);
+        println!("Signature (R,z) = \n({},{})", sig.R, sig.z);
+        assert!(sig.verify(&sig_agg.key, &msg));
     }
-    
-    let mut agg_params = Vec::new();
-    for i in 0..T {
-        let mut agg = Point::default();
-        for share in &shares {
-            agg +=  share.A[i];
-        }
-        agg_params.push(agg);
-    }
-    let P: Polynomial<Point> = Polynomial::new(agg_params);
-
-    let zero = eval(&P, &Scalar::zero());
-    
-    //let p = Polynomial::<Scalar>::lagrange(&xs, &ys).unwrap();
-    println!("P(0) = {}", zero);
-
-    // compute aggregate public key X
-    
-    let mut X = Point::zero();
-    for share in &shares {
-	X = X + &share.A[0];
-    }
-
-    println!("Aggregate public key X = {}", X);
-
-    // round2
-    for i in 0..N {
-	let party = parties[i].clone();
-	for j in 0..N {
-	    let party2 = &mut parties[j];
-	    
-	    // party sends party2 the round2 share
-	    party2.send(Share2{
-		i: party2.id,
-		f_i: party.f.eval(party2.id),
-	    });
-	}
-    }
-
-    for party in &mut parties {
-	party.compute_secret();
-	println!("Party {} secret {}", &party.id, &party.secret);
-    }
-
-    // choose a random list of T parties to sign
-    let mut available_parties = parties;
-    let mut signing_parties = Vec::new();
-    while signing_parties.len() < T {
-	let i = rng.next_u64() as usize % available_parties.len();
-	signing_parties.push(available_parties[i].clone());
-	available_parties.remove(i);
-	
-    }
-
-    let msg = "It was many and many a year ago".to_string();
-    
-    let S: Vec<Scalar> = signing_parties.iter().map(|p| p.id).collect();
-    let mut signers = "".to_string();
-    for s in S {
-	signers += &format!("{} ", s);
-    }
-    
-    println!("Signing parties {}", signers);
-    
-    //let B: Vec<PublicNonce> = signing_parties.iter().map(|p:&mut Party| p.pop_nonce(&mut rng)).collect();
-
-    let sig = Signature::new(&X, &msg, &mut signing_parties, &mut rng);
-    println!("Signature (R,z) = \n({},{})", sig.R, sig.z);
-
-    assert!(sig.verify(&X, &msg));
 }
