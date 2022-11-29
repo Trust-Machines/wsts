@@ -51,6 +51,7 @@ impl PublicNonce {
     }
 }
 
+#[allow(non_snake_case)]
 fn compute_H1(id: &Scalar, B: &Vec<PublicNonce>, msg: &String) -> Scalar {
     let mut hasher = Sha3_256::new();
 
@@ -64,6 +65,7 @@ fn compute_H1(id: &Scalar, B: &Vec<PublicNonce>, msg: &String) -> Scalar {
     hash_to_scalar(&mut hasher)
 }
 
+#[allow(non_snake_case)]
 fn compute_H2(X: &Point, R: &Point, msg: &String) -> Scalar {
     let mut hasher = Sha3_256::new();
 
@@ -85,15 +87,35 @@ fn lambda(i: &Scalar, indices: &Vec<usize>) -> Scalar {
     lambda
 }
 
-// TODO: remove the pubs where they should be private
+// Is this the best way to return these values?
+// TODO: this fn needs a better name
+#[allow(non_snake_case)]
+fn get_B_rho_R_vec(
+    signers: &Vec<usize>,
+    B: &Vec<Vec<PublicNonce>>,
+    index: usize,
+    msg: &String,
+) -> (Vec<PublicNonce>, Vec<Point>, Point) {
+    let B = signers.iter().map(|&i| B[i][index].clone()).collect();
+    let rho: Vec<Scalar> = signers
+        .iter()
+        .map(|&i| compute_H1(&Scalar::from((i + 1) as u32), &B, &msg))
+        .collect();
+    let R_vec: Vec<Point> = (0..B.len()).map(|i| &B[i].D + &rho[i] * &B[i].E).collect();
+    let R = R_vec.iter().fold(Point::zero(), |R, &R_i| R + R_i);
+    (B, R_vec, R)
+}
+
 #[derive(Clone)]
+#[allow(non_snake_case)]
 pub struct Party {
     pub id: Scalar,
+    pub pubkey: Point,
     f: Polynomial<Scalar>,
     shares: Vec<Share2>, // received from other parties
     privkey: Scalar,
-    pub pubkey: Point,
     nonces: Vec<Nonce>,
+    B: Vec<Vec<PublicNonce>>, // received from other parties
 }
 
 impl Party {
@@ -105,6 +127,7 @@ impl Party {
             privkey: Scalar::zero(),
             pubkey: Point::zero(),
             nonces: Vec::new(),
+            B: Vec::new(),
         }
     }
 
@@ -120,6 +143,11 @@ impl Party {
             })
             .collect();
         self.nonces.iter().map(|n| PublicNonce::from(n)).collect()
+    }
+
+    #[allow(non_snake_case)]
+    pub fn receive_nonces(&mut self, B: Vec<Vec<PublicNonce>>) {
+        self.B = B;
     }
 
     #[allow(non_snake_case)]
@@ -146,6 +174,8 @@ impl Party {
         self.shares.push(Share2 { i: i, f_i: f_i });
     }
 
+    // TODO: Maybe this should be private? If receive_share is keeping track
+    // of which it receives, then this could be called when it has N shares from unique ids
     pub fn compute_secret(&mut self) {
         self.privkey = self.f.eval(self.id);
         // TODO: check that there is exactly one share from each other party
@@ -156,20 +186,16 @@ impl Party {
         println!("Party {} secret {}", self.id, self.privkey);
     }
 
-    pub fn get_nonce(&mut self, index: usize) -> PublicNonce {
-        PublicNonce::from(&self.nonces[index]) // TODO: needs to check index exists
-    }
-
     #[allow(non_snake_case)]
     pub fn sign(
         &self,
         X: &Point,
-        B: &Vec<PublicNonce>,
-        R: &Point,
+        //R: &Point,
         msg: &String,
         signers: &Vec<usize>,
         nonce_index: usize,
     ) -> Scalar {
+        let (B, _R_vec, R) = get_B_rho_R_vec(&signers, &self.B, nonce_index, &msg);
         let nonce = &self.nonces[nonce_index]; // TODO: needs to check that index exists
         let mut z = &nonce.d + &nonce.e * compute_H1(&self.id, &B, &msg); //* compute_H1(&self.id, &B, &msg);
         z += compute_H2(&X, &R, &msg) * &self.privkey * lambda(&self.id, signers);
@@ -184,13 +210,6 @@ pub struct Signature {
 }
 
 impl Signature {
-    pub fn new() -> Self {
-        Self {
-            R: Point::new(),
-            z: Scalar::new(),
-        }
-    }
-
     // verify: R' = z * G + -c * X, pass if R' == R
     #[allow(non_snake_case)]
     pub fn verify(&self, X: &Point, msg: &String) -> bool {
@@ -203,6 +222,7 @@ impl Signature {
     }
 }
 
+#[allow(non_snake_case)]
 pub struct SignatureAggregator {
     pub N: usize,
     pub T: usize,
@@ -245,33 +265,21 @@ impl SignatureAggregator {
         }
     }
 
+    #[allow(non_snake_case)]
     pub fn sign(
         &mut self,
         msg: &String,
         parties: &mut Vec<Party>,
         signers: &Vec<usize>,
     ) -> Signature {
-        let B = signers
-            .iter()
-            .map(|&i| self.B[i][self.nonce_ctr].clone())
-            .collect();
-        let rho: Vec<Scalar> = signers
-            .iter()
-            .map(|&i| compute_H1(&parties[i].id, &B, &msg))
-            .collect();
-
-        let R_vec: Vec<Point> = (0..B.len()).map(|i| &B[i].D + &rho[i] * &B[i].E).collect();
-        let R = R_vec.iter().fold(Point::zero(), |mut R, &R_i| R + R_i);
+        let (_B, R_vec, R) = get_B_rho_R_vec(&signers, &self.B, self.nonce_ctr, &msg);
 
         let mut z = Scalar::zero();
         let c = compute_H2(&self.key, &R, &msg); // only needed for checking z_i
         for i in 0..signers.len() {
             let party = &parties[signers[i]];
-            let z_i = party.sign(&self.key, &B, &R, &msg, &signers, self.nonce_ctr);
-            assert!(
-                z_i * G
-                    == R_vec[i] + (lambda(&(parties[signers[i]].id), signers) * c * party.pubkey)
-            );
+            let z_i = party.sign(&self.key, &msg, &signers, self.nonce_ctr);
+            assert!(z_i * G == R_vec[i] + (lambda(&party.id, signers) * c * party.pubkey)); // TODO: This should return a list of bad parties.
             z += z_i;
         }
         self.update_nonce();
@@ -282,8 +290,8 @@ impl SignatureAggregator {
     fn update_nonce(&mut self) {
         self.nonce_ctr += 1;
         if self.nonce_ctr == self.num_nonces {
-            println!("Out of nonces!");
-            // TODO: Trigger another collection of Bs
+            println!("Out of nonces! Need to generate new ones!");
+            // TODO: Trigger another round of nonces generation & sharing B
             self.nonce_ctr = 0;
         }
     }
