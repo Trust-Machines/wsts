@@ -12,3 +12,11 @@ num-traits = "0.2"
 polynomial = "0.2.4"
 rand_core = "0.5"
 sha3 = "0.10.5"
+
+[lib]
+path = "src/lib.rs"    # The source file of the target.
+crate-type = ["lib"]   # The crate types to generate.
+
+[[bin]]
+name = "frost"
+path = "src/main.rs"

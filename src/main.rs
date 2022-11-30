@@ -11,12 +11,7 @@ use rand_core::{
 };
 use std::env;
 
-mod frost;
-mod schnorr;
-mod util;
-mod vss;
-
-use frost::{
+use frost::frost::{
     Party, Share, Share2, Signature,
 };
 
