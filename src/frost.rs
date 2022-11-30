@@ -111,21 +111,28 @@ fn get_B_rho_R_vec(
 pub struct Party {
     pub id: Scalar,
     pub publicKey: Point,
+    n: usize,
+    _t: usize,
     f: Polynomial<Scalar>,
     shares: Vec<Share2>, // received from other parties
     privateKey: Scalar,
+    groupKey: Point,
     nonces: Vec<Nonce>,
     B: Vec<Vec<PublicNonce>>, // received from other parties
 }
 
 impl Party {
-    pub fn new<RNG: RngCore + CryptoRng>(id: &Scalar, t: usize, rng: &mut RNG) -> Self {
+    #[allow(non_snake_case)]
+    pub fn new<RNG: RngCore + CryptoRng>(id: &Scalar, n: usize, t: usize, rng: &mut RNG) -> Self {
         Self {
             id: *id,
+            n: n,
+            _t: t,
             f: VSS::random_poly(t - 1, rng),
             shares: Vec::new(),
             privateKey: Scalar::zero(),
             publicKey: Point::zero(),
+            groupKey: Point::zero(),
             nonces: Vec::new(),
             B: Vec::new(),
         }
@@ -187,6 +194,18 @@ impl Party {
         }
         self.publicKey = self.privateKey * G;
         println!("Party {} secret {}", self.id, self.privateKey);
+    }
+
+    #[allow(non_snake_case)]
+    pub fn set_group_key(&mut self, A: &Vec<Share>) {
+        assert!(A.len() == self.n);
+        for A_i in A {
+            assert!(A_i.verify());
+        }
+
+        for A_i in A {
+            self.groupKey += &A_i.A[0].clone();
+        }
     }
 
     #[allow(non_snake_case)]
