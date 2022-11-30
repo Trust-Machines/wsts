@@ -52,7 +52,7 @@ impl PublicNonce {
 }
 
 #[allow(non_snake_case)]
-fn compute_H1(id: &Scalar, B: &Vec<PublicNonce>, msg: &String) -> Scalar {
+fn compute_binding(id: &Scalar, B: &Vec<PublicNonce>, msg: &String) -> Scalar {
     let mut hasher = Sha3_256::new();
 
     hasher.update(id.as_bytes());
@@ -66,10 +66,10 @@ fn compute_H1(id: &Scalar, B: &Vec<PublicNonce>, msg: &String) -> Scalar {
 }
 
 #[allow(non_snake_case)]
-fn compute_H2(X: &Point, R: &Point, msg: &String) -> Scalar {
+fn compute_challenge(publicKey: &Point, R: &Point, msg: &String) -> Scalar {
     let mut hasher = Sha3_256::new();
 
-    hasher.update(X.compress().as_bytes());
+    hasher.update(publicKey.compress().as_bytes());
     hasher.update(R.compress().as_bytes());
     hasher.update(msg.as_bytes());
 
@@ -99,7 +99,7 @@ fn get_B_rho_R_vec(
     let B = signers.iter().map(|&i| B[i][index].clone()).collect();
     let rho: Vec<Scalar> = signers
         .iter()
-        .map(|&i| compute_H1(&Scalar::from((i + 1) as u32), &B, &msg))
+        .map(|&i| compute_binding(&Scalar::from((i + 1) as u32), &B, &msg))
         .collect();
     let R_vec: Vec<Point> = (0..B.len()).map(|i| &B[i].D + &rho[i] * &B[i].E).collect();
     let R = R_vec.iter().fold(Point::zero(), |R, &R_i| R + R_i);
@@ -110,10 +110,10 @@ fn get_B_rho_R_vec(
 #[allow(non_snake_case)]
 pub struct Party {
     pub id: Scalar,
-    pub pubkey: Point,
+    pub publicKey: Point,
     f: Polynomial<Scalar>,
     shares: Vec<Share2>, // received from other parties
-    privkey: Scalar,
+    privateKey: Scalar,
     nonces: Vec<Nonce>,
     B: Vec<Vec<PublicNonce>>, // received from other parties
 }
@@ -124,8 +124,8 @@ impl Party {
             id: *id,
             f: VSS::random_poly(t - 1, rng),
             shares: Vec::new(),
-            privkey: Scalar::zero(),
-            pubkey: Point::zero(),
+            privateKey: Scalar::zero(),
+            publicKey: Point::zero(),
             nonces: Vec::new(),
             B: Vec::new(),
         }
@@ -151,7 +151,7 @@ impl Party {
     }
 
     #[allow(non_snake_case)]
-    pub fn send_A<RNG: RngCore + CryptoRng>(&self, rng: &mut RNG) -> Share {
+    pub fn get_share<RNG: RngCore + CryptoRng>(&self, rng: &mut RNG) -> Share {
         Share {
             id: ID::new(&self.id, &self.f.data()[0], rng),
             A: (0..self.f.data().len())
@@ -160,36 +160,39 @@ impl Party {
         }
     }
 
-    pub fn send_share(&self, id: Scalar) -> Scalar {
-        self.f.eval(id)
+    pub fn get_share2(&self, id: Scalar) -> Share2 {
+        Share2 {
+            i: id,
+            f_i: self.f.eval(id),
+        }
     }
 
     // TODO: keep track of IDs to ensure each is included once
     // TODO: Either automatically compute_secret when N shares arrive
     // or trigger it when done sharing and bark if there aren't N
-    pub fn receive_share(&mut self, i: Scalar, f_i: Scalar) {
+    pub fn receive_share(&mut self, share: Share2) {
         //println!("id: {} received: {} {}", self.id, i, f_i);
         // TODO: Verify against public commitment of A
         // TODO: Perhaps check A proof here as well?
-        self.shares.push(Share2 { i: i, f_i: f_i });
+        self.shares.push(share);
     }
 
     // TODO: Maybe this should be private? If receive_share is keeping track
     // of which it receives, then this could be called when it has N shares from unique ids
     pub fn compute_secret(&mut self) {
-        self.privkey = self.f.eval(self.id);
+        self.privateKey = self.f.eval(self.id);
         // TODO: check that there is exactly one share from each other party
         for share in &self.shares {
-            self.privkey += &share.f_i;
+            self.privateKey += &share.f_i;
         }
-        self.pubkey = self.privkey * G;
-        println!("Party {} secret {}", self.id, self.privkey);
+        self.publicKey = self.privateKey * G;
+        println!("Party {} secret {}", self.id, self.privateKey);
     }
 
     #[allow(non_snake_case)]
     pub fn sign(
         &self,
-        X: &Point,
+        publicKey: &Point,
         //R: &Point,
         msg: &String,
         signers: &Vec<usize>,
@@ -197,8 +200,8 @@ impl Party {
     ) -> Scalar {
         let (B, _R_vec, R) = get_B_rho_R_vec(&signers, &self.B, nonce_index, &msg);
         let nonce = &self.nonces[nonce_index]; // TODO: needs to check that index exists
-        let mut z = &nonce.d + &nonce.e * compute_H1(&self.id, &B, &msg); //* compute_H1(&self.id, &B, &msg);
-        z += compute_H2(&X, &R, &msg) * &self.privkey * lambda(&self.id, signers);
+        let mut z = &nonce.d + &nonce.e * compute_binding(&self.id, &B, &msg);
+        z += compute_challenge(&publicKey, &R, &msg) * &self.privateKey * lambda(&self.id, signers);
         z
     }
 }
@@ -210,11 +213,11 @@ pub struct Signature {
 }
 
 impl Signature {
-    // verify: R' = z * G + -c * X, pass if R' == R
+    // verify: R' = z * G + -c * publicKey, pass if R' == R
     #[allow(non_snake_case)]
-    pub fn verify(&self, X: &Point, msg: &String) -> bool {
-        let c = compute_H2(&X, &self.R, &msg);
-        let R = &self.z * G + (-c) * X;
+    pub fn verify(&self, publicKey: &Point, msg: &String) -> bool {
+        let c = compute_challenge(&publicKey, &self.R, &msg);
+        let R = &self.z * G + (-c) * publicKey;
 
         println!("Verification R = {}", R);
 
@@ -275,11 +278,11 @@ impl SignatureAggregator {
         let (_B, R_vec, R) = get_B_rho_R_vec(&signers, &self.B, self.nonce_ctr, &msg);
 
         let mut z = Scalar::zero();
-        let c = compute_H2(&self.key, &R, &msg); // only needed for checking z_i
+        let c = compute_challenge(&self.key, &R, &msg); // only needed for checking z_i
         for i in 0..signers.len() {
             let party = &parties[signers[i]];
             let z_i = party.sign(&self.key, &msg, &signers, self.nonce_ctr);
-            assert!(z_i * G == R_vec[i] + (lambda(&party.id, signers) * c * party.pubkey)); // TODO: This should return a list of bad parties.
+            assert!(z_i * G == R_vec[i] + (lambda(&party.id, signers) * c * party.publicKey)); // TODO: This should return a list of bad parties.
             z += z_i;
         }
         self.update_nonce();

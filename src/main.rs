@@ -7,16 +7,15 @@ use frost::frost::{Party, PublicNonce, Share, SignatureAggregator};
 
 // This will eventually need to be replaced by rpcs
 #[allow(non_snake_case)]
-fn distribute_secret(parties: &mut Vec<Party>, B: &Vec<Vec<PublicNonce>>) {
+fn distribute(parties: &mut Vec<Party>, B: &Vec<Vec<PublicNonce>>) {
     // round2
     for i in 0..parties.len() {
         for j in 0..parties.len() {
             if i == j {
                 continue;
             }
-            let j_id = parties[j].id.clone();
-            let s = parties[j].send_share(parties[i].id);
-            parties[i].receive_share(j_id, s);
+            let s = parties[j].get_share2(parties[i].id);
+            parties[i].receive_share(s);
         }
         parties[i].compute_secret();
         parties[i].receive_nonces(B.clone());
@@ -53,12 +52,12 @@ fn main() {
     let mut parties: Vec<Party> = (0..N)
         .map(|n| Party::new(&Scalar::from((n + 1) as u32), T, &mut rng))
         .collect();
-    let A: Vec<Share> = parties.iter().map(|p| p.send_A(&mut rng)).collect();
+    let A: Vec<Share> = parties.iter().map(|p| p.get_share(&mut rng)).collect();
     let B: Vec<Vec<PublicNonce>> = parties
         .iter_mut()
         .map(|p| p.gen_nonces(num_nonces, &mut rng))
         .collect();
-    distribute_secret(&mut parties, &B); // maybe share Bs here as well?
+    distribute(&mut parties, &B); // maybe share Bs here as well?
 
     let mut sig_agg = SignatureAggregator::new(N, T, A, B);
 
