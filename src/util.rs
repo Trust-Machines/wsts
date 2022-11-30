@@ -1,9 +1,5 @@
-use secp256k1_math::{
-    point::Point, point::Compressed, scalar::Scalar,
-};
-use sha3::{
-    Digest, Sha3_256, 
-};
+use secp256k1_math::{point::Compressed, point::Point, scalar::Scalar};
+use sha3::{Digest, Sha3_256};
 
 #[allow(dead_code)]
 pub fn hash_to_scalar(hasher: &mut Sha3_256) -> Scalar {
@@ -11,7 +7,7 @@ pub fn hash_to_scalar(hasher: &mut Sha3_256) -> Scalar {
     let hash = h.finalize();
     let mut hash_bytes: [u8; 32] = [0; 32];
     hash_bytes.clone_from_slice(hash.as_slice());
-    
+
     Scalar::from(hash_bytes)
 }
 
@@ -20,7 +16,7 @@ pub fn decode_scalar(s: &String) -> Scalar {
     let vec = hex::decode(s).unwrap();
     let mut bytes: [u8; 32] = [0; 32];
     bytes.clone_from_slice(vec.as_slice());
-    
+
     Scalar::from(bytes)
 }
 
