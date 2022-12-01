@@ -2,8 +2,9 @@ use secp256k1_math::scalar::Scalar;
 
 use rand_core::{CryptoRng, OsRng, RngCore};
 use std::env;
+//use secp256k1_math::point::G;
 
-use frost::frost::{Party, PublicNonce, Share, SignatureAggregator};
+use frost::frost::{Party, PublicNonce, Share, SignatureAggregator, SignatureShare};
 
 // This will eventually need to be replaced by rpcs
 #[allow(non_snake_case)]
@@ -39,6 +40,25 @@ fn select_parties<RNG: RngCore + CryptoRng>(N: usize, T: usize, rng: &mut RNG) -
     indices
 }
 
+// There might be a slick one-liner for this?
+fn collect_shares(
+    parties: &Vec<Party>,
+    signers: &Vec<usize>,
+    nonce_ctr: usize,
+    msg: &String,
+) -> Vec<SignatureShare> {
+    let mut v = Vec::new();
+    for i in 0..signers.len() {
+        let party = &parties[signers[i]];
+        v.push(SignatureShare {
+            id: party.id.clone(),
+            z_i: party.sign(&msg, &signers, nonce_ctr),
+            public_key: party.public_key.clone(),
+        });
+    }
+    v
+}
+
 #[allow(non_snake_case)]
 fn main() {
     let _args: Vec<String> = env::args().collect();
@@ -65,7 +85,9 @@ fn main() {
     for _ in 0..num_sigs {
         let msg = "It was many and many a year ago".to_string();
         let signers = select_parties(N, T, &mut rng);
-        let sig = sig_agg.sign(&msg, &mut parties, &signers);
+        let nonce_ctr = sig_agg.get_nonce_ctr();
+        let sig_shares = collect_shares(&parties, &signers, nonce_ctr, &msg);
+        let sig = sig_agg.sign(&msg, &sig_shares, &signers);
         println!("Signature (R,z) = \n({},{})", sig.R, sig.z);
         assert!(sig.verify(&sig_agg.key, &msg));
     }
