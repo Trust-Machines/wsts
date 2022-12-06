@@ -11,22 +11,19 @@ use crate::schnorr::ID;
 use crate::util::hash_to_scalar;
 use crate::vss::VSS;
 
+use std::collections::HashMap;
+
 #[allow(non_snake_case)]
-pub struct Share {
+// TODO: Add proof for a0 here
+pub struct PolyCommitment {
     pub id: ID,
     pub A: Vec<Point>,
 }
 
-impl Share {
+impl PolyCommitment {
     pub fn verify(&self) -> bool {
         self.id.verify(&self.A[0])
     }
-}
-
-#[derive(Clone)]
-pub struct Share2 {
-    pub i: Scalar,
-    pub f_i: Scalar,
 }
 
 #[derive(Clone)]
@@ -122,7 +119,7 @@ pub struct Party {
     n: usize,
     _t: usize,
     f: Polynomial<Scalar>,
-    shares: Vec<Share2>, // received from other parties
+    //shares: HashMap<usize, Scalar>, // received from other parties
     private_key: Scalar,
     group_key: Point,
     nonces: Vec<Nonce>,
@@ -137,7 +134,6 @@ impl Party {
             n: n,
             _t: t,
             f: VSS::random_poly(t - 1, rng),
-            shares: Vec::new(),
             private_key: Scalar::zero(),
             public_key: Point::zero(),
             group_key: Point::zero(),
@@ -161,13 +157,13 @@ impl Party {
     }
 
     #[allow(non_snake_case)]
-    pub fn receive_nonces(&mut self, B: Vec<Vec<PublicNonce>>) {
+    pub fn set_group_nonces(&mut self, B: Vec<Vec<PublicNonce>>) {
         self.B = B;
     }
 
     #[allow(non_snake_case)]
-    pub fn get_share<RNG: RngCore + CryptoRng>(&self, rng: &mut RNG) -> Share {
-        Share {
+    pub fn get_poly_commitment<RNG: RngCore + CryptoRng>(&self, rng: &mut RNG) -> PolyCommitment {
+        PolyCommitment {
             id: ID::new(&self.id, &self.f.data()[0], rng),
             A: (0..self.f.data().len())
                 .map(|i| &self.f.data()[i] * G)
@@ -175,37 +171,30 @@ impl Party {
         }
     }
 
-    pub fn get_share2(&self, id: Scalar) -> Share2 {
-        Share2 {
-            i: id,
-            f_i: self.f.eval(id),
+    pub fn get_shares(&self) -> HashMap<usize, Scalar> {
+        let mut shares = HashMap::new();
+        for i in 0..self.n as usize {
+            shares.insert(i, self.f.eval(Scalar::from((i + 1) as u32)));
         }
-    }
-
-    // TODO: keep track of IDs to ensure each is included once
-    // TODO: Either automatically compute_secret when N shares arrive
-    // or trigger it when done sharing and bark if there aren't N
-    pub fn receive_share(&mut self, share: Share2) {
-        //println!("id: {} received: {} {}", self.id, i, f_i);
-        // TODO: Verify against public commitment of A
-        // TODO: Perhaps check A proof here as well?
-        self.shares.push(share);
+        shares
     }
 
     // TODO: Maybe this should be private? If receive_share is keeping track
     // of which it receives, then this could be called when it has N shares from unique ids
-    pub fn compute_secret(&mut self) {
-        self.private_key = self.f.eval(self.id);
+    pub fn compute_secret(&mut self, shares: HashMap<usize, Scalar>) {
+        // TODO: return error with a list of missing shares
+        assert!(shares.len() == self.n);
+        self.private_key = Scalar::zero();
         // TODO: check that there is exactly one share from each other party
-        for share in &self.shares {
-            self.private_key += &share.f_i;
+        for (_i, s) in shares.iter() {
+            self.private_key += s;
         }
         self.public_key = self.private_key * G;
         println!("Party {} secret {}", self.id, self.private_key);
     }
 
     #[allow(non_snake_case)]
-    pub fn set_group_key(&mut self, A: &Vec<Share>) {
+    pub fn set_group_key(&mut self, A: &Vec<PolyCommitment>) {
         assert!(A.len() == self.n);
         for A_i in A {
             assert!(A_i.verify());
@@ -251,7 +240,7 @@ impl Signature {
 pub struct SignatureAggregator {
     pub N: usize,
     pub T: usize,
-    pub A: Vec<Share>,            // outer vector is N-long, inner vector is T-long
+    pub A: Vec<PolyCommitment>, // outer vector is N-long, inner vector is T-long
     pub B: Vec<Vec<PublicNonce>>, // outer vector is N-long, inner vector is T-long
     pub key: Point,
     nonce_ctr: usize,
@@ -260,7 +249,7 @@ pub struct SignatureAggregator {
 
 impl SignatureAggregator {
     #[allow(non_snake_case)]
-    pub fn new(N: usize, T: usize, A: Vec<Share>, B: Vec<Vec<PublicNonce>>) -> Self {
+    pub fn new(N: usize, T: usize, A: Vec<PolyCommitment>, B: Vec<Vec<PublicNonce>>) -> Self {
         // TODO: How should we handle bad As?
         assert!(A.len() == N);
         for A_i in &A {
