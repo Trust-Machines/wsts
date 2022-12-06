@@ -4,23 +4,35 @@ use rand_core::{CryptoRng, OsRng, RngCore};
 use std::env;
 //use secp256k1_math::point::G;
 
-use frost::frost::{Party, PublicNonce, Share, SignatureAggregator, SignatureShare};
+use frost::frost::{Party, PolyCommitment, PublicNonce, SignatureAggregator, SignatureShare};
+
+use std::collections::HashMap;
 
 // This will eventually need to be replaced by rpcs
 #[allow(non_snake_case)]
-fn distribute(parties: &mut Vec<Party>, A: &Vec<Share>, B: &Vec<Vec<PublicNonce>>) {
-    // round2
+fn distribute(parties: &mut Vec<Party>, A: &Vec<PolyCommitment>, B: &Vec<Vec<PublicNonce>>) {
+    // each party broadcasts their commitments
+    // these hashmaps will need to be serialized in tuples w/ the value encrypted
+    let mut broadcast_shares = Vec::new();
     for i in 0..parties.len() {
+        broadcast_shares.push(parties[i].get_shares());
+    }
+
+    // each party collects its shares from the broadcasts
+    // maybe this should collect into a hashmap first?
+    for i in 0..parties.len() {
+        let mut h = HashMap::new();
         for j in 0..parties.len() {
-            if i == j {
-                continue;
-            }
-            let s = parties[j].get_share2(parties[i].id);
-            parties[i].receive_share(s);
+            h.insert(j, broadcast_shares[j][&i]);
         }
-        parties[i].compute_secret();
+        parties[i].compute_secret(h);
+    }
+
+    // each party copies over the As and Bs
+    // each party computes its secret key
+    for i in 0..parties.len() {
         parties[i].set_group_key(&A);
-        parties[i].receive_nonces(B.clone());
+        parties[i].set_group_nonces(B.clone());
     }
 }
 
@@ -41,22 +53,22 @@ fn select_parties<RNG: RngCore + CryptoRng>(N: usize, T: usize, rng: &mut RNG) -
 }
 
 // There might be a slick one-liner for this?
-fn collect_shares(
+fn collect_signatures(
     parties: &Vec<Party>,
     signers: &Vec<usize>,
     nonce_ctr: usize,
     msg: &String,
 ) -> Vec<SignatureShare> {
-    let mut v = Vec::new();
+    let mut sigs = Vec::new();
     for i in 0..signers.len() {
         let party = &parties[signers[i]];
-        v.push(SignatureShare {
+        sigs.push(SignatureShare {
             id: party.id.clone(),
             z_i: party.sign(&msg, &signers, nonce_ctr),
             public_key: party.public_key.clone(),
         });
     }
-    v
+    sigs
 }
 
 #[allow(non_snake_case)]
@@ -73,7 +85,10 @@ fn main() {
     let mut parties: Vec<Party> = (0..N)
         .map(|n| Party::new(&Scalar::from((n + 1) as u32), N, T, &mut rng))
         .collect();
-    let A: Vec<Share> = parties.iter().map(|p| p.get_share(&mut rng)).collect();
+    let A: Vec<PolyCommitment> = parties
+        .iter()
+        .map(|p| p.get_poly_commitment(&mut rng))
+        .collect();
     let B: Vec<Vec<PublicNonce>> = parties
         .iter_mut()
         .map(|p| p.gen_nonces(num_nonces, &mut rng))
@@ -86,7 +101,7 @@ fn main() {
         let msg = "It was many and many a year ago".to_string();
         let signers = select_parties(N, T, &mut rng);
         let nonce_ctr = sig_agg.get_nonce_ctr();
-        let sig_shares = collect_shares(&parties, &signers, nonce_ctr, &msg);
+        let sig_shares = collect_signatures(&parties, &signers, nonce_ctr, &msg);
         let sig = sig_agg.sign(&msg, &sig_shares, &signers);
         println!("Signature (R,z) = \n({},{})", sig.R, sig.z);
         assert!(sig.verify(&sig_agg.key, &msg));
