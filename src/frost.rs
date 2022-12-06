@@ -14,7 +14,6 @@ use crate::vss::VSS;
 use std::collections::HashMap;
 
 #[allow(non_snake_case)]
-// TODO: Add proof for a0 here
 pub struct PolyCommitment {
     pub id: ID,
     pub A: Vec<Point>,
@@ -51,7 +50,7 @@ impl PublicNonce {
 // TODO: Remove public key from here
 // The SA should get that as usual
 pub struct SignatureShare {
-    pub id: Scalar,
+    pub id: usize,
     pub z_i: Scalar,
     pub public_key: Point,
 }
@@ -81,12 +80,13 @@ fn compute_challenge(publicKey: &Point, R: &Point, msg: &String) -> Scalar {
     hash_to_scalar(&mut hasher)
 }
 
-fn lambda(i: &Scalar, indices: &Vec<usize>) -> Scalar {
+fn lambda(i: &usize, indices: &Vec<usize>) -> Scalar {
     let mut lambda = Scalar::one();
-    for p in indices {
-        let id = Scalar::from((p + 1) as u32);
-        if i != &id {
-            lambda *= &id / (&id - i);
+    let i_scalar = Scalar::from((i + 1) as u32);
+    for j in indices {
+        if i != j {
+            let j_scalar = Scalar::from((j + 1) as u32);
+            lambda *= j_scalar / (j_scalar - i_scalar);
         }
     }
     lambda
@@ -114,7 +114,7 @@ fn get_B_rho_R_vec(
 #[derive(Clone)]
 #[allow(non_snake_case)]
 pub struct Party {
-    pub id: Scalar,
+    pub id: usize,
     pub public_key: Point,
     n: usize,
     _t: usize,
@@ -128,9 +128,9 @@ pub struct Party {
 
 impl Party {
     #[allow(non_snake_case)]
-    pub fn new<RNG: RngCore + CryptoRng>(id: &Scalar, n: usize, t: usize, rng: &mut RNG) -> Self {
+    pub fn new<RNG: RngCore + CryptoRng>(id: usize, n: usize, t: usize, rng: &mut RNG) -> Self {
         Self {
-            id: *id,
+            id: id,
             n: n,
             _t: t,
             f: VSS::random_poly(t - 1, rng),
@@ -164,7 +164,7 @@ impl Party {
     #[allow(non_snake_case)]
     pub fn get_poly_commitment<RNG: RngCore + CryptoRng>(&self, rng: &mut RNG) -> PolyCommitment {
         PolyCommitment {
-            id: ID::new(&self.id, &self.f.data()[0], rng),
+            id: ID::new(&self.id(), &self.f.data()[0], rng),
             A: (0..self.f.data().len())
                 .map(|i| &self.f.data()[i] * G)
                 .collect(),
@@ -181,35 +181,35 @@ impl Party {
 
     // TODO: Maybe this should be private? If receive_share is keeping track
     // of which it receives, then this could be called when it has N shares from unique ids
-    pub fn compute_secret(&mut self, shares: HashMap<usize, Scalar>) {
+    #[allow(non_snake_case)]
+    pub fn compute_secret(&mut self, shares: HashMap<usize, Scalar>, A: &Vec<PolyCommitment>) {
         // TODO: return error with a list of missing shares
         assert!(shares.len() == self.n);
         self.private_key = Scalar::zero();
-        // TODO: check that there is exactly one share from each other party
-        for (_i, s) in shares.iter() {
+        for (i, s) in shares.iter() {
+            let Ai = &A[*i];
+            assert!(Ai.verify()); // checks a0 proof
+            assert!(
+                s * G
+                    == (0..Ai.A.len()).fold(Point::zero(), |s, j| s
+                        + (Scalar::from(((self.id + 1) as u32).pow(j as u32)) * Ai.A[j]))
+            );
             self.private_key += s;
+            self.group_key += Ai.A[0].clone();
         }
         self.public_key = self.private_key * G;
         println!("Party {} secret {}", self.id, self.private_key);
     }
 
-    #[allow(non_snake_case)]
-    pub fn set_group_key(&mut self, A: &Vec<PolyCommitment>) {
-        assert!(A.len() == self.n);
-        for A_i in A {
-            assert!(A_i.verify());
-        }
-
-        for A_i in A {
-            self.group_key += &A_i.A[0].clone();
-        }
+    fn id(&self) -> Scalar {
+        Scalar::from((self.id + 1) as u32)
     }
 
     #[allow(non_snake_case)]
     pub fn sign(&self, msg: &String, signers: &Vec<usize>, nonce_index: usize) -> Scalar {
         let (B, _R_vec, R) = get_B_rho_R_vec(&signers, &self.B, nonce_index, &msg);
         let nonce = &self.nonces[nonce_index]; // TODO: needs to check that index exists
-        let mut z = &nonce.d + &nonce.e * compute_binding(&self.id, &B, &msg);
+        let mut z = &nonce.d + &nonce.e * compute_binding(&self.id(), &B, &msg);
         z += compute_challenge(&self.group_key, &R, &msg)
             * &self.private_key
             * lambda(&self.id, signers);

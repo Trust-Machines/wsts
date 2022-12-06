@@ -1,8 +1,5 @@
-use secp256k1_math::scalar::Scalar;
-
 use rand_core::{CryptoRng, OsRng, RngCore};
 use std::env;
-//use secp256k1_math::point::G;
 
 use frost::frost::{Party, PolyCommitment, PublicNonce, SignatureAggregator, SignatureShare};
 
@@ -25,13 +22,11 @@ fn distribute(parties: &mut Vec<Party>, A: &Vec<PolyCommitment>, B: &Vec<Vec<Pub
         for j in 0..parties.len() {
             h.insert(j, broadcast_shares[j][&i]);
         }
-        parties[i].compute_secret(h);
+        parties[i].compute_secret(h, &A);
     }
 
-    // each party copies over the As and Bs
-    // each party computes its secret key
+    // each party copies the nonces
     for i in 0..parties.len() {
-        parties[i].set_group_key(&A);
         parties[i].set_group_nonces(B.clone());
     }
 }
@@ -82,9 +77,7 @@ fn main() {
     const T: usize = 7;
 
     // Initial set-up
-    let mut parties: Vec<Party> = (0..N)
-        .map(|n| Party::new(&Scalar::from((n + 1) as u32), N, T, &mut rng))
-        .collect();
+    let mut parties: Vec<Party> = (0..N).map(|i| Party::new(i, N, T, &mut rng)).collect();
     let A: Vec<PolyCommitment> = parties
         .iter()
         .map(|p| p.get_poly_commitment(&mut rng))
