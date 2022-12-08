@@ -192,7 +192,7 @@ impl Party {
             assert!(
                 s * G
                     == (0..Ai.A.len()).fold(Point::zero(), |s, j| s
-                        + (Scalar::from(((self.id + 1) as u32).pow(j as u32)) * Ai.A[j]))
+                        + (Scalar::from((self.id + 1) as u32) ^ j) * Ai.A[j])
             );
             self.private_key += s;
             self.group_key += Ai.A[0].clone();
