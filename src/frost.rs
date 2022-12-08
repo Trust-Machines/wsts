@@ -11,7 +11,7 @@ use crate::schnorr::ID;
 use crate::util::hash_to_scalar;
 use crate::vss::VSS;
 
-use std::collections::HashMap;
+use hashbrown::HashMap;
 
 #[allow(non_snake_case)]
 pub struct PolyCommitment {

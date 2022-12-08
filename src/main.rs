@@ -1,9 +1,9 @@
+use core::env;
 use rand_core::{CryptoRng, OsRng, RngCore};
-use std::env;
 
 use frost::frost::{Party, PolyCommitment, PublicNonce, SignatureAggregator, SignatureShare};
 
-use std::collections::HashMap;
+use hashbrown::HashMap;
 
 // This will eventually need to be replaced by rpcs
 #[allow(non_snake_case)]

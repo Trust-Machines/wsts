@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 secp256k1-math = { git = "https://github.com/Trust-Machines/rust-secp256k1-math", rev = "3b9fe0c8f95c53f7068d980fac38dc00ecf784cd"  }
+hashbrown = "0.12"
 hex = "0.4.3"
 num-traits = "0.2"
 polynomial = "0.2.4"
