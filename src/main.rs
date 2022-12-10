@@ -77,6 +77,22 @@ fn collect_signatures(
     sigs
 }
 
+// In case one party loses their nonces & needs to regenerate
+#[allow(non_snake_case)]
+fn reset_nonce<RNG: RngCore + CryptoRng>(
+    parties: &mut Vec<Party>,
+    sa: &mut SignatureAggregator,
+    i: usize,
+    num_nonces: u32,
+    rng: &mut RNG,
+) {
+    let B = &parties[i].gen_nonces(num_nonces, rng);
+    for p in parties {
+        p.set_party_nonce(i, B.clone());
+    }
+    sa.set_party_nonce(i, B.clone());
+}
+
 #[allow(non_snake_case)]
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -111,7 +127,11 @@ fn main() {
 
     let mut total_sig_time = 0;
     let mut total_party_sig_time = 0;
-    for _ in 0..num_sigs {
+    for sig_ct in 0..num_sigs {
+        if sig_ct == 3 {
+            reset_nonce(&mut parties, &mut sig_agg, 2, num_nonces, &mut rng);
+        }
+
         let msg = "It was many and many a year ago".to_string();
         let signers = select_parties(N, T, &mut rng);
         let nonce_ctr = sig_agg.get_nonce_ctr();

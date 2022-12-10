@@ -161,6 +161,12 @@ impl Party {
         self.B = B;
     }
 
+    // Warning: This function assumes that B already exists - it's just for resetting
+    #[allow(non_snake_case)]
+    pub fn set_party_nonce(&mut self, i: usize, B: Vec<PublicNonce>) {
+        self.B[i] = B;
+    }
+
     #[allow(non_snake_case)]
     pub fn get_poly_commitment<RNG: RngCore + CryptoRng>(&self, rng: &mut RNG) -> PolyCommitment {
         PolyCommitment {
@@ -316,5 +322,10 @@ impl SignatureAggregator {
             // TODO: Trigger another round of nonces generation & sharing B
             self.nonce_ctr = 0;
         }
+    }
+
+    #[allow(non_snake_case)]
+    pub fn set_party_nonce(&mut self, i: usize, B: Vec<PublicNonce>) {
+        self.B[i] = B;
     }
 }
