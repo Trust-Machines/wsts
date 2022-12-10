@@ -77,6 +77,22 @@ fn collect_signatures(
     sigs
 }
 
+// In case one party loses their nonces & needs to regenerate
+#[allow(non_snake_case)]
+fn reset_nonce<RNG: RngCore + CryptoRng>(
+    parties: &mut Vec<Party>,
+    sa: &mut SignatureAggregator,
+    i: usize,
+    num_nonces: u32,
+    rng: &mut RNG,
+) {
+    let B = &parties[i].gen_nonces(num_nonces, rng);
+    for p in parties {
+        p.set_party_nonces(i, B.clone());
+    }
+    sa.set_party_nonces(i, B.clone());
+}
+
 #[allow(non_snake_case)]
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -111,7 +127,7 @@ fn main() {
 
     let mut total_sig_time = 0;
     let mut total_party_sig_time = 0;
-    for _ in 0..num_sigs {
+    for sig_ct in 0..num_sigs {
         let msg = "It was many and many a year ago".to_string();
         let signers = select_parties(N, T, &mut rng);
         let nonce_ctr = sig_agg.get_nonce_ctr();
@@ -127,6 +143,31 @@ fn main() {
 
         println!("Signature (R,z) = \n({},{})", sig.R, sig.z);
         assert!(sig.verify(&sig_agg.key, &msg));
+
+        // this resets one party's nonces assuming it went down and needed to regenerate
+        if sig_ct == 3 {
+            let reset_party = 2;
+            println!("Resetting nonce for party {}", reset_party);
+            reset_nonce(
+                &mut parties,
+                &mut sig_agg,
+                reset_party,
+                num_nonces,
+                &mut rng,
+            );
+        }
+
+        if sig_agg.get_nonce_ctr() == num_nonces as usize {
+            println!("Everyone's nonces were refilled.");
+            let B: Vec<Vec<PublicNonce>> = parties
+                .iter_mut()
+                .map(|p| p.gen_nonces(num_nonces, &mut rng))
+                .collect();
+            for p in &mut parties {
+                p.set_group_nonces(B.clone());
+            }
+            sig_agg.set_group_nonces(B.clone());
+        }
     }
     println!("With {} parties and {} signers:", N, T);
     println!(
@@ -137,9 +178,9 @@ fn main() {
     );
     println!(
         "{} party signatures in {} us ({} us/sig)",
-        num_sigs * T,
+        num_sigs * T as u32,
         total_party_sig_time,
-        total_party_sig_time / (num_sigs * T) as u128
+        total_party_sig_time / (num_sigs * (T as u32)) as u128
     );
     println!(
         "{} signatures in {} us ({} us/sig)",
