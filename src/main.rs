@@ -128,7 +128,6 @@ fn main() {
     let mut total_sig_time = 0;
     let mut total_party_sig_time = 0;
     for sig_ct in 0..num_sigs {
-
         let msg = "It was many and many a year ago".to_string();
         let signers = select_parties(N, T, &mut rng);
         let nonce_ctr = sig_agg.get_nonce_ctr();
@@ -149,7 +148,13 @@ fn main() {
         if sig_ct == 3 {
             let reset_party = 2;
             println!("Resetting nonce for party {}", reset_party);
-            reset_nonce(&mut parties, &mut sig_agg, reset_party, num_nonces, &mut rng);
+            reset_nonce(
+                &mut parties,
+                &mut sig_agg,
+                reset_party,
+                num_nonces,
+                &mut rng,
+            );
         }
 
         if sig_agg.get_nonce_ctr() == num_nonces as usize {
