@@ -1,8 +1,10 @@
 use rand_core::{CryptoRng, OsRng, RngCore};
 use std::{env, time};
 
-use frost::frost::{Party, PolyCommitment, PublicNonce, SignatureAggregator, SignatureShare};
-
+use frost::{
+    common::{PolyCommitment, PublicNonce, SignatureShare},
+    v1::{Party, SignatureAggregator},
+};
 use hashbrown::HashMap;
 
 // This will eventually need to be replaced by rpcs

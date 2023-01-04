@@ -1,115 +1,17 @@
-use num_traits::{One, Zero};
+use num_traits::Zero;
 use polynomial::Polynomial;
 use rand_core::{CryptoRng, RngCore};
 use secp256k1_math::{
     point::{Point, G},
     scalar::Scalar,
 };
-use sha3::{Digest, Sha3_256};
 
+use crate::common::{Nonce, PolyCommitment, PublicNonce, Signature, SignatureShare};
+use crate::compute::{binding, challenge, intermediate, lambda};
 use crate::schnorr::ID;
-use crate::util::hash_to_scalar;
 use crate::vss::VSS;
 
 use hashbrown::HashMap;
-
-#[allow(non_snake_case)]
-pub struct PolyCommitment {
-    pub id: ID,
-    pub A: Vec<Point>,
-}
-
-impl PolyCommitment {
-    pub fn verify(&self) -> bool {
-        self.id.verify(&self.A[0])
-    }
-}
-
-#[derive(Clone)]
-pub struct Nonce {
-    d: Scalar,
-    e: Scalar,
-}
-
-#[derive(Clone)]
-#[allow(non_snake_case)]
-pub struct PublicNonce {
-    pub D: Point,
-    pub E: Point,
-}
-
-impl PublicNonce {
-    pub fn from(n: &Nonce) -> Self {
-        Self {
-            D: &n.d * G,
-            E: &n.e * G,
-        }
-    }
-}
-
-// TODO: Remove public key from here
-// The SA should get that as usual
-pub struct SignatureShare {
-    pub id: usize,
-    pub z_i: Scalar,
-    pub public_key: Point,
-}
-
-#[allow(non_snake_case)]
-fn compute_binding(id: &Scalar, B: &Vec<PublicNonce>, msg: &String) -> Scalar {
-    let mut hasher = Sha3_256::new();
-
-    hasher.update(id.as_bytes());
-    for b in B {
-        hasher.update(b.D.compress().as_bytes());
-        hasher.update(b.E.compress().as_bytes());
-    }
-    hasher.update(msg.as_bytes());
-
-    hash_to_scalar(&mut hasher)
-}
-
-#[allow(non_snake_case)]
-fn compute_challenge(publicKey: &Point, R: &Point, msg: &String) -> Scalar {
-    let mut hasher = Sha3_256::new();
-
-    hasher.update(publicKey.compress().as_bytes());
-    hasher.update(R.compress().as_bytes());
-    hasher.update(msg.as_bytes());
-
-    hash_to_scalar(&mut hasher)
-}
-
-fn lambda(i: &usize, indices: &Vec<usize>) -> Scalar {
-    let mut lambda = Scalar::one();
-    let i_scalar = Scalar::from((i + 1) as u32);
-    for j in indices {
-        if i != j {
-            let j_scalar = Scalar::from((j + 1) as u32);
-            lambda *= j_scalar / (j_scalar - i_scalar);
-        }
-    }
-    lambda
-}
-
-// Is this the best way to return these values?
-// TODO: this fn needs a better name
-#[allow(non_snake_case)]
-fn get_B_rho_R_vec(
-    signers: &Vec<usize>,
-    B: &Vec<Vec<PublicNonce>>,
-    index: usize,
-    msg: &String,
-) -> (Vec<PublicNonce>, Vec<Point>, Point) {
-    let B = signers.iter().map(|&i| B[i][index].clone()).collect();
-    let rho: Vec<Scalar> = signers
-        .iter()
-        .map(|&i| compute_binding(&Scalar::from((i + 1) as u32), &B, &msg))
-        .collect();
-    let R_vec: Vec<Point> = (0..B.len()).map(|i| &B[i].D + &rho[i] * &B[i].E).collect();
-    let R = R_vec.iter().fold(Point::zero(), |R, &R_i| R + R_i);
-    (B, R_vec, R)
-}
 
 #[derive(Clone)]
 #[allow(non_snake_case)]
@@ -213,32 +115,11 @@ impl Party {
 
     #[allow(non_snake_case)]
     pub fn sign(&self, msg: &String, signers: &Vec<usize>, nonce_index: usize) -> Scalar {
-        let (B, _R_vec, R) = get_B_rho_R_vec(&signers, &self.B, nonce_index, &msg);
+        let (B, _R_vec, R) = intermediate(&signers, &self.B, nonce_index, &msg);
         let nonce = &self.nonces[nonce_index]; // TODO: needs to check that index exists
-        let mut z = &nonce.d + &nonce.e * compute_binding(&self.id(), &B, &msg);
-        z += compute_challenge(&self.group_key, &R, &msg)
-            * &self.private_key
-            * lambda(&self.id, signers);
+        let mut z = &nonce.d + &nonce.e * binding(&self.id(), &B, &msg);
+        z += challenge(&self.group_key, &R, &msg) * &self.private_key * lambda(&self.id, signers);
         z
-    }
-}
-
-#[allow(non_snake_case)]
-pub struct Signature {
-    pub R: Point,
-    pub z: Scalar,
-}
-
-impl Signature {
-    // verify: R' = z * G + -c * publicKey, pass if R' == R
-    #[allow(non_snake_case)]
-    pub fn verify(&self, public_key: &Point, msg: &String) -> bool {
-        let c = compute_challenge(&public_key, &self.R, &msg);
-        let R = &self.z * G + (-c) * public_key;
-
-        println!("Verification R = {}", R);
-
-        R == self.R
     }
 }
 
@@ -293,10 +174,10 @@ impl SignatureAggregator {
         sig_shares: &Vec<SignatureShare>,
         signers: &Vec<usize>,
     ) -> Signature {
-        let (_B, R_vec, R) = get_B_rho_R_vec(&signers, &self.B, self.nonce_ctr, &msg);
+        let (_B, R_vec, R) = intermediate(&signers, &self.B, self.nonce_ctr, &msg);
 
         let mut z = Scalar::zero();
-        let c = compute_challenge(&self.key, &R, &msg); // only needed for checking z_i
+        let c = challenge(&self.key, &R, &msg); // only needed for checking z_i
         for i in 0..signers.len() {
             let z_i = sig_shares[i].z_i;
             assert!(
