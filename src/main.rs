@@ -3,7 +3,7 @@ use std::{env, time};
 
 use frost::{
     common::{PolyCommitment, PublicNonce, SignatureShare},
-    frost::{Party, SignatureAggregator},
+    v1::{Party, SignatureAggregator},
 };
 use hashbrown::HashMap;
 
