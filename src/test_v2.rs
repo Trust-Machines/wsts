@@ -1,5 +1,5 @@
 use rand_core::{CryptoRng, OsRng, RngCore};
-use std::{env, time};
+use std::time;
 
 use crate::v2::{
     Party, PolyCommitment, PubKeyMap, PublicNonce, SelectedSigners, SignatureAggregator,
@@ -130,7 +130,6 @@ fn reset_nonce<RNG: RngCore + CryptoRng>(
 #[allow(non_snake_case)]
 #[test]
 pub fn test_v2() {
-    let args: Vec<String> = env::args().collect();
     let num_sigs = 7;
     let num_nonces = 5;
     let num_keys = 10;
