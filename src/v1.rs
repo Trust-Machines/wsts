@@ -21,7 +21,6 @@ pub struct Party {
     pub public_key: Point,
     n: usize,
     f: Polynomial<Scalar>,
-    //shares: HashMap<usize, Scalar>, // received from other parties
     private_key: Scalar,
     group_key: Point,
     nonce: Nonce,
