@@ -30,13 +30,13 @@ impl Party {
     #[allow(non_snake_case)]
     pub fn new<RNG: RngCore + CryptoRng>(id: usize, n: usize, t: usize, rng: &mut RNG) -> Self {
         Self {
-            id: id,
-            n: n,
+            id,
+            n,
             f: VSS::random_poly(t - 1, rng),
             private_key: Scalar::zero(),
             public_key: Point::zero(),
             group_key: Point::zero(),
-            nonce: Nonce::new(),
+            nonce: Nonce::default(),
         }
     }
 
@@ -133,13 +133,7 @@ impl SignatureAggregator {
         //assert!(B.len() == N);
         // TODO: Check that each B_i is len num_nonces?
 
-        Self {
-            N: N,
-            T: T,
-            A: A,
-            B: B,
-            key: key,
-        }
+        Self { N, T, A, B, key }
     }
 
     #[allow(non_snake_case)]
@@ -161,8 +155,22 @@ impl SignatureAggregator {
             z += z_i;
         }
 
-        Signature { R: R, z: z }
+        Signature { R, z }
     }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct PartyState {
+    id: usize,
+    private_key: Scalar,
+    polynomial: Option<Polynomial<Scalar>>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct SignerState {
+    n: usize,
+    group_key: Point,
+    party_state: HashMap<usize, PartyState>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -224,7 +232,7 @@ mod tests {
         let mut signer = v1::Signer::new(&ids, n, t, &mut rng);
 
         for party in &signer.parties {
-            assert!(party.nonce == Nonce::new());
+            assert!(party.nonce == Nonce::default());
         }
 
         let nonces = signer.gen_nonces(&mut rng);
@@ -232,7 +240,7 @@ mod tests {
         assert_eq!(nonces.len(), ids.len());
 
         for party in &signer.parties {
-            assert!(party.nonce != Nonce::new());
+            assert!(party.nonce != Nonce::default());
         }
     }
 }

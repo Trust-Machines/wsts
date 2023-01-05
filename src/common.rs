@@ -27,8 +27,8 @@ pub struct Nonce {
     pub e: Scalar,
 }
 
-impl Nonce {
-    pub fn new() -> Self {
+impl Default for Nonce {
+    fn default() -> Self {
         Self {
             d: Scalar::zero(),
             e: Scalar::zero(),
