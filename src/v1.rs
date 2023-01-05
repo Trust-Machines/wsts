@@ -143,11 +143,7 @@ impl SignatureAggregator {
     }
 
     #[allow(non_snake_case)]
-    pub fn sign(
-        &mut self,
-        msg: &[u8],
-        sig_shares: &[SignatureShare],
-    ) -> Signature {
+    pub fn sign(&mut self, msg: &[u8], sig_shares: &[SignatureShare]) -> Signature {
         let signers: Vec<usize> = sig_shares.iter().map(|ss| ss.id).collect();
         let (R_vec, R) = compute::intermediate(msg, &signers, &self.B);
         let mut z = Scalar::zero();

@@ -101,7 +101,10 @@ fn main() {
         let msg = "It was many and many a year ago".as_bytes();
         let signers = select_parties(N, T, &mut rng);
 
-        let nonces: Vec<PublicNonce> = signers.iter().map(|i| parties[*i].gen_nonce(&mut rng)).collect();
+        let nonces: Vec<PublicNonce> = signers
+            .iter()
+            .map(|i| parties[*i].gen_nonce(&mut rng))
+            .collect();
 
         let mut sig_agg = SignatureAggregator::new(N, T, A.clone(), nonces.clone());
 
