@@ -20,7 +20,6 @@ pub struct Party {
     pub id: usize,
     pub public_key: Point,
     n: usize,
-    _t: usize,
     f: Polynomial<Scalar>,
     //shares: HashMap<usize, Scalar>, // received from other parties
     private_key: Scalar,
@@ -34,7 +33,6 @@ impl Party {
         Self {
             id: id,
             n: n,
-            _t: t,
             f: VSS::random_poly(t - 1, rng),
             private_key: Scalar::zero(),
             public_key: Point::zero(),
