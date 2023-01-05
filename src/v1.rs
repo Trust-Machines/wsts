@@ -43,10 +43,7 @@ impl Party {
         }
     }
 
-    pub fn gen_nonce<RNG: RngCore + CryptoRng>(
-        &mut self,
-        rng: &mut RNG,
-    ) -> PublicNonce {
+    pub fn gen_nonce<RNG: RngCore + CryptoRng>(&mut self, rng: &mut RNG) -> PublicNonce {
         let nonce = Nonce {
             d: Scalar::random(rng),
             e: Scalar::random(rng),
@@ -105,7 +102,9 @@ impl Party {
     pub fn sign(&self, msg: &[u8], signers: &[usize], nonces: &[PublicNonce]) -> Scalar {
         let (_R_vec, R) = compute::intermediate(msg, &signers, nonces);
         let mut z = &self.nonce.d + &self.nonce.e * compute::binding(&self.id(), nonces, msg);
-        z += compute::challenge(&self.group_key, &R, msg) * &self.private_key * compute::lambda(&self.id, signers);
+        z += compute::challenge(&self.group_key, &R, msg)
+            * &self.private_key
+            * compute::lambda(&self.id, signers);
         z
     }
 }
@@ -162,7 +161,9 @@ impl SignatureAggregator {
             assert!(
                 z_i * G
                     == R_vec[i]
-                        + (compute::lambda(&sig_shares[i].id, signers) * c * sig_shares[i].public_key)
+                        + (compute::lambda(&sig_shares[i].id, signers)
+                            * c
+                            * sig_shares[i].public_key)
             ); // TODO: This should return a list of bad parties.
             z += z_i;
         }
@@ -184,22 +185,25 @@ struct Signer {
 impl crate::traits::Signer for Signer {
     fn new<RNG: RngCore + CryptoRng>(ids: &[usize], n: usize, t: usize, rng: &mut RNG) -> Self {
         let parties = ids.iter().map(|id| Party::new(*id, n, t, rng)).collect();
-        Signer {
-            parties,
-        }
+        Signer { parties }
     }
 
     fn gen_nonces<RNG: RngCore + CryptoRng>(&mut self, rng: &mut RNG) -> Vec<(usize, PublicNonce)> {
-        self.parties.iter_mut().map(|p| (p.id, p.gen_nonce(rng))).collect()
+        self.parties
+            .iter_mut()
+            .map(|p| (p.id, p.gen_nonce(rng)))
+            .collect()
     }
-    
-    fn sign(&self, msg: &[u8], signers: &[usize], nonces: &[PublicNonce]) -> Vec<SignatureShare> {
 
-        self.parties.iter().map(|p| SignatureShare {
-            id: p.id,
-            z_i: p.sign(msg, signers, nonces),
-            public_key: p.public_key,
-        }).collect()
+    fn sign(&self, msg: &[u8], signers: &[usize], nonces: &[PublicNonce]) -> Vec<SignatureShare> {
+        self.parties
+            .iter()
+            .map(|p| SignatureShare {
+                id: p.id,
+                z_i: p.sign(msg, signers, nonces),
+                public_key: p.public_key,
+            })
+            .collect()
     }
 }
 
@@ -216,7 +220,7 @@ mod tests {
         let ids = [1, 2, 3];
         let n: usize = 10;
         let t: usize = 7;
-        
+
         let signer = v1::Signer::new(&ids, n, t, &mut rng);
 
         assert_eq!(signer.parties.len(), ids.len());
@@ -228,7 +232,7 @@ mod tests {
         let ids = [1, 2, 3];
         let n: usize = 10;
         let t: usize = 7;
-        
+
         let mut signer = v1::Signer::new(&ids, n, t, &mut rng);
 
         for party in &signer.parties {
@@ -238,7 +242,7 @@ mod tests {
         let nonces = signer.gen_nonces(&mut rng);
 
         assert_eq!(nonces.len(), ids.len());
-        
+
         for party in &signer.parties {
             assert!(party.nonce != Nonce::new());
         }

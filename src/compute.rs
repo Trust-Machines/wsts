@@ -45,16 +45,14 @@ pub fn lambda(i: &usize, indices: &[usize]) -> Scalar {
 
 // Is this the best way to return these values?
 #[allow(non_snake_case)]
-pub fn intermediate(
-    msg: &[u8],
-    signers: &[usize],
-    nonces: &[PublicNonce],
-) -> (Vec<Point>, Point) {
+pub fn intermediate(msg: &[u8], signers: &[usize], nonces: &[PublicNonce]) -> (Vec<Point>, Point) {
     let rhos: Vec<Scalar> = signers
         .iter()
         .map(|&i| binding(&Scalar::from((i + 1) as u32), nonces, &msg))
         .collect();
-    let R_vec: Vec<Point> = zip(nonces, rhos).map(|(nonce,rho)| nonce.D + rho * nonce.E).collect();
+    let R_vec: Vec<Point> = zip(nonces, rhos)
+        .map(|(nonce, rho)| nonce.D + rho * nonce.E)
+        .collect();
 
     let R = R_vec.iter().fold(Point::zero(), |R, &R_i| R + R_i);
     (R_vec, R)

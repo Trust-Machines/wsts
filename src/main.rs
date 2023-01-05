@@ -9,10 +9,7 @@ use hashbrown::HashMap;
 
 // This will eventually need to be replaced by rpcs
 #[allow(non_snake_case)]
-fn distribute(
-    parties: &mut Vec<Party>,
-    A: &[PolyCommitment],
-) -> u128 {
+fn distribute(parties: &mut Vec<Party>, A: &[PolyCommitment]) -> u128 {
     // each party broadcasts their commitments
     // these hashmaps will need to be serialized in tuples w/ the value encrypted
     let mut broadcast_shares = Vec::new();
@@ -59,7 +56,7 @@ fn collect_signatures(
     parties: &[Party],
     signers: &[usize],
     nonces: &[PublicNonce],
-    msg: &[u8]
+    msg: &[u8],
 ) -> Vec<SignatureShare> {
     let mut sigs = Vec::new();
     for i in 0..signers.len() {
@@ -104,13 +101,10 @@ fn main() {
         let msg = "It was many and many a year ago".as_bytes();
         let signers = select_parties(N, T, &mut rng);
 
-        let nonces: Vec<PublicNonce> = parties
-            .iter_mut()
-            .map(|p| p.gen_nonce(&mut rng))
-            .collect();
+        let nonces: Vec<PublicNonce> = parties.iter_mut().map(|p| p.gen_nonce(&mut rng)).collect();
 
         let mut sig_agg = SignatureAggregator::new(N, T, A.clone(), nonces.clone());
-        
+
         let party_sig_start = time::Instant::now();
         let sig_shares = collect_signatures(&parties, &signers, &nonces, &msg);
         let party_sig_time = party_sig_start.elapsed();
