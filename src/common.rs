@@ -2,10 +2,12 @@ use secp256k1_math::{
     point::{Point, G},
     scalar::Scalar,
 };
+use serde::{Deserialize, Serialize};
 
 use crate::compute::challenge;
 use crate::schnorr::ID;
 
+#[derive(Deserialize, Serialize)]
 #[allow(non_snake_case)]
 pub struct PolyCommitment {
     pub id: ID,
@@ -18,13 +20,13 @@ impl PolyCommitment {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Nonce {
     pub d: Scalar,
     pub e: Scalar,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[allow(non_snake_case)]
 pub struct PublicNonce {
     pub D: Point,
@@ -42,6 +44,7 @@ impl PublicNonce {
 
 // TODO: Remove public key from here
 // The SA should get that as usual
+#[derive(Deserialize, Serialize)]
 pub struct SignatureShare {
     pub id: usize,
     pub z_i: Scalar,

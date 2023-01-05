@@ -5,15 +5,16 @@ use secp256k1_math::{
     point::{Point, G},
     scalar::Scalar,
 };
+use serde::{Deserialize, Serialize};
 
 use crate::common::{Nonce, PolyCommitment, PublicNonce, Signature, SignatureShare};
-use crate::compute::{binding, challenge, intermediate, lambda};
+use crate::compute;
 use crate::schnorr::ID;
 use crate::vss::VSS;
 
 use hashbrown::HashMap;
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[allow(non_snake_case)]
 pub struct Party {
     pub id: usize,
@@ -115,10 +116,10 @@ impl Party {
 
     #[allow(non_snake_case)]
     pub fn sign(&self, msg: &String, signers: &Vec<usize>, nonce_index: usize) -> Scalar {
-        let (B, _R_vec, R) = intermediate(&signers, &self.B, nonce_index, &msg);
+        let (B, _R_vec, R) = compute::intermediate(&signers, &self.B, nonce_index, &msg);
         let nonce = &self.nonces[nonce_index]; // TODO: needs to check that index exists
-        let mut z = &nonce.d + &nonce.e * binding(&self.id(), &B, &msg);
-        z += challenge(&self.group_key, &R, &msg) * &self.private_key * lambda(&self.id, signers);
+        let mut z = &nonce.d + &nonce.e * compute::binding(&self.id(), &B, &msg);
+        z += compute::challenge(&self.group_key, &R, &msg) * &self.private_key * compute::lambda(&self.id, signers);
         z
     }
 }
@@ -174,16 +175,16 @@ impl SignatureAggregator {
         sig_shares: &Vec<SignatureShare>,
         signers: &Vec<usize>,
     ) -> Signature {
-        let (_B, R_vec, R) = intermediate(&signers, &self.B, self.nonce_ctr, &msg);
+        let (_B, R_vec, R) = compute::intermediate(&signers, &self.B, self.nonce_ctr, &msg);
 
         let mut z = Scalar::zero();
-        let c = challenge(&self.key, &R, &msg); // only needed for checking z_i
+        let c = compute::challenge(&self.key, &R, &msg); // only needed for checking z_i
         for i in 0..signers.len() {
             let z_i = sig_shares[i].z_i;
             assert!(
                 z_i * G
                     == R_vec[i]
-                        + (lambda(&sig_shares[i].id, signers) * c * sig_shares[i].public_key)
+                        + (compute::lambda(&sig_shares[i].id, signers) * c * sig_shares[i].public_key)
             ); // TODO: This should return a list of bad parties.
             z += z_i;
         }
@@ -214,5 +215,67 @@ impl SignatureAggregator {
         self.B = B;
         self.nonce_ctr = 0;
         self.num_nonces = self.B.len();
+    }
+}
+
+#[derive(Debug)]
+struct Signer {
+    pub parties: Vec<Party>,
+}
+
+impl crate::traits::Signer for Signer {
+    fn new<RNG: RngCore + CryptoRng>(ids: &[usize], n: usize, t: usize, rng: &mut RNG) -> Self {
+        let parties = ids.iter().map(|id| Party::new(*id, n, t, rng)).collect();
+        Signer {
+            parties,
+        }
+    }
+
+    fn load(_path: &str) -> Self {
+        Signer {
+            parties: Vec::new(),
+        }
+    }
+
+    fn save(&self, _path: &str) {
+        for _party in &self.parties {
+
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::traits::Signer;
+    use crate::v1;
+    use rand_core::OsRng;
+
+    #[test]
+    fn signer_new() {
+        let mut rng = OsRng::default();
+        let ids = [1, 2, 3];
+        let n: usize = 10;
+        let t: usize = 7;
+        
+        let signer = v1::Signer::new(&ids, n, t, &mut rng);
+
+        assert_eq!(signer.parties.len(), ids.len());
+    }
+
+    #[test]
+    fn signer_persist() {
+        let mut rng = OsRng::default();
+        let ids = [1, 2, 3];
+        let n: usize = 10;
+        let t: usize = 7;
+        let path = "signer-persist.dat";
+        
+        let signer = v1::Signer::new(&ids, n, t, &mut rng);
+
+        signer.save(path);
+
+        let loaded = v1::Signer::load(path);
+
+        assert_eq!(signer.parties.len(), loaded.parties.len());
     }
 }
