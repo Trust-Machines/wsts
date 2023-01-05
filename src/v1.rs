@@ -25,8 +25,7 @@ pub struct Party {
     //shares: HashMap<usize, Scalar>, // received from other parties
     private_key: Scalar,
     group_key: Point,
-    nonces: Vec<Nonce>,
-    B: Vec<Vec<PublicNonce>>, // received from other parties
+    nonce: Nonce,
 }
 
 impl Party {
@@ -40,34 +39,22 @@ impl Party {
             private_key: Scalar::zero(),
             public_key: Point::zero(),
             group_key: Point::zero(),
-            nonces: Vec::new(),
-            B: Vec::new(),
+            nonce: Nonce::new(),
         }
     }
 
-    pub fn gen_nonces<RNG: RngCore + CryptoRng>(
+    pub fn gen_nonce<RNG: RngCore + CryptoRng>(
         &mut self,
-        num_nonces: u32,
         rng: &mut RNG,
-    ) -> Vec<PublicNonce> {
-        self.nonces = (0..num_nonces)
-            .map(|_| Nonce {
-                d: Scalar::random(rng),
-                e: Scalar::random(rng),
-            })
-            .collect();
-        self.nonces.iter().map(|n| PublicNonce::from(n)).collect()
-    }
+    ) -> PublicNonce {
+        let nonce = Nonce {
+            d: Scalar::random(rng),
+            e: Scalar::random(rng),
+        };
 
-    #[allow(non_snake_case)]
-    pub fn set_group_nonces(&mut self, B: Vec<Vec<PublicNonce>>) {
-        self.B = B;
-    }
+        self.nonce = nonce;
 
-    // Warning: This function assumes that B already exists - it's just for resetting
-    #[allow(non_snake_case)]
-    pub fn set_party_nonces(&mut self, i: usize, B: Vec<PublicNonce>) {
-        self.B[i] = B;
+        PublicNonce::from(&self.nonce)
     }
 
     #[allow(non_snake_case)]
@@ -91,7 +78,7 @@ impl Party {
     // TODO: Maybe this should be private? If receive_share is keeping track
     // of which it receives, then this could be called when it has N shares from unique ids
     #[allow(non_snake_case)]
-    pub fn compute_secret(&mut self, shares: HashMap<usize, Scalar>, A: &Vec<PolyCommitment>) {
+    pub fn compute_secret(&mut self, shares: HashMap<usize, Scalar>, A: &[PolyCommitment]) {
         // TODO: return error with a list of missing shares
         assert!(shares.len() == self.n);
         self.private_key = Scalar::zero();
@@ -115,11 +102,10 @@ impl Party {
     }
 
     #[allow(non_snake_case)]
-    pub fn sign(&self, msg: &String, signers: &Vec<usize>, nonce_index: usize) -> Scalar {
-        let (B, _R_vec, R) = compute::intermediate(&signers, &self.B, nonce_index, &msg);
-        let nonce = &self.nonces[nonce_index]; // TODO: needs to check that index exists
-        let mut z = &nonce.d + &nonce.e * compute::binding(&self.id(), &B, &msg);
-        z += compute::challenge(&self.group_key, &R, &msg) * &self.private_key * compute::lambda(&self.id, signers);
+    pub fn sign(&self, msg: &[u8], signers: &[usize], nonces: &[PublicNonce]) -> Scalar {
+        let (_R_vec, R) = compute::intermediate(msg, &signers, nonces);
+        let mut z = &self.nonce.d + &self.nonce.e * compute::binding(&self.id(), nonces, msg);
+        z += compute::challenge(&self.group_key, &R, msg) * &self.private_key * compute::lambda(&self.id, signers);
         z
     }
 }
@@ -128,16 +114,14 @@ impl Party {
 pub struct SignatureAggregator {
     pub N: usize,
     pub T: usize,
-    pub A: Vec<PolyCommitment>, // outer vector is N-long, inner vector is T-long
-    pub B: Vec<Vec<PublicNonce>>, // outer vector is N-long, inner vector is T-long
+    pub A: Vec<PolyCommitment>,
+    pub B: Vec<PublicNonce>,
     pub key: Point,
-    nonce_ctr: usize,
-    num_nonces: usize,
 }
 
 impl SignatureAggregator {
     #[allow(non_snake_case)]
-    pub fn new(N: usize, T: usize, A: Vec<PolyCommitment>, B: Vec<Vec<PublicNonce>>) -> Self {
+    pub fn new(N: usize, T: usize, A: Vec<PolyCommitment>, B: Vec<PublicNonce>) -> Self {
         // TODO: How should we handle bad As?
         assert!(A.len() == N);
         for A_i in &A {
@@ -151,10 +135,6 @@ impl SignatureAggregator {
         println!("SA groupKey {}", key);
 
         assert!(B.len() == N);
-        let num_nonces = B[0].len();
-        for b in &B {
-            assert!(num_nonces == b.len());
-        }
         // TODO: Check that each B_i is len num_nonces?
 
         Self {
@@ -163,19 +143,17 @@ impl SignatureAggregator {
             A: A,
             B: B,
             key: key,
-            nonce_ctr: 0,
-            num_nonces: num_nonces,
         }
     }
 
     #[allow(non_snake_case)]
     pub fn sign(
         &mut self,
-        msg: &String,
-        sig_shares: &Vec<SignatureShare>,
-        signers: &Vec<usize>,
+        msg: &[u8],
+        signers: &[usize],
+        sig_shares: &[SignatureShare],
     ) -> Signature {
-        let (_B, R_vec, R) = compute::intermediate(&signers, &self.B, self.nonce_ctr, &msg);
+        let (R_vec, R) = compute::intermediate(msg, &signers, &self.B);
 
         let mut z = Scalar::zero();
         let c = compute::challenge(&self.key, &R, &msg); // only needed for checking z_i
@@ -188,37 +166,17 @@ impl SignatureAggregator {
             ); // TODO: This should return a list of bad parties.
             z += z_i;
         }
-        self.update_nonce();
 
         Signature { R: R, z: z }
     }
 
-    pub fn get_nonce_ctr(&self) -> usize {
-        self.nonce_ctr
-    }
-
-    fn update_nonce(&mut self) {
-        self.nonce_ctr += 1;
-        if self.nonce_ctr == self.num_nonces {
-            // TODO: Should this kick off the re-generation process?
-            println!("This is the last available nonce! Need to generate more!");
-        }
-    }
-
     #[allow(non_snake_case)]
-    pub fn set_party_nonces(&mut self, i: usize, B: Vec<PublicNonce>) {
-        self.B[i] = B;
-    }
-
-    #[allow(non_snake_case)]
-    pub fn set_group_nonces(&mut self, B: Vec<Vec<PublicNonce>>) {
-        self.B = B;
-        self.nonce_ctr = 0;
-        self.num_nonces = self.B.len();
+    pub fn set_party_nonce(&mut self, i: usize, B: &PublicNonce) {
+        self.B[i] = B.clone();
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 struct Signer {
     pub parties: Vec<Party>,
 }
@@ -231,21 +189,23 @@ impl crate::traits::Signer for Signer {
         }
     }
 
-    fn load(_path: &str) -> Self {
-        Signer {
-            parties: Vec::new(),
-        }
+    fn gen_nonces<RNG: RngCore + CryptoRng>(&mut self, rng: &mut RNG) -> Vec<(usize, PublicNonce)> {
+        self.parties.iter_mut().map(|p| (p.id, p.gen_nonce(rng))).collect()
     }
+    
+    fn sign(&self, msg: &[u8], signers: &[usize], nonces: &[PublicNonce]) -> Vec<SignatureShare> {
 
-    fn save(&self, _path: &str) {
-        for _party in &self.parties {
-
-        }
+        self.parties.iter().map(|p| SignatureShare {
+            id: p.id,
+            z_i: p.sign(msg, signers, nonces),
+            public_key: p.public_key,
+        }).collect()
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::common::Nonce;
     use crate::traits::Signer;
     use crate::v1;
     use rand_core::OsRng;
@@ -263,19 +223,24 @@ mod tests {
     }
 
     #[test]
-    fn signer_persist() {
+    fn signer_gen_nonces() {
         let mut rng = OsRng::default();
         let ids = [1, 2, 3];
         let n: usize = 10;
         let t: usize = 7;
-        let path = "signer-persist.dat";
         
-        let signer = v1::Signer::new(&ids, n, t, &mut rng);
+        let mut signer = v1::Signer::new(&ids, n, t, &mut rng);
 
-        signer.save(path);
+        for party in &signer.parties {
+            assert!(party.nonce == Nonce::new());
+        }
 
-        let loaded = v1::Signer::load(path);
+        let nonces = signer.gen_nonces(&mut rng);
 
-        assert_eq!(signer.parties.len(), loaded.parties.len());
+        assert_eq!(nonces.len(), ids.len());
+        
+        for party in &signer.parties {
+            assert!(party.nonce != Nonce::new());
+        }
     }
 }

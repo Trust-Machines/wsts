@@ -1,3 +1,4 @@
+use num_traits::Zero;
 use secp256k1_math::{
     point::{Point, G},
     scalar::Scalar,
@@ -7,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::compute::challenge;
 use crate::schnorr::ID;
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[allow(non_snake_case)]
 pub struct PolyCommitment {
     pub id: ID,
@@ -20,13 +21,22 @@ impl PolyCommitment {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct Nonce {
     pub d: Scalar,
     pub e: Scalar,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+impl Nonce {
+    pub fn new() -> Self {
+        Self {
+            d: Scalar::zero(),
+            e: Scalar::zero(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[allow(non_snake_case)]
 pub struct PublicNonce {
     pub D: Point,
@@ -60,7 +70,7 @@ pub struct Signature {
 impl Signature {
     // verify: R' = z * G + -c * publicKey, pass if R' == R
     #[allow(non_snake_case)]
-    pub fn verify(&self, public_key: &Point, msg: &String) -> bool {
+    pub fn verify(&self, public_key: &Point, msg: &[u8]) -> bool {
         let c = challenge(&public_key, &self.R, &msg);
         let R = &self.z * G + (-c) * public_key;
 

@@ -15,10 +15,6 @@ secp256k1-math = { git = "https://github.com/Trust-Machines/rust-secp256k1-math"
 serde = { version = "1.0", features = ["derive"] }
 sha3 = "0.10.5"
 
-[dev-dependencies]
-json = "0.12.4"
-serde_json = "1.0"
-
 [lib]
 path = "src/lib.rs"    # The source file of the target.
 crate-type = ["lib"]   # The crate types to generate.
