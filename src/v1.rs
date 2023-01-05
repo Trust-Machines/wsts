@@ -14,7 +14,13 @@ use crate::vss::VSS;
 
 use hashbrown::HashMap;
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct PartyState {
+    pub private_key: Scalar,
+    pub polynomial: Polynomial<Scalar>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 #[allow(non_snake_case)]
 pub struct Party {
     pub id: usize,
@@ -37,6 +43,25 @@ impl Party {
             public_key: Point::zero(),
             group_key: Point::zero(),
             nonce: Nonce::default(),
+        }
+    }
+
+    pub fn load(id: usize, n: usize, group_key: &Point, state: &PartyState) -> Self {
+        Self {
+            id,
+            n,
+            f: state.polynomial.clone(),
+            private_key: state.private_key.clone(),
+            public_key: &state.private_key * G,
+            group_key: *group_key,
+            nonce: Nonce::default(),
+        }
+    }
+
+    pub fn save(&self) -> PartyState {
+        PartyState {
+            private_key: self.private_key.clone(),
+            polynomial: self.f.clone(),
         }
     }
 
@@ -160,28 +185,57 @@ impl SignatureAggregator {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-struct PartyState {
-    id: usize,
-    private_key: Scalar,
-    polynomial: Option<Polynomial<Scalar>>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct SignerState {
+pub struct SignerState {
     n: usize,
     group_key: Point,
-    party_state: HashMap<usize, PartyState>,
+    parties: HashMap<usize, PartyState>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-struct Signer {
+#[derive(Debug, PartialEq)]
+pub struct Signer {
+    pub n: usize,
+    pub group_key: Point,
     pub parties: Vec<Party>,
+}
+
+impl Signer {
+    pub fn load(state: &SignerState) -> Self {
+        let parties = state
+            .parties
+            .iter()
+            .map(|(id, ps)| Party::load(*id, state.n, &state.group_key, &ps))
+            .collect();
+
+        Self {
+            n: state.n,
+            group_key: state.group_key,
+            parties,
+        }
+    }
+
+    pub fn save(&self) -> SignerState {
+        let mut parties = HashMap::new();
+
+        for party in &self.parties {
+            parties.insert(party.id, party.save());
+        }
+
+        SignerState {
+            n: self.n,
+            group_key: self.group_key,
+            parties,
+        }
+    }
 }
 
 impl crate::traits::Signer for Signer {
     fn new<RNG: RngCore + CryptoRng>(ids: &[usize], n: usize, t: usize, rng: &mut RNG) -> Self {
         let parties = ids.iter().map(|id| Party::new(*id, n, t, rng)).collect();
-        Signer { parties }
+        Signer {
+            n,
+            group_key: Point::zero(),
+            parties,
+        }
     }
 
     fn gen_nonces<RNG: RngCore + CryptoRng>(&mut self, rng: &mut RNG) -> Vec<(usize, PublicNonce)> {
@@ -242,5 +296,20 @@ mod tests {
         for party in &signer.parties {
             assert!(party.nonce != Nonce::default());
         }
+    }
+
+    #[test]
+    fn signer_save_load() {
+        let mut rng = OsRng::default();
+        let ids = [1, 2, 3];
+        let n: usize = 10;
+        let t: usize = 7;
+
+        let signer = v1::Signer::new(&ids, n, t, &mut rng);
+
+        let state = signer.save();
+        let loaded = v1::Signer::load(&state);
+
+        assert_eq!(signer, loaded);
     }
 }
