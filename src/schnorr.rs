@@ -23,7 +23,7 @@ impl ID {
         let c = Self::challenge(id, &(&k * &G), &(a * &G));
 
         Self {
-            id: id.clone(),
+            id: *id,
             kG: &k * G,
             kca: &k + c * a,
         }

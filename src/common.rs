@@ -71,7 +71,7 @@ impl Signature {
     // verify: R' = z * G + -c * publicKey, pass if R' == R
     #[allow(non_snake_case)]
     pub fn verify(&self, public_key: &Point, msg: &[u8]) -> bool {
-        let c = challenge(&public_key, &self.R, &msg);
+        let c = challenge(public_key, &self.R, msg);
         let R = &self.z * G + (-c) * public_key;
 
         println!("Verification R = {}", R);

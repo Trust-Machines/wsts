@@ -63,7 +63,7 @@ impl Party {
 
     pub fn get_shares(&self) -> HashMap<usize, Scalar> {
         let mut shares = HashMap::new();
-        for i in 0..self.n as usize {
+        for i in 0..self.n {
             shares.insert(i, self.f.eval(Scalar::from((i + 1) as u32)));
         }
         shares
@@ -85,7 +85,7 @@ impl Party {
                         + (Scalar::from((self.id + 1) as u32) ^ j) * Ai.A[j])
             );
             self.private_key += s;
-            self.group_key += Ai.A[0].clone();
+            self.group_key += Ai.A[0];
         }
         self.public_key = self.private_key * G;
         println!("Party {} secret {}", self.id, self.private_key);
@@ -97,7 +97,7 @@ impl Party {
 
     #[allow(non_snake_case)]
     pub fn sign(&self, msg: &[u8], signers: &[usize], nonces: &[PublicNonce]) -> Scalar {
-        let (_R_vec, R) = compute::intermediate(msg, &signers, nonces);
+        let (_R_vec, R) = compute::intermediate(msg, signers, nonces);
         let mut z = &self.nonce.d + &self.nonce.e * compute::binding(&self.id(), nonces, msg);
         z += compute::challenge(&self.group_key, &R, msg)
             * &self.private_key
@@ -141,7 +141,7 @@ impl SignatureAggregator {
         let signers: Vec<usize> = sig_shares.iter().map(|ss| ss.id).collect();
         let (R_vec, R) = compute::intermediate(msg, &signers, &self.B);
         let mut z = Scalar::zero();
-        let c = compute::challenge(&self.key, &R, &msg); // only needed for checking z_i
+        let c = compute::challenge(&self.key, &R, msg); // only needed for checking z_i
 
         for i in 0..sig_shares.len() {
             let z_i = sig_shares[i].z_i;
