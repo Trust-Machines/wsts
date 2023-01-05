@@ -130,7 +130,7 @@ impl SignatureAggregator {
         }
         println!("SA groupKey {}", key);
 
-        assert!(B.len() == N);
+        //assert!(B.len() == N);
         // TODO: Check that each B_i is len num_nonces?
 
         Self {
@@ -146,19 +146,19 @@ impl SignatureAggregator {
     pub fn sign(
         &mut self,
         msg: &[u8],
-        signers: &[usize],
         sig_shares: &[SignatureShare],
     ) -> Signature {
+        let signers: Vec<usize> = sig_shares.iter().map(|ss| ss.id).collect();
         let (R_vec, R) = compute::intermediate(msg, &signers, &self.B);
-
         let mut z = Scalar::zero();
         let c = compute::challenge(&self.key, &R, &msg); // only needed for checking z_i
-        for i in 0..signers.len() {
+
+        for i in 0..sig_shares.len() {
             let z_i = sig_shares[i].z_i;
             assert!(
                 z_i * G
                     == R_vec[i]
-                        + (compute::lambda(&sig_shares[i].id, signers)
+                        + (compute::lambda(&sig_shares[i].id, &signers)
                             * c
                             * sig_shares[i].public_key)
             ); // TODO: This should return a list of bad parties.
@@ -166,11 +166,6 @@ impl SignatureAggregator {
         }
 
         Signature { R: R, z: z }
-    }
-
-    #[allow(non_snake_case)]
-    pub fn set_party_nonce(&mut self, i: usize, B: &PublicNonce) {
-        self.B[i] = B.clone();
     }
 }
 

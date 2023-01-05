@@ -101,7 +101,7 @@ fn main() {
         let msg = "It was many and many a year ago".as_bytes();
         let signers = select_parties(N, T, &mut rng);
 
-        let nonces: Vec<PublicNonce> = parties.iter_mut().map(|p| p.gen_nonce(&mut rng)).collect();
+        let nonces: Vec<PublicNonce> = signers.iter().map(|i| parties[*i].gen_nonce(&mut rng)).collect();
 
         let mut sig_agg = SignatureAggregator::new(N, T, A.clone(), nonces.clone());
 
@@ -109,7 +109,7 @@ fn main() {
         let sig_shares = collect_signatures(&parties, &signers, &nonces, &msg);
         let party_sig_time = party_sig_start.elapsed();
         let sig_start = time::Instant::now();
-        let sig = sig_agg.sign(&msg, &signers, &sig_shares);
+        let sig = sig_agg.sign(&msg, &sig_shares);
         let sig_time = sig_start.elapsed();
 
         total_party_sig_time += party_sig_time.as_micros();

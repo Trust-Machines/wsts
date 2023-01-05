@@ -54,7 +54,7 @@ impl PublicNonce {
 
 // TODO: Remove public key from here
 // The SA should get that as usual
-#[derive(Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct SignatureShare {
     pub id: usize,
     pub z_i: Scalar,
