@@ -34,7 +34,7 @@ pub struct Party {
 
 impl Party {
     #[allow(non_snake_case)]
-    pub fn new<RNG: RngCore + CryptoRng>(id: usize, n: usize, t: usize, rng: &mut RNG) -> Self {
+    pub fn new <RNG: RngCore + CryptoRng>(id: usize, n: usize, t: usize, rng: &mut RNG) -> Self {
         Self {
             id,
             n,
@@ -51,7 +51,7 @@ impl Party {
             id,
             n,
             f: state.polynomial.clone(),
-            private_key: state.private_key.clone(),
+            private_key: state.private_key,
             public_key: &state.private_key * G,
             group_key: *group_key,
             nonce: Nonce::default(),
@@ -107,7 +107,7 @@ impl Party {
             assert!(
                 s * G
                     == (0..Ai.A.len()).fold(Point::zero(), |s, j| s
-                        + (Scalar::from((self.id + 1) as u32) ^ j) * Ai.A[j])
+                                            + (Scalar::from((self.id + 1) as u32) ^ j) * Ai.A[j])
             );
             self.private_key += s;
             self.group_key += Ai.A[0];
@@ -135,14 +135,12 @@ impl Party {
 pub struct SignatureAggregator {
     pub N: usize,
     pub T: usize,
-    pub A: Vec<PolyCommitment>,
-    pub B: Vec<PublicNonce>,
     pub key: Point,
 }
 
 impl SignatureAggregator {
     #[allow(non_snake_case)]
-    pub fn new(N: usize, T: usize, A: Vec<PolyCommitment>, B: Vec<PublicNonce>) -> Self {
+    pub fn new(N: usize, T: usize, A: Vec<PolyCommitment>) -> Self {
         // TODO: How should we handle bad As?
         assert!(A.len() == N);
         for A_i in &A {
@@ -155,16 +153,13 @@ impl SignatureAggregator {
         }
         println!("SA groupKey {}", key);
 
-        //assert!(B.len() == N);
-        // TODO: Check that each B_i is len num_nonces?
-
-        Self { N, T, A, B, key }
+        Self { N, T, key }
     }
 
     #[allow(non_snake_case)]
-    pub fn sign(&mut self, msg: &[u8], sig_shares: &[SignatureShare]) -> Signature {
+    pub fn sign(&mut self, msg: &[u8], nonces: &[PublicNonce], sig_shares: &[SignatureShare]) -> Signature {
         let signers: Vec<usize> = sig_shares.iter().map(|ss| ss.id).collect();
-        let (R_vec, R) = compute::intermediate(msg, &signers, &self.B);
+        let (R_vec, R) = compute::intermediate(msg, &signers, &nonces);
         let mut z = Scalar::zero();
         let c = compute::challenge(&self.key, &R, msg); // only needed for checking z_i
 
@@ -173,9 +168,9 @@ impl SignatureAggregator {
             assert!(
                 z_i * G
                     == R_vec[i]
-                        + (compute::lambda(&sig_shares[i].id, &signers)
-                            * c
-                            * sig_shares[i].public_key)
+                    + (compute::lambda(&sig_shares[i].id, &signers)
+                       * c
+                       * sig_shares[i].public_key)
             ); // TODO: This should return a list of bad parties.
             z += z_i;
         }
@@ -191,7 +186,7 @@ pub struct SignerState {
     parties: HashMap<usize, PartyState>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Signer {
     pub n: usize,
     pub group_key: Point,
@@ -226,6 +221,14 @@ impl Signer {
             parties,
         }
     }
+
+    pub fn get_poly_commitments<RNG: RngCore + CryptoRng>(&self, rng: &mut RNG) -> Vec<PolyCommitment> {
+        self.parties.iter().map(|p| p.get_poly_commitment(rng)).collect()
+    }
+
+    pub fn get_ids(&self) -> Vec<usize> {
+        self.parties.iter().map(|p| p.id).collect()
+    }
 }
 
 impl crate::traits::Signer for Signer {
@@ -238,10 +241,10 @@ impl crate::traits::Signer for Signer {
         }
     }
 
-    fn gen_nonces<RNG: RngCore + CryptoRng>(&mut self, rng: &mut RNG) -> Vec<(usize, PublicNonce)> {
+    fn gen_nonces<RNG: RngCore + CryptoRng>(&mut self, rng: &mut RNG) -> Vec<PublicNonce> {
         self.parties
             .iter_mut()
-            .map(|p| (p.id, p.gen_nonce(rng)))
+            .map(|p| p.gen_nonce(rng))
             .collect()
     }
 
@@ -259,10 +262,12 @@ impl crate::traits::Signer for Signer {
 
 #[cfg(test)]
 mod tests {
-    use crate::common::Nonce;
+    use crate::common::{Nonce, PublicNonce, PolyCommitment, SignatureShare};
     use crate::traits::Signer;
     use crate::v1;
-    use rand_core::OsRng;
+
+    use hashbrown::HashMap;
+    use rand_core::{CryptoRng, RngCore, OsRng};
 
     #[test]
     fn signer_new() {
@@ -311,5 +316,72 @@ mod tests {
         let loaded = v1::Signer::load(&state);
 
         assert_eq!(signer, loaded);
+    }
+
+    #[allow(non_snake_case)]
+    fn dkg<RNG: RngCore + CryptoRng>(signers: &mut Vec<v1::Signer>, rng: &mut RNG) -> Vec<PolyCommitment> {
+        let A: Vec<PolyCommitment> = signers
+            .iter()
+            .flat_map(|s| s.get_poly_commitments(&mut rng))
+            .collect();
+
+        // each party broadcasts their commitments
+        // these hashmaps will need to be serialized in tuples w/ the value encrypted
+        let mut broadcast_shares = Vec::new();
+        for signer in signers {
+            for party in &signer.parties {
+                broadcast_shares.push(party.get_shares());
+            }
+        }
+
+        // each party collects its shares from the broadcasts
+        // maybe this should collect into a hashmap first?
+        for i in 0..parties.len() {
+            let mut h = HashMap::new();
+            for j in 0..parties.len() {
+                h.insert(j, broadcast_shares[j][&i]);
+            }
+            parties[i].compute_secret(h, &A);
+        }
+
+        A
+    }
+
+    // There might be a slick one-liner for this?
+    fn sign<RNG: RngCore + CryptoRng>(
+        msg: &[u8],
+        signers: &[v1::Signer],
+        rng: &mut RNG,
+    ) -> (Vec<PublicNonce>, Vec<SignatureShare>) {
+        let ids: Vec<usize> = signers.iter().flat_map(|s| s.get_ids()).collect();
+        let nonces: Vec<PublicNonce> = signers.iter().flat_map(|s| s.gen_nonces(&mut rng)).collect();
+        let shares = signers.iter().flat_map(|s| s.sign(msg, &ids, &nonces)).collect();
+
+        (nonces, shares)
+    }
+
+    #[allow(non_snake_case)]
+    #[test]
+    fn signer_sign() {
+        let mut rng = OsRng::default();
+        let msg = "It was many and many a year ago".as_bytes();
+        let N: usize = 10;
+        let T: usize = 7;
+        let signer_ids: Vec<Vec<usize>> = [[0, 1, 2],to_vec(), [3, 4].to_vec(), [5, 6, 7].to_vec(), [8, 9].to_vec()].to_vec();
+        let signers = ids.iter().map(|ids| v1::Signer::new(ids, N, T, &mut rng)).collect();
+
+        let A = dkg(&mut signers, &mut rng);
+        
+        // signers [0,1,3] who have T keys
+        {
+            let mut signers = [signers[0].clone(), signers[1].clone(), signers[3].clone()].to_vec();
+            let mut sig_agg = v1::SignatureAggregator::new(N, T, A.clone());
+
+            let (nonces, sig_shares) = sign(&msg, &signers, &mut rng);
+            let sig = sig_agg.sign(&msg, &nonces, &sig_shares);
+
+            println!("Signature (R,z) = \n({},{})", sig.R, sig.z);
+            assert!(sig.verify(&sig_agg.key, &msg));
+        }
     }
 }

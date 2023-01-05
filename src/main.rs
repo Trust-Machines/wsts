@@ -106,13 +106,13 @@ fn main() {
             .map(|i| parties[*i].gen_nonce(&mut rng))
             .collect();
 
-        let mut sig_agg = SignatureAggregator::new(N, T, A.clone(), nonces.clone());
+        let mut sig_agg = SignatureAggregator::new(N, T, A.clone());
 
         let party_sig_start = time::Instant::now();
         let sig_shares = collect_signatures(&parties, &signers, &nonces, &msg);
         let party_sig_time = party_sig_start.elapsed();
         let sig_start = time::Instant::now();
-        let sig = sig_agg.sign(&msg, &sig_shares);
+        let sig = sig_agg.sign(&msg, &nonces, &sig_shares);
         let sig_time = sig_start.elapsed();
 
         total_party_sig_time += party_sig_time.as_micros();
