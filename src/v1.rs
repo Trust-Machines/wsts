@@ -317,31 +317,35 @@ mod tests {
 
         assert_eq!(signer, loaded);
     }
-/*
+
     #[allow(non_snake_case)]
     fn dkg<RNG: RngCore + CryptoRng>(signers: &mut Vec<v1::Signer>, rng: &mut RNG) -> Vec<PolyCommitment> {
         let A: Vec<PolyCommitment> = signers
             .iter()
-            .flat_map(|s| s.get_poly_commitments(&mut rng))
+            .flat_map(|s| s.get_poly_commitments(rng))
             .collect();
 
         // each party broadcasts their commitments
         // these hashmaps will need to be serialized in tuples w/ the value encrypted
         let mut broadcast_shares = Vec::new();
-        for signer in signers {
+        for signer in signers.iter() {
             for party in &signer.parties {
-                broadcast_shares.push(party.get_shares());
+                broadcast_shares.push((party.id, party.get_shares()));
             }
         }
 
         // each party collects its shares from the broadcasts
         // maybe this should collect into a hashmap first?
-        for i in 0..parties.len() {
-            let mut h = HashMap::new();
-            for j in 0..parties.len() {
-                h.insert(j, broadcast_shares[j][&i]);
+        for signer in signers.iter_mut() {
+            for party in signer.parties.iter_mut() {
+                let mut h = HashMap::new();
+
+                for (id, share) in &broadcast_shares {
+                    h.insert(*id, share[&party.id]);
+                }
+
+                party.compute_secret(h, &A);
             }
-            parties[i].compute_secret(h, &A);
         }
 
         A
@@ -350,11 +354,11 @@ mod tests {
     // There might be a slick one-liner for this?
     fn sign<RNG: RngCore + CryptoRng>(
         msg: &[u8],
-        signers: &[v1::Signer],
+        signers: &mut [v1::Signer],
         rng: &mut RNG,
     ) -> (Vec<PublicNonce>, Vec<SignatureShare>) {
         let ids: Vec<usize> = signers.iter().flat_map(|s| s.get_ids()).collect();
-        let nonces: Vec<PublicNonce> = signers.iter().flat_map(|s| s.gen_nonces(&mut rng)).collect();
+        let nonces: Vec<PublicNonce> = signers.iter_mut().flat_map(|s| s.gen_nonces(rng)).collect();
         let shares = signers.iter().flat_map(|s| s.sign(msg, &ids, &nonces)).collect();
 
         (nonces, shares)
@@ -368,7 +372,7 @@ mod tests {
         let N: usize = 10;
         let T: usize = 7;
         let signer_ids: Vec<Vec<usize>> = [[0, 1, 2].to_vec(), [3, 4].to_vec(), [5, 6, 7].to_vec(), [8, 9].to_vec()].to_vec();
-        let signers = signer_ids.iter().map(|ids| v1::Signer::new(ids, N, T, &mut rng)).collect();
+        let mut signers = signer_ids.iter().map(|ids| v1::Signer::new(ids, N, T, &mut rng)).collect();
 
         let A = dkg(&mut signers, &mut rng);
         
@@ -377,12 +381,11 @@ mod tests {
             let mut signers = [signers[0].clone(), signers[1].clone(), signers[3].clone()].to_vec();
             let mut sig_agg = v1::SignatureAggregator::new(N, T, A.clone());
 
-            let (nonces, sig_shares) = sign(&msg, &signers, &mut rng);
+            let (nonces, sig_shares) = sign(&msg, &mut signers, &mut rng);
             let sig = sig_agg.sign(&msg, &nonces, &sig_shares);
 
             println!("Signature (R,z) = \n({},{})", sig.R, sig.z);
             assert!(sig.verify(&sig_agg.key, &msg));
         }
     }
-    */
 }
