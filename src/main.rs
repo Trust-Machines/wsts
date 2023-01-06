@@ -13,8 +13,8 @@ fn distribute(parties: &mut Vec<Party>, A: &[PolyCommitment]) -> u128 {
     // each party broadcasts their commitments
     // these hashmaps will need to be serialized in tuples w/ the value encrypted
     let mut broadcast_shares = Vec::new();
-    for i in 0..parties.len() {
-        broadcast_shares.push(parties[i].get_shares());
+    for party in parties.iter() {
+        broadcast_shares.push(party.get_shares());
     }
 
     let mut total_compute_secret_time = 0;
@@ -27,7 +27,7 @@ fn distribute(parties: &mut Vec<Party>, A: &[PolyCommitment]) -> u128 {
             h.insert(j, broadcast_shares[j][&i]);
         }
         let compute_secret_start = time::Instant::now();
-        parties[i].compute_secret(h, &A);
+        parties[i].compute_secret(h, A);
         let compute_secret_time = compute_secret_start.elapsed();
         total_compute_secret_time += compute_secret_time.as_micros();
     }
@@ -62,9 +62,9 @@ fn collect_signatures(
     for i in 0..signers.len() {
         let party = &parties[signers[i]];
         sigs.push(SignatureShare {
-            id: party.id.clone(),
-            z_i: party.sign(&msg, &signers, nonces),
-            public_key: party.public_key.clone(),
+            id: party.id,
+            z_i: party.sign(msg, signers, nonces),
+            public_key: party.public_key,
         });
     }
     sigs
@@ -109,17 +109,17 @@ fn main() {
         let mut sig_agg = SignatureAggregator::new(N, T, A.clone());
 
         let party_sig_start = time::Instant::now();
-        let sig_shares = collect_signatures(&parties, &signers, &nonces, &msg);
+        let sig_shares = collect_signatures(&parties, &signers, &nonces, msg);
         let party_sig_time = party_sig_start.elapsed();
         let sig_start = time::Instant::now();
-        let sig = sig_agg.sign(&msg, &nonces, &sig_shares);
+        let sig = sig_agg.sign(msg, &nonces, &sig_shares);
         let sig_time = sig_start.elapsed();
 
         total_party_sig_time += party_sig_time.as_micros();
         total_sig_time += sig_time.as_micros();
 
         println!("Signature (R,z) = \n({},{})", sig.R, sig.z);
-        assert!(sig.verify(&sig_agg.key, &msg));
+        assert!(sig.verify(&sig_agg.key, msg));
     }
     println!("With {} parties and {} signers:", N, T);
     println!(

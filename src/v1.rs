@@ -20,7 +20,7 @@ pub struct PartyState {
     pub polynomial: Polynomial<Scalar>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[allow(non_snake_case)]
 pub struct Party {
     pub id: usize,
@@ -191,7 +191,7 @@ pub struct SignerState {
     parties: HashMap<usize, PartyState>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Signer {
     pub n: usize,
     pub group_key: Point,

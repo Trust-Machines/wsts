@@ -21,7 +21,7 @@ impl PolyCommitment {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct Nonce {
     pub d: Scalar,
     pub e: Scalar,
@@ -36,7 +36,7 @@ impl Default for Nonce {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[allow(non_snake_case)]
 pub struct PublicNonce {
     pub D: Point,
