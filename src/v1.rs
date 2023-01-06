@@ -60,7 +60,7 @@ impl Party {
 
     pub fn save(&self) -> PartyState {
         PartyState {
-            private_key: self.private_key.clone(),
+            private_key: self.private_key,
             polynomial: self.f.clone(),
         }
     }
@@ -164,7 +164,7 @@ impl SignatureAggregator {
         sig_shares: &[SignatureShare],
     ) -> Signature {
         let signers: Vec<usize> = sig_shares.iter().map(|ss| ss.id).collect();
-        let (R_vec, R) = compute::intermediate(msg, &signers, &nonces);
+        let (R_vec, R) = compute::intermediate(msg, &signers, nonces);
         let mut z = Scalar::zero();
         let c = compute::challenge(&self.key, &R, msg); // only needed for checking z_i
 
@@ -203,7 +203,7 @@ impl Signer {
         let parties = state
             .parties
             .iter()
-            .map(|(id, ps)| Party::load(*id, state.n, &state.group_key, &ps))
+            .map(|(id, ps)| Party::load(*id, state.n, &state.group_key, ps))
             .collect();
 
         Self {
