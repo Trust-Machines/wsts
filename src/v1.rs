@@ -34,7 +34,7 @@ pub struct Party {
 
 impl Party {
     #[allow(non_snake_case)]
-    pub fn new <RNG: RngCore + CryptoRng>(id: usize, n: usize, t: usize, rng: &mut RNG) -> Self {
+    pub fn new<RNG: RngCore + CryptoRng>(id: usize, n: usize, t: usize, rng: &mut RNG) -> Self {
         Self {
             id,
             n,
@@ -107,7 +107,7 @@ impl Party {
             assert!(
                 s * G
                     == (0..Ai.A.len()).fold(Point::zero(), |s, j| s
-                                            + (Scalar::from((self.id + 1) as u32) ^ j) * Ai.A[j])
+                        + (Scalar::from((self.id + 1) as u32) ^ j) * Ai.A[j])
             );
             self.private_key += s;
             self.group_key += Ai.A[0];
@@ -157,7 +157,12 @@ impl SignatureAggregator {
     }
 
     #[allow(non_snake_case)]
-    pub fn sign(&mut self, msg: &[u8], nonces: &[PublicNonce], sig_shares: &[SignatureShare]) -> Signature {
+    pub fn sign(
+        &mut self,
+        msg: &[u8],
+        nonces: &[PublicNonce],
+        sig_shares: &[SignatureShare],
+    ) -> Signature {
         let signers: Vec<usize> = sig_shares.iter().map(|ss| ss.id).collect();
         let (R_vec, R) = compute::intermediate(msg, &signers, &nonces);
         let mut z = Scalar::zero();
@@ -168,9 +173,9 @@ impl SignatureAggregator {
             assert!(
                 z_i * G
                     == R_vec[i]
-                    + (compute::lambda(&sig_shares[i].id, &signers)
-                       * c
-                       * sig_shares[i].public_key)
+                        + (compute::lambda(&sig_shares[i].id, &signers)
+                            * c
+                            * sig_shares[i].public_key)
             ); // TODO: This should return a list of bad parties.
             z += z_i;
         }
@@ -222,8 +227,14 @@ impl Signer {
         }
     }
 
-    pub fn get_poly_commitments<RNG: RngCore + CryptoRng>(&self, rng: &mut RNG) -> Vec<PolyCommitment> {
-        self.parties.iter().map(|p| p.get_poly_commitment(rng)).collect()
+    pub fn get_poly_commitments<RNG: RngCore + CryptoRng>(
+        &self,
+        rng: &mut RNG,
+    ) -> Vec<PolyCommitment> {
+        self.parties
+            .iter()
+            .map(|p| p.get_poly_commitment(rng))
+            .collect()
     }
 
     pub fn get_ids(&self) -> Vec<usize> {
@@ -242,10 +253,7 @@ impl crate::traits::Signer for Signer {
     }
 
     fn gen_nonces<RNG: RngCore + CryptoRng>(&mut self, rng: &mut RNG) -> Vec<PublicNonce> {
-        self.parties
-            .iter_mut()
-            .map(|p| p.gen_nonce(rng))
-            .collect()
+        self.parties.iter_mut().map(|p| p.gen_nonce(rng)).collect()
     }
 
     fn sign(&self, msg: &[u8], signers: &[usize], nonces: &[PublicNonce]) -> Vec<SignatureShare> {
@@ -262,12 +270,12 @@ impl crate::traits::Signer for Signer {
 
 #[cfg(test)]
 mod tests {
-    use crate::common::{Nonce, PublicNonce, PolyCommitment, SignatureShare};
+    use crate::common::{Nonce, PolyCommitment, PublicNonce, SignatureShare};
     use crate::traits::Signer;
     use crate::v1;
 
     use hashbrown::HashMap;
-    use rand_core::{CryptoRng, RngCore, OsRng};
+    use rand_core::{CryptoRng, OsRng, RngCore};
 
     #[test]
     fn signer_new() {
@@ -319,7 +327,10 @@ mod tests {
     }
 
     #[allow(non_snake_case)]
-    fn dkg<RNG: RngCore + CryptoRng>(signers: &mut Vec<v1::Signer>, rng: &mut RNG) -> Vec<PolyCommitment> {
+    fn dkg<RNG: RngCore + CryptoRng>(
+        signers: &mut Vec<v1::Signer>,
+        rng: &mut RNG,
+    ) -> Vec<PolyCommitment> {
         let A: Vec<PolyCommitment> = signers
             .iter()
             .flat_map(|s| s.get_poly_commitments(rng))
@@ -359,7 +370,10 @@ mod tests {
     ) -> (Vec<PublicNonce>, Vec<SignatureShare>) {
         let ids: Vec<usize> = signers.iter().flat_map(|s| s.get_ids()).collect();
         let nonces: Vec<PublicNonce> = signers.iter_mut().flat_map(|s| s.gen_nonces(rng)).collect();
-        let shares = signers.iter().flat_map(|s| s.sign(msg, &ids, &nonces)).collect();
+        let shares = signers
+            .iter()
+            .flat_map(|s| s.sign(msg, &ids, &nonces))
+            .collect();
 
         (nonces, shares)
     }
@@ -371,11 +385,20 @@ mod tests {
         let msg = "It was many and many a year ago".as_bytes();
         let N: usize = 10;
         let T: usize = 7;
-        let signer_ids: Vec<Vec<usize>> = [[0, 1, 2].to_vec(), [3, 4].to_vec(), [5, 6, 7].to_vec(), [8, 9].to_vec()].to_vec();
-        let mut signers = signer_ids.iter().map(|ids| v1::Signer::new(ids, N, T, &mut rng)).collect();
+        let signer_ids: Vec<Vec<usize>> = [
+            [0, 1, 2].to_vec(),
+            [3, 4].to_vec(),
+            [5, 6, 7].to_vec(),
+            [8, 9].to_vec(),
+        ]
+        .to_vec();
+        let mut signers = signer_ids
+            .iter()
+            .map(|ids| v1::Signer::new(ids, N, T, &mut rng))
+            .collect();
 
         let A = dkg(&mut signers, &mut rng);
-        
+
         // signers [0,1,3] who have T keys
         {
             let mut signers = [signers[0].clone(), signers[1].clone(), signers[3].clone()].to_vec();
