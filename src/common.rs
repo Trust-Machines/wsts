@@ -1,5 +1,6 @@
 use core::ops::Add;
 use num_traits::Zero;
+use rand_core::{CryptoRng, RngCore};
 use secp256k1_math::{
     point::{Point, G},
     scalar::Scalar,
@@ -26,6 +27,15 @@ impl PolyCommitment {
 pub struct Nonce {
     pub d: Scalar,
     pub e: Scalar,
+}
+
+impl Nonce {
+    pub fn random<RNG: RngCore + CryptoRng>(rng: &mut RNG) -> Self {
+        Self {
+            d: Scalar::random(rng),
+            e: Scalar::random(rng),
+        }
+    }
 }
 
 impl Zero for Nonce {

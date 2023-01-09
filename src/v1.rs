@@ -66,12 +66,7 @@ impl Party {
     }
 
     pub fn gen_nonce<RNG: RngCore + CryptoRng>(&mut self, rng: &mut RNG) -> PublicNonce {
-        let nonce = Nonce {
-            d: Scalar::random(rng),
-            e: Scalar::random(rng),
-        };
-
-        self.nonce = nonce;
+        self.nonce = Nonce::random(rng);
 
         PublicNonce::from(&self.nonce)
     }
