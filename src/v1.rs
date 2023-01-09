@@ -42,7 +42,7 @@ impl Party {
             private_key: Scalar::zero(),
             public_key: Point::zero(),
             group_key: Point::zero(),
-            nonce: Nonce::default(),
+            nonce: Nonce::zero(),
         }
     }
 
@@ -54,7 +54,7 @@ impl Party {
             private_key: state.private_key,
             public_key: &state.private_key * G,
             group_key: *group_key,
-            nonce: Nonce::default(),
+            nonce: Nonce::zero(),
         }
     }
 
@@ -270,11 +270,12 @@ impl crate::traits::Signer for Signer {
 
 #[cfg(test)]
 mod tests {
-    use crate::common::{Nonce, PolyCommitment, PublicNonce, SignatureShare};
+    use crate::common::{PolyCommitment, PublicNonce, SignatureShare};
     use crate::traits::Signer;
     use crate::v1;
 
     use hashbrown::HashMap;
+    use num_traits::Zero;
     use rand_core::{CryptoRng, OsRng, RngCore};
 
     #[test]
@@ -299,7 +300,7 @@ mod tests {
         let mut signer = v1::Signer::new(&ids, n, t, &mut rng);
 
         for party in &signer.parties {
-            assert!(party.nonce == Nonce::default());
+            assert!(party.nonce.is_zero());
         }
 
         let nonces = signer.gen_nonces(&mut rng);
@@ -307,7 +308,7 @@ mod tests {
         assert_eq!(nonces.len(), ids.len());
 
         for party in &signer.parties {
-            assert!(party.nonce != Nonce::default());
+            assert!(!party.nonce.is_zero());
         }
     }
 

@@ -1,3 +1,4 @@
+use core::ops::Add;
 use num_traits::Zero;
 use secp256k1_math::{
     point::{Point, G},
@@ -27,11 +28,26 @@ pub struct Nonce {
     pub e: Scalar,
 }
 
-impl Default for Nonce {
-    fn default() -> Self {
+impl Zero for Nonce {
+    fn zero() -> Self {
         Self {
             d: Scalar::zero(),
             e: Scalar::zero(),
+        }
+    }
+
+    fn is_zero(&self) -> bool {
+        self.d == Scalar::zero() && self.e == Scalar::zero()
+    }
+}
+
+impl Add for Nonce {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self {
+        Self {
+            d: self.d + other.d,
+            e: self.e + other.e,
         }
     }
 }
