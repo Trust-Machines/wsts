@@ -199,6 +199,15 @@ pub struct Signer {
 }
 
 impl Signer {
+    pub fn new<RNG: RngCore + CryptoRng>(ids: &[usize], n: usize, t: usize, rng: &mut RNG) -> Self {
+        let parties = ids.iter().map(|id| Party::new(*id, n, t, rng)).collect();
+        Signer {
+            n,
+            group_key: Point::zero(),
+            parties,
+        }
+    }
+
     pub fn load(state: &SignerState) -> Self {
         let parties = state
             .parties
@@ -243,15 +252,6 @@ impl Signer {
 }
 
 impl crate::traits::Signer for Signer {
-    fn new<RNG: RngCore + CryptoRng>(ids: &[usize], n: usize, t: usize, rng: &mut RNG) -> Self {
-        let parties = ids.iter().map(|id| Party::new(*id, n, t, rng)).collect();
-        Signer {
-            n,
-            group_key: Point::zero(),
-            parties,
-        }
-    }
-
     fn gen_nonces<RNG: RngCore + CryptoRng>(&mut self, rng: &mut RNG) -> Vec<PublicNonce> {
         self.parties.iter_mut().map(|p| p.gen_nonce(rng)).collect()
     }
