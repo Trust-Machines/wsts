@@ -3,12 +3,13 @@ use secp256k1_math::{
     point::{Point, G},
     scalar::Scalar,
 };
+use serde::{Deserialize, Serialize};
 use sha3::{Digest, Sha3_256};
 
 use crate::util::hash_to_scalar;
 
 #[allow(non_snake_case)]
-#[derive(Clone)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct ID {
     pub id: Scalar,
     pub kG: Point,
@@ -22,7 +23,7 @@ impl ID {
         let c = Self::challenge(id, &(&k * &G), &(a * &G));
 
         Self {
-            id: id.clone(),
+            id: *id,
             kG: &k * G,
             kca: &k + c * a,
         }

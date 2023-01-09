@@ -1,11 +1,16 @@
+use core::ops::Add;
+use num_traits::Zero;
+use rand_core::{CryptoRng, RngCore};
 use secp256k1_math::{
     point::{Point, G},
     scalar::Scalar,
 };
+use serde::{Deserialize, Serialize};
 
 use crate::compute::challenge;
 use crate::schnorr::ID;
 
+#[derive(Clone, Deserialize, Serialize)]
 #[allow(non_snake_case)]
 pub struct PolyCommitment {
     pub id: ID,
@@ -18,13 +23,46 @@ impl PolyCommitment {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct Nonce {
     pub d: Scalar,
     pub e: Scalar,
 }
 
-#[derive(Clone)]
+impl Nonce {
+    pub fn random<RNG: RngCore + CryptoRng>(rng: &mut RNG) -> Self {
+        Self {
+            d: Scalar::random(rng),
+            e: Scalar::random(rng),
+        }
+    }
+}
+
+impl Zero for Nonce {
+    fn zero() -> Self {
+        Self {
+            d: Scalar::zero(),
+            e: Scalar::zero(),
+        }
+    }
+
+    fn is_zero(&self) -> bool {
+        self.d == Scalar::zero() && self.e == Scalar::zero()
+    }
+}
+
+impl Add for Nonce {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self {
+        Self {
+            d: self.d + other.d,
+            e: self.e + other.e,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[allow(non_snake_case)]
 pub struct PublicNonce {
     pub D: Point,
@@ -42,6 +80,7 @@ impl PublicNonce {
 
 // TODO: Remove public key from here
 // The SA should get that as usual
+#[derive(Debug, Deserialize, Serialize)]
 pub struct SignatureShare {
     pub id: usize,
     pub z_i: Scalar,
@@ -57,8 +96,8 @@ pub struct Signature {
 impl Signature {
     // verify: R' = z * G + -c * publicKey, pass if R' == R
     #[allow(non_snake_case)]
-    pub fn verify(&self, public_key: &Point, msg: &String) -> bool {
-        let c = challenge(&public_key, &self.R, &msg);
+    pub fn verify(&self, public_key: &Point, msg: &[u8]) -> bool {
+        let c = challenge(public_key, &self.R, msg);
         let R = &self.z * G + (-c) * public_key;
 
         println!("Verification R = {}", R);

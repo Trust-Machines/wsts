@@ -1,3 +1,4 @@
+use core::iter::zip;
 use num_traits::{One, Zero};
 use secp256k1_math::{point::Point, scalar::Scalar};
 use sha3::{Digest, Sha3_256};
@@ -6,7 +7,7 @@ use crate::common::PublicNonce;
 use crate::util::hash_to_scalar;
 
 #[allow(non_snake_case)]
-pub fn binding(id: &Scalar, B: &Vec<PublicNonce>, msg: &String) -> Scalar {
+pub fn binding(id: &Scalar, B: &[PublicNonce], msg: &[u8]) -> Scalar {
     let mut hasher = Sha3_256::new();
 
     hasher.update(id.as_bytes());
@@ -14,23 +15,23 @@ pub fn binding(id: &Scalar, B: &Vec<PublicNonce>, msg: &String) -> Scalar {
         hasher.update(b.D.compress().as_bytes());
         hasher.update(b.E.compress().as_bytes());
     }
-    hasher.update(msg.as_bytes());
+    hasher.update(msg);
 
     hash_to_scalar(&mut hasher)
 }
 
 #[allow(non_snake_case)]
-pub fn challenge(publicKey: &Point, R: &Point, msg: &String) -> Scalar {
+pub fn challenge(publicKey: &Point, R: &Point, msg: &[u8]) -> Scalar {
     let mut hasher = Sha3_256::new();
 
     hasher.update(publicKey.compress().as_bytes());
     hasher.update(R.compress().as_bytes());
-    hasher.update(msg.as_bytes());
+    hasher.update(msg);
 
     hash_to_scalar(&mut hasher)
 }
 
-pub fn lambda(i: &usize, indices: &Vec<usize>) -> Scalar {
+pub fn lambda(i: &usize, indices: &[usize]) -> Scalar {
     let mut lambda = Scalar::one();
     let i_scalar = Scalar::from((i + 1) as u32);
     for j in indices {
@@ -44,18 +45,15 @@ pub fn lambda(i: &usize, indices: &Vec<usize>) -> Scalar {
 
 // Is this the best way to return these values?
 #[allow(non_snake_case)]
-pub fn intermediate(
-    signers: &Vec<usize>,
-    B: &Vec<Vec<PublicNonce>>,
-    index: usize,
-    msg: &String,
-) -> (Vec<PublicNonce>, Vec<Point>, Point) {
-    let B = signers.iter().map(|&i| B[i][index].clone()).collect();
-    let rho: Vec<Scalar> = signers
+pub fn intermediate(msg: &[u8], signers: &[usize], nonces: &[PublicNonce]) -> (Vec<Point>, Point) {
+    let rhos: Vec<Scalar> = signers
         .iter()
-        .map(|&i| binding(&Scalar::from((i + 1) as u32), &B, &msg))
+        .map(|&i| binding(&Scalar::from((i + 1) as u32), nonces, msg))
         .collect();
-    let R_vec: Vec<Point> = (0..B.len()).map(|i| &B[i].D + &rho[i] * &B[i].E).collect();
+    let R_vec: Vec<Point> = zip(nonces, rhos)
+        .map(|(nonce, rho)| nonce.D + rho * nonce.E)
+        .collect();
+
     let R = R_vec.iter().fold(Point::zero(), |R, &R_i| R + R_i);
-    (B, R_vec, R)
+    (R_vec, R)
 }

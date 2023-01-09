@@ -1,6 +1,9 @@
-pub trait Signer {
-    fn new(num_keys: usize) -> Self;
-    fn load(path: &str) -> Self;
+use rand_core::{CryptoRng, RngCore};
 
-    fn save(path: &str);
+use crate::common::{PublicNonce, SignatureShare};
+
+pub trait Signer {
+    fn gen_nonces<RNG: RngCore + CryptoRng>(&mut self, rng: &mut RNG) -> Vec<PublicNonce>;
+
+    fn sign(&self, msg: &[u8], signers: &[usize], nonces: &[PublicNonce]) -> Vec<SignatureShare>;
 }
