@@ -57,3 +57,7 @@ pub fn intermediate(msg: &[u8], signers: &[usize], nonces: &[PublicNonce]) -> (V
     let R = R_vec.iter().fold(Point::zero(), |R, &R_i| R + R_i);
     (R_vec, R)
 }
+
+pub fn id(i: usize) -> Scalar {
+    Scalar::from((i + 1) as u32)
+}
