@@ -244,7 +244,7 @@ impl Party {
                 .insert(*key_id, self.private_keys[key_id] * G);
             println!(
                 "Party {} key_id {} secret {}",
-                self.party_id, key_id, self.private_keys[&key_id]
+                self.party_id, key_id, self.private_keys[key_id]
             );
         }
 
@@ -259,7 +259,7 @@ impl Party {
 
         let mut z = &nonce.d + &nonce.e * compute_binding(&id_to_scalar(&self.party_id), &B, &msg);
         for key_id in signers[&self.party_id].iter() {
-            z += c * &self.private_keys[&key_id] * lambda(&key_id, signers);
+            z += c * &self.private_keys[key_id] * lambda(&key_id, signers);
         }
         z
     }
@@ -356,7 +356,7 @@ impl SignatureAggregator {
                             .iter()
                             .fold(Point::zero(), |p, k| p + lambda(&k, signers)
                                 * c
-                                * self.public_keys[&k])
+                                * self.public_keys[k])
             );
             z += sig.z_i;
         }
