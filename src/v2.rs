@@ -52,10 +52,10 @@ impl Party {
         rng: &mut RNG,
     ) -> Self {
         Self {
-            party_id: party_id,
+            party_id,
             key_ids: key_ids.to_vec(),
-            num_keys: num_keys,
-            num_parties: num_parties,
+            num_keys,
+            num_parties,
             f: VSS::random_poly(threshold - 1, rng),
             private_keys: PrivKeyMap::new(),
             public_keys: PubKeyMap::new(),
@@ -101,7 +101,7 @@ impl Party {
 
         for Ai in A {
             assert!(Ai.verify()); // checks a0 proof
-            self.group_key += Ai.A[0].clone();
+            self.group_key += Ai.A[0];
         }
 
         for key_id in &self.key_ids {
@@ -137,7 +137,7 @@ impl Party {
     // signers are party_ids, not key_ids
     pub fn sign(&self, msg: &[u8], signers: &[usize], nonces: &[PublicNonce]) -> SignatureShare {
         let (_R_vec, R) = compute::intermediate(msg, signers, nonces);
-        let c = compute::challenge(&self.group_key, &R, &msg);
+        let c = compute::challenge(&self.group_key, &R, msg);
 
         let mut z = &self.nonce.d + &self.nonce.e * compute::binding(&self.id(), nonces, msg);
         for key_id in self.key_ids.iter() {
@@ -177,8 +177,8 @@ impl SignatureAggregator {
         println!("SA groupKey {}", key);
 
         Self {
-            num_keys: num_keys,
-            threshold: threshold,
+            num_keys,
+            threshold,
             group_key: key,
         }
     }
@@ -195,7 +195,7 @@ impl SignatureAggregator {
         let signers: Vec<usize> = sig_shares.iter().map(|ss| ss.party_id).collect();
         let (Ris, R) = compute::intermediate(msg, &signers, nonces);
         let mut z = Scalar::zero();
-        let c = compute::challenge(&self.group_key, &R, &msg);
+        let c = compute::challenge(&self.group_key, &R, msg);
 
         for i in 0..sig_shares.len() {
             println!("sig_shares[{}] {:?}", i, sig_shares[i]);
@@ -214,7 +214,7 @@ impl SignatureAggregator {
             z += z_i;
         }
 
-        let sig = Signature { R: R, z: z };
+        let sig = Signature { R, z };
         assert!(sig.verify(&self.group_key, msg));
         sig
     }
