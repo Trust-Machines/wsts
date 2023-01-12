@@ -64,10 +64,7 @@ impl Party {
         }
     }
 
-    pub fn gen_nonce<RNG: RngCore + CryptoRng>(
-        &mut self,
-        rng: &mut RNG,
-    ) -> PublicNonce {
+    pub fn gen_nonce<RNG: RngCore + CryptoRng>(&mut self, rng: &mut RNG) -> PublicNonce {
         self.nonce = Nonce::random(rng);
 
         PublicNonce::from(&self.nonce)
@@ -136,7 +133,6 @@ impl Party {
         compute::id(self.party_id)
     }
 
-
     #[allow(non_snake_case)]
     // signers are party_ids, not key_ids
     pub fn sign(&self, msg: &[u8], signers: &[usize], nonces: &[PublicNonce]) -> SignatureShare {
@@ -160,7 +156,7 @@ impl Party {
 pub struct SignatureAggregator {
     pub num_keys: usize,
     pub threshold: usize,
-    pub group_key: Point,       // the group's combined public key
+    pub group_key: Point, // the group's combined public key
 }
 
 impl SignatureAggregator {
@@ -169,7 +165,7 @@ impl SignatureAggregator {
         num_keys: usize,
         num_parties: usize,
         threshold: usize,
-        A: Vec<PolyCommitment>, // one per party_id
+        A: Vec<PolyCommitment>,  // one per party_id
         _public_keys: PubKeyMap, // one per key_id
     ) -> Self {
         assert!(A.len() == num_parties);
@@ -207,11 +203,13 @@ impl SignatureAggregator {
             assert!(
                 z_i * G
                     == Ris[i]
-                    + sig_shares
-                        .iter()
-                        .enumerate()
-                        .fold(Point::zero(), |p, (k,share)| p + compute::lambda(share.party_id, &signers)
-                                * c
+                        + sig_shares
+                            .iter()
+                            .enumerate()
+                            .fold(Point::zero(), |p, (k, share)| p + compute::lambda(
+                                share.party_id,
+                                &signers
+                            ) * c
                                 * share.public_keys[&k])
             );
             z += z_i;
@@ -227,8 +225,8 @@ impl SignatureAggregator {
 mod tests {
     use crate::common::{PolyCommitment, PublicNonce};
     use crate::traits::Signer;
-    use crate::v2::SignatureShare;
     use crate::v2;
+    use crate::v2::SignatureShare;
 
     use hashbrown::HashMap;
     use rand_core::{CryptoRng, OsRng, RngCore};
@@ -238,10 +236,7 @@ mod tests {
         signers: &mut Vec<v2::Party>,
         rng: &mut RNG,
     ) -> Vec<PolyCommitment> {
-        let A: Vec<PolyCommitment> = signers
-            .iter()
-            .map(|s| s.get_poly_commitment(rng))
-            .collect();
+        let A: Vec<PolyCommitment> = signers.iter().map(|s| s.get_poly_commitment(rng)).collect();
 
         // each party broadcasts their commitments
         // these hashmaps will need to be serialized in tuples w/ the value encrypted
@@ -302,7 +297,8 @@ mod tests {
         ]
         .to_vec();
         let mut signers = party_key_ids
-            .iter().enumerate()
+            .iter()
+            .enumerate()
             .map(|(pid, pkids)| v2::Party::new(pid, pkids, party_key_ids.len(), N, T, &mut rng))
             .collect();
 
