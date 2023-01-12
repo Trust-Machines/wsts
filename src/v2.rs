@@ -31,7 +31,7 @@ pub struct SignatureShare {
 #[allow(non_snake_case)]
 pub struct Party {
     pub party_id: usize,
-    pub key_ids: HashSet<usize>,
+    pub key_ids: Vec<usize>,
     pub public_keys: PubKeyMap, // key is key_id
     num_keys: usize,
     num_parties: usize,
@@ -45,7 +45,7 @@ impl Party {
     #[allow(non_snake_case)]
     pub fn new<RNG: RngCore + CryptoRng>(
         party_id: usize,
-        key_ids: HashSet<usize>,
+        key_ids: &[usize],
         num_parties: usize,
         num_keys: usize,
         threshold: usize,
@@ -53,7 +53,7 @@ impl Party {
     ) -> Self {
         Self {
             party_id: party_id,
-            key_ids: key_ids,
+            key_ids: key_ids.to_vec(),
             num_keys: num_keys,
             num_parties: num_parties,
             f: VSS::random_poly(threshold - 1, rng),
@@ -163,12 +163,9 @@ impl SignatureAggregator {
     #[allow(non_snake_case)]
     pub fn new(
         num_keys: usize,
-        num_parties: usize,
         threshold: usize,
-        A: Vec<PolyCommitment>,  // one per party_id
-        _public_keys: PubKeyMap, // one per key_id
+        A: Vec<PolyCommitment>, // one per party_id
     ) -> Self {
-        assert!(A.len() == num_parties);
         for A_i in &A {
             assert!(A_i.verify());
         }
@@ -193,25 +190,27 @@ impl SignatureAggregator {
         nonces: &[PublicNonce],
         sig_shares: &[SignatureShare],
     ) -> Signature {
+        assert_eq!(nonces.len(), sig_shares.len());
+
         let signers: Vec<usize> = sig_shares.iter().map(|ss| ss.party_id).collect();
         let (Ris, R) = compute::intermediate(msg, &signers, nonces);
         let mut z = Scalar::zero();
-        let c = compute::challenge(&self.group_key, &R, &msg); // only needed for checking z_i
+        let c = compute::challenge(&self.group_key, &R, &msg);
 
         for i in 0..sig_shares.len() {
+            println!("sig_shares[{}] {:?}", i, sig_shares[i]);
             let z_i = sig_shares[i].z_i;
             assert!(
                 z_i * G
                     == Ris[i]
-                        + sig_shares
-                            .iter()
-                            .enumerate()
-                            .fold(Point::zero(), |p, (k, share)| p + compute::lambda(
-                                share.party_id,
-                                &signers
-                            ) * c
-                                * share.public_keys[&k])
-            );
+                        + sig_shares[i].public_keys.iter().fold(
+                            Point::zero(),
+                            |p, (key_id, public_key)| p + compute::lambda(*key_id, &signers)
+                                * c
+                                * public_key
+                        )
+            ); // TODO: This should return a list of bad parties.
+
             z += z_i;
         }
 
@@ -313,7 +312,7 @@ mod tests {
             let sig = sig_agg.sign(&msg, &nonces, &sig_shares);
 
             println!("Signature (R,z) = \n({},{})", sig.R, sig.z);
-            assert!(sig.verify(&sig_agg.key, &msg));
+            assert!(sig.verify(&sig_agg.group_key, &msg));
         }
     }
 }

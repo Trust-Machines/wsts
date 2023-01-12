@@ -161,7 +161,7 @@ impl SignatureAggregator {
         let signers: Vec<usize> = sig_shares.iter().map(|ss| ss.id).collect();
         let (R_vec, R) = compute::intermediate(msg, &signers, nonces);
         let mut z = Scalar::zero();
-        let c = compute::challenge(&self.key, &R, msg); // only needed for checking z_i
+        let c = compute::challenge(&self.key, &R, msg);
 
         for i in 0..sig_shares.len() {
             let z_i = sig_shares[i].z_i;
@@ -171,7 +171,7 @@ impl SignatureAggregator {
                         + (compute::lambda(sig_shares[i].id, &signers)
                             * c
                             * sig_shares[i].public_key)
-            ); // TODO: This should return a list of bad parties.
+            ); // TODO: This should return a list of bad parties
             z += z_i;
         }
 
