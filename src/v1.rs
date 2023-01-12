@@ -112,7 +112,7 @@ impl Party {
     }
 
     fn id(&self) -> Scalar {
-        Scalar::from((self.id + 1) as u32)
+        compute::id(self.id)
     }
 
     #[allow(non_snake_case)]
@@ -121,7 +121,7 @@ impl Party {
         let mut z = &self.nonce.d + &self.nonce.e * compute::binding(&self.id(), nonces, msg);
         z += compute::challenge(&self.group_key, &R, msg)
             * &self.private_key
-            * compute::lambda(&self.id, signers);
+            * compute::lambda(self.id, signers);
         z
     }
 }
@@ -168,7 +168,7 @@ impl SignatureAggregator {
             assert!(
                 z_i * G
                     == R_vec[i]
-                        + (compute::lambda(&sig_shares[i].id, &signers)
+                        + (compute::lambda(sig_shares[i].id, &signers)
                             * c
                             * sig_shares[i].public_key)
             ); // TODO: This should return a list of bad parties.
@@ -376,7 +376,7 @@ mod tests {
 
     #[allow(non_snake_case)]
     #[test]
-    fn signer_sign() {
+    fn aggregator_sign() {
         let mut rng = OsRng::default();
         let msg = "It was many and many a year ago".as_bytes();
         let N: usize = 10;
