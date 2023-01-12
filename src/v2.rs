@@ -82,7 +82,7 @@ impl Party {
 
     pub fn get_shares(&self) -> HashMap<usize, Scalar> {
         let mut shares = HashMap::new();
-        for i in self.num_keys {
+        for i in 0..self.num_keys {
             shares.insert(i, self.f.eval(compute::id(i)));
         }
         shares
@@ -223,7 +223,6 @@ impl SignatureAggregator {
 #[cfg(test)]
 mod tests {
     use crate::common::{PolyCommitment, PublicNonce};
-    use crate::traits::Signer;
     use crate::v2;
     use crate::v2::SignatureShare;
 
