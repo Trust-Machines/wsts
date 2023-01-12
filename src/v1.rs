@@ -116,13 +116,18 @@ impl Party {
     }
 
     #[allow(non_snake_case)]
-    pub fn sign(&self, msg: &[u8], signers: &[usize], nonces: &[PublicNonce]) -> Scalar {
+    pub fn sign(&self, msg: &[u8], signers: &[usize], nonces: &[PublicNonce]) -> SignatureShare {
         let (_R_vec, R) = compute::intermediate(msg, signers, nonces);
         let mut z = &self.nonce.d + &self.nonce.e * compute::binding(&self.id(), nonces, msg);
         z += compute::challenge(&self.group_key, &R, msg)
             * &self.private_key
             * compute::lambda(self.id, signers);
-        z
+
+        SignatureShare {
+            id: self.id,
+            z_i: z,
+            public_key: self.public_key,
+        }
     }
 }
 
@@ -142,7 +147,7 @@ impl SignatureAggregator {
             assert!(A_i.verify());
         }
 
-        let mut key = Point::new(); // TODO: Compute pub key from A
+        let mut key = Point::zero(); // TODO: Compute pub key from A
         for A_i in &A {
             key += &A_i.A[0];
         }
@@ -158,6 +163,8 @@ impl SignatureAggregator {
         nonces: &[PublicNonce],
         sig_shares: &[SignatureShare],
     ) -> Signature {
+        assert_eq!(nonces.len(), sig_shares.len());
+
         let signers: Vec<usize> = sig_shares.iter().map(|ss| ss.id).collect();
         let (R_vec, R) = compute::intermediate(msg, &signers, nonces);
         let mut z = Scalar::zero();
@@ -254,11 +261,7 @@ impl crate::traits::Signer for Signer {
     fn sign(&self, msg: &[u8], signers: &[usize], nonces: &[PublicNonce]) -> Vec<SignatureShare> {
         self.parties
             .iter()
-            .map(|p| SignatureShare {
-                id: p.id,
-                z_i: p.sign(msg, signers, nonces),
-                public_key: p.public_key,
-            })
+            .map(|p| p.sign(msg, signers, nonces))
             .collect()
     }
 }

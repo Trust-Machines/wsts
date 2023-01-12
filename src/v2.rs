@@ -195,8 +195,6 @@ impl SignatureAggregator {
         assert_eq!(nonces.len(), sig_shares.len());
 
         let signers: Vec<usize> = sig_shares.iter().map(|ss| ss.party_id).collect();
-        //println!("signers: {:?}\nnonces: {:?}", &signers, nonces);
-
         let (Ris, R) = compute::intermediate(msg, &signers, nonces);
         println!("aggre sign R {}", &R);
         let mut z = Scalar::zero();
