@@ -134,16 +134,21 @@ impl Party {
     }
 
     #[allow(non_snake_case)]
-    // signers are party_ids, not key_ids
-    pub fn sign(&self, msg: &[u8], signers: &[usize], nonces: &[PublicNonce]) -> SignatureShare {
+    pub fn sign(
+        &self,
+        msg: &[u8],
+        party_ids: &[usize],
+        key_ids: &[usize],
+        nonces: &[PublicNonce],
+    ) -> SignatureShare {
         //println!("signers: {:?}\nnonces: {:?}", signers, nonces);
-        let (_R_vec, R) = compute::intermediate(msg, signers, nonces);
+        let (_R_vec, R) = compute::intermediate(msg, party_ids, nonces);
         println!("party sign R {}", &R);
         let c = compute::challenge(&self.group_key, &R, msg);
 
         let mut z = &self.nonce.d + &self.nonce.e * compute::binding(&self.id(), nonces, msg);
         for key_id in self.key_ids.iter() {
-            z += c * &self.private_keys[key_id] * compute::lambda(*key_id, signers);
+            z += c * &self.private_keys[key_id] * compute::lambda(*key_id, key_ids);
         }
 
         SignatureShare {
@@ -191,11 +196,12 @@ impl SignatureAggregator {
         msg: &[u8],
         nonces: &[PublicNonce],
         sig_shares: &[SignatureShare],
+        key_ids: &[usize],
     ) -> Signature {
         assert_eq!(nonces.len(), sig_shares.len());
 
-        let signers: Vec<usize> = sig_shares.iter().map(|ss| ss.party_id).collect();
-        let (Ris, R) = compute::intermediate(msg, &signers, nonces);
+        let party_ids: Vec<usize> = sig_shares.iter().map(|ss| ss.party_id).collect();
+        let (Ris, R) = compute::intermediate(msg, &party_ids, nonces);
         println!("aggre sign R {}", &R);
         let mut z = Scalar::zero();
         let c = compute::challenge(&self.group_key, &R, msg);
@@ -207,7 +213,7 @@ impl SignatureAggregator {
                     == Ris[i]
                         + sig_shares[i].public_keys.iter().fold(
                             Point::zero(),
-                            |p, (key_id, public_key)| p + compute::lambda(*key_id, &signers)
+                            |p, (key_id, public_key)| p + compute::lambda(*key_id, &key_ids)
                                 * c
                                 * public_key
                         )
@@ -271,15 +277,16 @@ mod tests {
         msg: &[u8],
         signers: &mut [v2::Party],
         rng: &mut RNG,
-    ) -> (Vec<PublicNonce>, Vec<SignatureShare>) {
+    ) -> (Vec<PublicNonce>, Vec<SignatureShare>, Vec<usize>) {
         let party_ids: Vec<usize> = signers.iter().map(|s| s.party_id).collect();
+        let key_ids: Vec<usize> = signers.iter().flat_map(|s| s.key_ids.clone()).collect();
         let nonces: Vec<PublicNonce> = signers.iter_mut().map(|s| s.gen_nonce(rng)).collect();
         let shares = signers
             .iter()
-            .map(|s| s.sign(msg, &party_ids, &nonces))
+            .map(|s| s.sign(msg, &party_ids, &key_ids, &nonces))
             .collect();
 
-        (nonces, shares)
+        (nonces, shares, key_ids)
     }
 
     #[allow(non_snake_case)]
@@ -309,8 +316,8 @@ mod tests {
             let mut signers = [signers[0].clone(), signers[1].clone(), signers[3].clone()].to_vec();
             let mut sig_agg = v2::SignatureAggregator::new(N, T, A.clone());
 
-            let (nonces, sig_shares) = sign(&msg, &mut signers, &mut rng);
-            let sig = sig_agg.sign(&msg, &nonces, &sig_shares);
+            let (nonces, sig_shares, key_ids) = sign(&msg, &mut signers, &mut rng);
+            let sig = sig_agg.sign(&msg, &nonces, &sig_shares, &key_ids);
 
             println!("Signature (R,z) = \n({},{})", sig.R, sig.z);
             assert!(sig.verify(&sig_agg.group_key, &msg));
