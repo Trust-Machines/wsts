@@ -213,7 +213,7 @@ impl SignatureAggregator {
                     == Ris[i]
                         + sig_shares[i].public_keys.iter().fold(
                             Point::zero(),
-                            |p, (key_id, public_key)| p + compute::lambda(*key_id, &key_ids)
+                            |p, (key_id, public_key)| p + compute::lambda(*key_id, key_ids)
                                 * c
                                 * public_key
                         )
