@@ -120,10 +120,6 @@ impl Party {
             }
             self.public_keys
                 .insert(*key_id, self.private_keys[key_id] * G);
-            println!(
-                "Party {} key_id {} secret {}",
-                self.party_id, key_id, self.private_keys[key_id]
-            );
         }
 
         &self.public_keys
@@ -143,7 +139,6 @@ impl Party {
     ) -> SignatureShare {
         //println!("signers: {:?}\nnonces: {:?}", signers, nonces);
         let (_R_vec, R) = compute::intermediate(msg, party_ids, nonces);
-        println!("party sign R {}", &R);
         let c = compute::challenge(&self.group_key, &R, msg);
 
         let mut z = &self.nonce.d + &self.nonce.e * compute::binding(&self.id(), nonces, msg);
@@ -181,7 +176,7 @@ impl SignatureAggregator {
         for A_i in &A {
             group_key += &A_i.A[0];
         }
-        println!("SA groupKey {}", group_key);
+        //println!("SA groupKey {}", group_key);
 
         Self {
             num_keys,
@@ -202,7 +197,6 @@ impl SignatureAggregator {
 
         let party_ids: Vec<usize> = sig_shares.iter().map(|ss| ss.party_id).collect();
         let (Ris, R) = compute::intermediate(msg, &party_ids, nonces);
-        println!("aggre sign R {}", &R);
         let mut z = Scalar::zero();
         let c = compute::challenge(&self.group_key, &R, msg);
 
@@ -319,7 +313,7 @@ mod tests {
             let (nonces, sig_shares, key_ids) = sign(&msg, &mut signers, &mut rng);
             let sig = sig_agg.sign(&msg, &nonces, &sig_shares, &key_ids);
 
-            println!("Signature (R,z) = \n({},{})", sig.R, sig.z);
+            //println!("Signature (R,z) = \n({},{})", sig.R, sig.z);
             assert!(sig.verify(&sig_agg.group_key, &msg));
         }
     }

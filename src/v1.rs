@@ -108,7 +108,6 @@ impl Party {
             self.group_key += Ai.A[0];
         }
         self.public_key = self.private_key * G;
-        println!("Party {} secret {}", self.id, self.private_key);
     }
 
     fn id(&self) -> Scalar {
@@ -151,7 +150,7 @@ impl SignatureAggregator {
         for A_i in &A {
             key += &A_i.A[0];
         }
-        println!("SA groupKey {}", key);
+        //println!("SA groupKey {}", key);
 
         Self { N, T, key }
     }
@@ -406,7 +405,7 @@ mod tests {
             let (nonces, sig_shares) = sign(&msg, &mut signers, &mut rng);
             let sig = sig_agg.sign(&msg, &nonces, &sig_shares);
 
-            println!("Signature (R,z) = \n({},{})", sig.R, sig.z);
+            //println!("Signature (R,z) = \n({},{})", sig.R, sig.z);
             assert!(sig.verify(&sig_agg.key, &msg));
         }
     }
