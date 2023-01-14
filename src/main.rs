@@ -61,11 +61,7 @@ fn collect_signatures(
     let mut sigs = Vec::new();
     for i in 0..signers.len() {
         let party = &parties[signers[i]];
-        sigs.push(SignatureShare {
-            id: party.id,
-            z_i: party.sign(msg, signers, nonces),
-            public_key: party.public_key,
-        });
+        sigs.push(party.sign(msg, signers, nonces));
     }
     sigs
 }

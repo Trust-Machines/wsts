@@ -31,12 +31,12 @@ pub fn challenge(publicKey: &Point, R: &Point, msg: &[u8]) -> Scalar {
     hash_to_scalar(&mut hasher)
 }
 
-pub fn lambda(i: &usize, indices: &[usize]) -> Scalar {
+pub fn lambda(i: usize, indices: &[usize]) -> Scalar {
     let mut lambda = Scalar::one();
-    let i_scalar = Scalar::from((i + 1) as u32);
+    let i_scalar = id(i);
     for j in indices {
-        if i != j {
-            let j_scalar = Scalar::from((j + 1) as u32);
+        if i != *j {
+            let j_scalar = id(*j);
             lambda *= j_scalar / (j_scalar - i_scalar);
         }
     }
@@ -48,7 +48,7 @@ pub fn lambda(i: &usize, indices: &[usize]) -> Scalar {
 pub fn intermediate(msg: &[u8], signers: &[usize], nonces: &[PublicNonce]) -> (Vec<Point>, Point) {
     let rhos: Vec<Scalar> = signers
         .iter()
-        .map(|&i| binding(&Scalar::from((i + 1) as u32), nonces, msg))
+        .map(|&i| binding(&id(i), nonces, msg))
         .collect();
     let R_vec: Vec<Point> = zip(nonces, rhos)
         .map(|(nonce, rho)| nonce.D + rho * nonce.E)
@@ -56,4 +56,8 @@ pub fn intermediate(msg: &[u8], signers: &[usize], nonces: &[PublicNonce]) -> (V
 
     let R = R_vec.iter().fold(Point::zero(), |R, &R_i| R + R_i);
     (R_vec, R)
+}
+
+pub fn id(i: usize) -> Scalar {
+    Scalar::from((i + 1) as u32)
 }

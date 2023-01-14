@@ -100,8 +100,6 @@ impl Signature {
         let c = challenge(public_key, &self.R, msg);
         let R = &self.z * G + (-c) * public_key;
 
-        println!("Verification R = {}", R);
-
         R == self.R
     }
 }
