@@ -14,6 +14,7 @@ rand_core = "0.5"
 secp256k1-math = { git = "https://github.com/Trust-Machines/rust-secp256k1-math", rev = "f1720d822a0903bb84d6e86dcf2c71ba4e67a0bc" }
 serde = { version = "1.0", features = ["derive"] }
 sha3 = "0.10.5"
+thiserror = "1.0"
 
 [lib]
 path = "src/lib.rs"    # The source file of the target.

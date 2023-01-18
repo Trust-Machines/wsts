@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::common::{Nonce, PolyCommitment, PublicNonce, Signature, SignatureShare};
 use crate::compute;
+use crate::errors::{AggregatorError, DkgError};
 use crate::schnorr::ID;
 use crate::vss::VSS;
 
@@ -92,22 +93,48 @@ impl Party {
     // TODO: Maybe this should be private? If receive_share is keeping track
     // of which it receives, then this could be called when it has N shares from unique ids
     #[allow(non_snake_case)]
-    pub fn compute_secret(&mut self, shares: HashMap<usize, Scalar>, A: &[PolyCommitment]) {
-        // TODO: return error with a list of missing shares
-        assert!(shares.len() == self.n);
+    pub fn compute_secret(
+        &mut self,
+        shares: HashMap<usize, Scalar>,
+        A: &[PolyCommitment],
+    ) -> Result<(), DkgError> {
+        let mut missing_shares = Vec::new();
+        for i in 0..self.n {
+            if shares.get(&i).is_none() {
+                missing_shares.push(i);
+            }
+        }
+        if !missing_shares.is_empty() {
+            return Err(DkgError::MissingShares(missing_shares));
+        }
+
         self.private_key = Scalar::zero();
+
+        let bad_ids: Vec<usize> = shares.keys().cloned().filter(|i| !A[*i].verify()).collect();
+        if !bad_ids.is_empty() {
+            return Err(DkgError::BadIds(bad_ids));
+        }
+
+        let mut bad_shares = Vec::new();
         for (i, s) in shares.iter() {
             let Ai = &A[*i];
-            assert!(Ai.verify()); // checks a0 proof
-            assert!(
-                s * G
-                    == (0..Ai.A.len()).fold(Point::zero(), |s, j| s
-                        + (Scalar::from((self.id + 1) as u32) ^ j) * Ai.A[j])
-            );
+            if s * G != (0..Ai.A.len()).fold(Point::zero(), |s, j| s + (self.id() ^ j) * Ai.A[j]) {
+                bad_shares.push(*i);
+            }
+        }
+        if !bad_shares.is_empty() {
+            return Err(DkgError::BadShares(bad_shares));
+        }
+
+        for (i, s) in shares.iter() {
+            let Ai = &A[*i];
+
             self.private_key += s;
             self.group_key += Ai.A[0];
         }
         self.public_key = self.private_key * G;
+
+        Ok(())
     }
 
     fn id(&self) -> Scalar {
@@ -139,11 +166,19 @@ pub struct SignatureAggregator {
 
 impl SignatureAggregator {
     #[allow(non_snake_case)]
-    pub fn new(N: usize, T: usize, A: Vec<PolyCommitment>) -> Self {
-        // TODO: How should we handle bad As?
-        assert!(A.len() == N);
+    pub fn new(N: usize, T: usize, A: Vec<PolyCommitment>) -> Result<Self, AggregatorError> {
+        if A.len() != N {
+            return Err(AggregatorError::BadPolyCommitmentLen(A.len(), N));
+        }
+
+        let mut bad_poly_commitments = Vec::new();
         for A_i in &A {
-            assert!(A_i.verify());
+            if !A_i.verify() {
+                bad_poly_commitments.push(A_i.id.id);
+            }
+        }
+        if !bad_poly_commitments.is_empty() {
+            return Err(AggregatorError::BadPolyCommitments(bad_poly_commitments));
         }
 
         let mut key = Point::zero(); // TODO: Compute pub key from A
@@ -152,7 +187,7 @@ impl SignatureAggregator {
         }
         //println!("SA groupKey {}", key);
 
-        Self { N, T, key }
+        Ok(Self { N, T, key })
     }
 
     #[allow(non_snake_case)]
@@ -161,27 +196,38 @@ impl SignatureAggregator {
         msg: &[u8],
         nonces: &[PublicNonce],
         sig_shares: &[SignatureShare],
-    ) -> Signature {
-        assert_eq!(nonces.len(), sig_shares.len());
+    ) -> Result<Signature, AggregatorError> {
+        if nonces.len() != sig_shares.len() {
+            return Err(AggregatorError::BadNonceLen(nonces.len(), sig_shares.len()));
+        }
 
         let signers: Vec<usize> = sig_shares.iter().map(|ss| ss.id).collect();
         let (R_vec, R) = compute::intermediate(msg, &signers, nonces);
         let mut z = Scalar::zero();
         let c = compute::challenge(&self.key, &R, msg);
+        let mut bad_party_sigs = Vec::new();
 
         for i in 0..sig_shares.len() {
             let z_i = sig_shares[i].z_i;
-            assert!(
-                z_i * G
-                    == R_vec[i]
-                        + (compute::lambda(sig_shares[i].id, &signers)
-                            * c
-                            * sig_shares[i].public_key)
-            ); // TODO: This should return a list of bad parties
+            if z_i * G
+                != R_vec[i]
+                    + (compute::lambda(sig_shares[i].id, &signers) * c * sig_shares[i].public_key)
+            {
+                bad_party_sigs.push(sig_shares[i].id);
+            }
+
             z += z_i;
         }
-
-        Signature { R, z }
+        if bad_party_sigs.is_empty() {
+            let sig = Signature { R, z };
+            if sig.verify(&self.key, msg) {
+                Ok(sig)
+            } else {
+                Err(AggregatorError::BadGroupSig)
+            }
+        } else {
+            Err(AggregatorError::BadPartySigs(bad_party_sigs))
+        }
     }
 }
 
@@ -268,6 +314,7 @@ impl crate::traits::Signer for Signer {
 #[cfg(test)]
 mod tests {
     use crate::common::{PolyCommitment, PublicNonce, SignatureShare};
+    use crate::errors::DkgError;
     use crate::traits::Signer;
     use crate::v1;
 
@@ -328,7 +375,7 @@ mod tests {
     fn dkg<RNG: RngCore + CryptoRng>(
         signers: &mut Vec<v1::Signer>,
         rng: &mut RNG,
-    ) -> Vec<PolyCommitment> {
+    ) -> Result<Vec<PolyCommitment>, HashMap<usize, DkgError>> {
         let A: Vec<PolyCommitment> = signers
             .iter()
             .flat_map(|s| s.get_poly_commitments(rng))
@@ -345,6 +392,7 @@ mod tests {
 
         // each party collects its shares from the broadcasts
         // maybe this should collect into a hashmap first?
+        let mut secret_errors = HashMap::new();
         for signer in signers.iter_mut() {
             for party in signer.parties.iter_mut() {
                 let mut h = HashMap::new();
@@ -353,11 +401,17 @@ mod tests {
                     h.insert(*id, share[&party.id]);
                 }
 
-                party.compute_secret(h, &A);
+                if let Err(secret_error) = party.compute_secret(h, &A) {
+                    secret_errors.insert(party.id, secret_error);
+                }
             }
         }
 
-        A
+        if secret_errors.is_empty() {
+            Ok(A)
+        } else {
+            Err(secret_errors)
+        }
     }
 
     // There might be a slick one-liner for this?
@@ -395,18 +449,23 @@ mod tests {
             .map(|ids| v1::Signer::new(ids, N, T, &mut rng))
             .collect();
 
-        let A = dkg(&mut signers, &mut rng);
+        let A = match dkg(&mut signers, &mut rng) {
+            Ok(A) => A,
+            Err(secret_errors) => {
+                panic!("Got secret errors from DKG: {:?}", secret_errors);
+            }
+        };
 
         // signers [0,1,3] who have T keys
         {
             let mut signers = [signers[0].clone(), signers[1].clone(), signers[3].clone()].to_vec();
-            let mut sig_agg = v1::SignatureAggregator::new(N, T, A.clone());
+            let mut sig_agg =
+                v1::SignatureAggregator::new(N, T, A.clone()).expect("aggregator ctor failed");
 
             let (nonces, sig_shares) = sign(&msg, &mut signers, &mut rng);
-            let sig = sig_agg.sign(&msg, &nonces, &sig_shares);
-
-            //println!("Signature (R,z) = \n({},{})", sig.R, sig.z);
-            assert!(sig.verify(&sig_agg.key, &msg));
+            if let Err(e) = sig_agg.sign(&msg, &nonces, &sig_shares) {
+                panic!("Aggregator sign failed: {:?}", e);
+            }
         }
     }
 }

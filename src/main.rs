@@ -27,7 +27,7 @@ fn distribute(parties: &mut Vec<Party>, A: &[PolyCommitment]) -> u128 {
             h.insert(j, broadcast_shares[j][&i]);
         }
         let compute_secret_start = time::Instant::now();
-        parties[i].compute_secret(h, A);
+        parties[i].compute_secret(h, A).unwrap();
         let compute_secret_time = compute_secret_start.elapsed();
         total_compute_secret_time += compute_secret_time.as_micros();
     }
@@ -102,20 +102,27 @@ fn main() {
             .map(|i| parties[*i].gen_nonce(&mut rng))
             .collect();
 
-        let mut sig_agg = SignatureAggregator::new(N, T, A.clone());
+        let mut sig_agg =
+            SignatureAggregator::new(N, T, A.clone()).expect("aggregator ctor failed");
 
         let party_sig_start = time::Instant::now();
         let sig_shares = collect_signatures(&parties, &signers, &nonces, msg);
         let party_sig_time = party_sig_start.elapsed();
         let sig_start = time::Instant::now();
-        let sig = sig_agg.sign(msg, &nonces, &sig_shares);
+        let sig_res = sig_agg.sign(msg, &nonces, &sig_shares);
         let sig_time = sig_start.elapsed();
 
         total_party_sig_time += party_sig_time.as_micros();
         total_sig_time += sig_time.as_micros();
 
-        println!("Signature (R,z) = \n({},{})", sig.R, sig.z);
-        assert!(sig.verify(&sig_agg.key, msg));
+        match sig_res {
+            Ok(sig) => {
+                println!("Signature (R,z) = \n({},{})", sig.R, sig.z);
+            }
+            Err(sig_error) => {
+                panic!("Signing failed: {:?}", sig_error);
+            }
+        }
     }
     println!("With {} parties and {} signers:", N, T);
     println!(

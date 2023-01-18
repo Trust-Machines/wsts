@@ -1,5 +1,6 @@
 pub mod common;
 pub mod compute;
+pub mod errors;
 pub mod schnorr;
 pub mod traits;
 pub mod util;
