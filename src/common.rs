@@ -81,10 +81,10 @@ impl PublicNonce {
 // TODO: Remove public key from here
 // The SA should get that as usual
 #[derive(Debug, Deserialize, Serialize)]
-pub struct SignatureShare {
+pub struct SignatureShare<T> {
     pub id: usize,
     pub z_i: Scalar,
-    pub public_key: Point,
+    pub public_key: T,
 }
 
 #[allow(non_snake_case)]

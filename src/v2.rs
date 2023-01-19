@@ -5,7 +5,7 @@ use secp256k1_math::{
     point::{Point, G},
     scalar::Scalar,
 };
-use serde::{Deserialize, Serialize};
+//use serde::{Deserialize, Serialize};
 
 use crate::common::{Nonce, PolyCommitment, PublicNonce, Signature};
 use crate::compute;
@@ -18,15 +18,7 @@ use hashbrown::{HashMap, HashSet};
 pub type PubKeyMap = HashMap<usize, Point>;
 pub type PrivKeyMap = HashMap<usize, Scalar>;
 pub type SelectedSigners = HashMap<usize, HashSet<usize>>;
-
-// TODO: Remove public key from here
-// The SA should get that as usual
-#[derive(Debug, Deserialize, Serialize)]
-pub struct SignatureShare {
-    pub party_id: usize,
-    pub z_i: Scalar,
-    pub public_keys: HashMap<usize, Point>,
-}
+pub type SignatureShare = crate::common::SignatureShare<PubKeyMap>;
 
 #[derive(Clone)]
 #[allow(non_snake_case)]
@@ -180,9 +172,9 @@ impl Party {
         }
 
         SignatureShare {
-            party_id: self.party_id,
+            id: self.party_id,
             z_i: z,
-            public_keys: self.public_keys.clone(),
+            public_key: self.public_keys.clone(),
         }
     }
 }
@@ -236,7 +228,7 @@ impl SignatureAggregator {
             return Err(AggregatorError::BadNonceLen(nonces.len(), sig_shares.len()));
         }
 
-        let party_ids: Vec<usize> = sig_shares.iter().map(|ss| ss.party_id).collect();
+        let party_ids: Vec<usize> = sig_shares.iter().map(|ss| ss.id).collect();
         let (Ris, R) = compute::intermediate(msg, &party_ids, nonces);
         let mut z = Scalar::zero();
         let c = compute::challenge(&self.group_key, &R, msg);
@@ -246,14 +238,14 @@ impl SignatureAggregator {
             let z_i = sig_shares[i].z_i;
             if z_i * G
                 != (Ris[i]
-                    + sig_shares[i].public_keys.iter().fold(
+                    + sig_shares[i].public_key.iter().fold(
                         Point::zero(),
                         |p, (key_id, public_key)| {
                             p + compute::lambda(*key_id, key_ids) * c * public_key
                         },
                     ))
             {
-                bad_party_sigs.push(sig_shares[i].party_id);
+                bad_party_sigs.push(sig_shares[i].id);
             }
             z += z_i;
         }

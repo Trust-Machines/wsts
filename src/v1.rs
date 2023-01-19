@@ -7,13 +7,15 @@ use secp256k1_math::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::common::{Nonce, PolyCommitment, PublicNonce, Signature, SignatureShare};
+use crate::common::{Nonce, PolyCommitment, PublicNonce, Signature};
 use crate::compute;
 use crate::errors::{AggregatorError, DkgError};
 use crate::schnorr::ID;
 use crate::vss::VSS;
 
 use hashbrown::HashMap;
+
+pub type SignatureShare = crate::common::SignatureShare<Point>;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct PartyState {
@@ -298,7 +300,7 @@ impl Signer {
     }
 }
 
-impl crate::traits::Signer for Signer {
+impl crate::traits::Signer<Point> for Signer {
     fn gen_nonces<RNG: RngCore + CryptoRng>(&mut self, rng: &mut RNG) -> Vec<PublicNonce> {
         self.parties.iter_mut().map(|p| p.gen_nonce(rng)).collect()
     }
@@ -313,7 +315,7 @@ impl crate::traits::Signer for Signer {
 
 #[cfg(test)]
 mod tests {
-    use crate::common::{PolyCommitment, PublicNonce, SignatureShare};
+    use crate::common::{PolyCommitment, PublicNonce};
     use crate::errors::DkgError;
     use crate::traits::Signer;
     use crate::v1;
@@ -419,7 +421,7 @@ mod tests {
         msg: &[u8],
         signers: &mut [v1::Signer],
         rng: &mut RNG,
-    ) -> (Vec<PublicNonce>, Vec<SignatureShare>) {
+    ) -> (Vec<PublicNonce>, Vec<v1::SignatureShare>) {
         let ids: Vec<usize> = signers.iter().flat_map(|s| s.get_ids()).collect();
         let nonces: Vec<PublicNonce> = signers.iter_mut().flat_map(|s| s.gen_nonces(rng)).collect();
         let shares = signers
