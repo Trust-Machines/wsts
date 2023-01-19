@@ -5,7 +5,7 @@ use secp256k1_math::{
     point::{Point, G},
     scalar::Scalar,
 };
-//use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 use crate::common::{Nonce, PolyCommitment, PublicNonce, Signature};
 use crate::compute;
@@ -20,7 +20,19 @@ pub type PrivKeyMap = HashMap<usize, Scalar>;
 pub type SelectedSigners = HashMap<usize, HashSet<usize>>;
 pub type SignatureShare = crate::common::SignatureShare<PubKeyMap>;
 
-#[derive(Clone)]
+#[derive(Serialize, Deserialize)]
+pub struct PartyState {
+    pub party_id: usize,
+    pub key_ids: Vec<usize>,
+    pub public_keys: PubKeyMap,
+    pub num_keys: usize,
+    pub num_parties: usize,
+    pub polynomial: Polynomial<Scalar>,
+    pub private_keys: PrivKeyMap,
+    pub group_key: Point,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[allow(non_snake_case)]
 pub struct Party {
     pub party_id: usize,
@@ -28,7 +40,7 @@ pub struct Party {
     pub public_keys: PubKeyMap, // key is key_id
     num_keys: usize,
     num_parties: usize,
-    f: Polynomial<Scalar>, // one poly per party to simulate the sum of all their polys
+    f: Polynomial<Scalar>,    // one poly per party
     private_keys: PrivKeyMap, // key is key_id
     group_key: Point,
     nonce: Nonce,
@@ -54,6 +66,33 @@ impl Party {
             public_keys: PubKeyMap::new(),
             group_key: Point::zero(),
             nonce: Nonce::zero(),
+        }
+    }
+
+    pub fn load(state: &PartyState) -> Self {
+        Self {
+            party_id: state.party_id,
+            key_ids: state.key_ids.clone(),
+            num_keys: state.num_keys,
+            num_parties: state.num_parties,
+            f: state.polynomial.clone(),
+            private_keys: state.private_keys.clone(),
+            public_keys: state.public_keys.clone(),
+            group_key: state.group_key,
+            nonce: Nonce::zero(),
+        }
+    }
+
+    pub fn save(&self) -> PartyState {
+        PartyState {
+            party_id: self.party_id,
+            key_ids: self.key_ids.clone(),
+            num_keys: self.num_keys,
+            num_parties: self.num_parties,
+            polynomial: self.f.clone(),
+            private_keys: self.private_keys.clone(),
+            public_keys: self.public_keys.clone(),
+            group_key: self.group_key,
         }
     }
 
@@ -271,6 +310,21 @@ mod tests {
 
     use hashbrown::HashMap;
     use rand_core::{CryptoRng, OsRng, RngCore};
+
+    #[test]
+    fn party_save_load() {
+        let mut rng = OsRng::default();
+        let ids = [1, 2, 3];
+        let n: usize = 10;
+        let t: usize = 7;
+
+        let signer = v2::Party::new(0, &ids, 1, n, t, &mut rng);
+
+        let state = signer.save();
+        let loaded = v2::Party::load(&state);
+
+        assert_eq!(signer, loaded);
+    }
 
     #[allow(non_snake_case)]
     fn dkg<RNG: RngCore + CryptoRng>(
