@@ -1,6 +1,6 @@
 use core::iter::zip;
 use num_traits::{One, Zero};
-use secp256k1_math::{point::Point, scalar::Scalar};
+use p256k1::{point::Point, scalar::Scalar};
 use sha3::{Digest, Sha3_256};
 
 use crate::common::PublicNonce;

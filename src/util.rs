@@ -1,4 +1,4 @@
-use secp256k1_math::{point::Compressed, point::Point, scalar::Scalar};
+use p256k1::{point::Compressed, point::Point, scalar::Scalar};
 use sha3::{Digest, Sha3_256};
 
 #[allow(dead_code)]

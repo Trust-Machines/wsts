@@ -1,4 +1,4 @@
-use secp256k1_math::scalar::Scalar;
+use p256k1::scalar::Scalar;
 use thiserror::Error;
 
 #[derive(Error, Debug)]

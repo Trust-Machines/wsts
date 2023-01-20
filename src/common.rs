@@ -1,10 +1,10 @@
 use core::ops::Add;
 use num_traits::Zero;
-use rand_core::{CryptoRng, RngCore};
-use secp256k1_math::{
+use p256k1::{
     point::{Point, G},
     scalar::Scalar,
 };
+use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
 use crate::compute::challenge;

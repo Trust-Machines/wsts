@@ -1,8 +1,8 @@
-use rand_core::{CryptoRng, RngCore};
-use secp256k1_math::{
+use p256k1::{
     point::{Point, G},
     scalar::Scalar,
 };
+use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Sha3_256};
 

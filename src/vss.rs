@@ -1,6 +1,6 @@
+use p256k1::scalar::Scalar;
 use polynomial::Polynomial;
 use rand_core::{CryptoRng, RngCore};
-use secp256k1_math::scalar::Scalar;
 
 pub struct VSS {}
 
