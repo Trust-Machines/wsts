@@ -11,7 +11,7 @@ hex = "0.4.3"
 num-traits = "0.2"
 polynomial = { git = "https://github.com/Trust-Machines/polynomial-rs", rev = "3e2fafa6e85dec5b84006374ffe1cc83473182e5", features = ["serde"] }
 rand_core = "0.5"
-p256k1 = { git = "https://github.com/Trust-Machines/p256k1", tag = "stacks-signer" }
+p256k1 = { git = "https://github.com/Trust-Machines/p256k1", branch = "master" }
 serde = { version = "1.0", features = ["derive"] }
 sha3 = "0.10.5"
 thiserror = "1.0"
