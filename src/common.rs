@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::compute::challenge;
 use crate::schnorr::ID;
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[allow(non_snake_case)]
 pub struct PolyCommitment {
     pub id: ID,
