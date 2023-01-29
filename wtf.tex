@@ -1,0 +1,107 @@
+\documentclass{article}
+\title{Weighted Threshold FROST}
+\date{2023-01-19}
+\author{Joey Yandle}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{mathtools}
+%\usepackage[symbol]{footmisc}
+
+\renewcommand{\thefootnote}{\fnsymbol{footnote}}
+
+\newcommand\Set[2]{\{\,#1\mid#2\,\}}
+\newcommand\underoverset[3]{\underset{#1}{\overset{#2}{#3}}}
+
+\usepackage{geometry}
+\geometry{
+  a4paper,
+  total={170mm,257mm},
+  left=20mm,
+  top=20mm,
+}
+
+\makeatletter
+\def\@maketitle{%
+  \newpage
+  \null
+  \vskip 2em%
+  \begin{center}%
+  \let \footnote \thanks
+    {\Huge\bfseries\@title \par}%
+    \vskip 1.5em%
+    {\large
+      \lineskip .5em%
+      \begin{tabular}[t]{c}%
+        \@author \footnote{joey@trustmachines.co}
+      \end{tabular}\par}%
+    \vskip 1em%
+    {\large \@date}%
+  \end{center}%
+  \par
+  \vskip 1.5em}
+\makeatother
+
+\begin{document}
+\maketitle
+
+\begingroup
+\leftskip5em
+\parskip1em
+\rightskip\leftskip
+\noindent\textbf{Abstract.} We present Weighted Threshold FROST (WTF), which optimizes the base FROST implementation to reduce bandwidth when FROST parties control multiple keys.
+
+\par
+\noindent\textbf{Keywords:} Weighted Aggregate Threshold Signatures; FROST
+\par
+\endgroup
+
+\section{
+  Introduction
+}
+
+FROST \cite{frost} is a system for making aggregate threshold signatures.  
+
+%\newpage
+\section{
+  Background
+}
+
+\subsection{
+  Threshold Signatures
+}
+
+Threshold signatures allow a number of signers $N$ to collaborate to sign messages.  There are many such protocols, but they all specify a threshold $T$, which is the number of signers necessary to create a valid signature.  
+
+\subsection{
+  Aggregate Threshold Signatures
+}
+
+
+\subsection{
+  Weighted Aggregate Threshold Signatures
+}
+
+
+
+\subsection{
+  FROST
+}
+
+
+\newpage
+\section{
+  WTF
+}
+
+
+\begin{thebibliography}{1}
+
+\bibitem{frost}
+  \emph{FROST}.
+  \texttt{https://eprint.iacr.org/2020/852.pdf}
+
+\end{thebibliography}
+
+\end{document}
+

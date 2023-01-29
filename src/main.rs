@@ -120,11 +120,11 @@ fn main() {
                 println!("Signature (R,z) = \n({},{})", sig.R, sig.z);
             }
             Err(sig_error) => {
-                panic!("Signing failed: {:?}", sig_error);
+                panic!("Signing failed: {sig_error:?}");
             }
         }
     }
-    println!("With {} parties and {} signers:", N, T);
+    println!("With {N} parties and {T} signers:");
     println!(
         "{} party secrets in {} us ({} us/secret)",
         N,
