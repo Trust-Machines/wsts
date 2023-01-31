@@ -140,6 +140,30 @@ This gives a system of $2$ equations in $2$ unknowns.  Using the technique of li
 
 \newpage
 \onecolumn
+
+\subsection{
+  Schnorr Proofs
+}
+
+A Schnorr proof is a zero knowledge proof of ownership of a public key.  Let scalar $x$ be a private key, with point $X = x \cdot G$ the corresponding public key.  To prove knowledge of $x$ given $X$, Schnorr proofs use a $3$-move challenge-response protocol, i.e. a Sigma protocol.
+
+The prover first creates a random scalar $v$, and the corresponding point $V$, and sends them to the verifier.  The verifier then returns a random challenge scalar $c$.  The prover then constructs the response $r = v + cx$.  The proof consists of the tuple $(r, c, V)$.
+
+To verify the proof, check that:
+\begin{align}
+  V = r \cdot G - c \cdot X
+\end{align}
+
+This must be true for a valid proof, since:
+\begin{align}
+  V &= v \cdot G = (r - cx) \cdot G = r \cdot G - cx \cdot G = r \cdot G - c \cdot X\nonumber
+\end{align}
+
+To make this protocol non-interactive, use the Fiat-Shamir transform to construct $c$ by hashing the initial proof elements $(G, X, V)$:
+\begin{align}
+  c = H(G, X, V)
+\end{align}
+
 \subsection{
   FROST
 }
@@ -148,7 +172,7 @@ FROST is an aggregate threshold signing scheme.  It allows for a group of $N$ pa
 
 Thus there are three discrete elements required: distributed key generation, gathering party signatures, and forming an aggregate group signature using the party signatures.
 
-\subsection{
+\subsubsection{
   Distributed Key Generation (DKG)
 }
 
@@ -175,13 +199,13 @@ Each party computes the group public key $K$ by summing the first coefficient of
 
 At this point DKG is complete, and each party $i$ knows $s_i, K$.
 
-\subsection{
+\subsubsection{
   Gathering Party Signatures
 }
 
 In order for polynomial interpolation to work, it is necessary to choose the siging set $S$ before any party can sign, with $|S| >= T$.
 
-\subsection{
+\subsubsection{
   Aggregating the Group Signature
 }
 
