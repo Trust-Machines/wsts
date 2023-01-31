@@ -111,7 +111,7 @@ Consider a polynomial of degree $n$:
   p_n(x) = a_0 + a_1 x + a_2 x^2 + ... + a_n x^n
 \end{align}
 
-There are $n+1$ coefficients needed to form a polynomial of degree $n$.  Thus in order to uniquely determine a polynomial of degree $n$, we will need to evaluate it at $n+1$ points.
+There are $n+1$ coefficients needed to form a polynomial of degree $n$.  Thus in order to uniquely determine a polynomial of degree $n$, we will need to evaluate it at $n+1$ points, giving us a system of $n+1$ equations in $n+1$ unknowns.  Typically, we evaluate at the points $1..n+1$.
 
 To illustrate this, consider the case of a polynomial of degree $1$:
 \begin{align}
@@ -126,11 +126,13 @@ In order to uniquely determine this polynomial, we will need to ealuate it at $n
 
 This gives a system of $2$ equations in $2$ unknowns.  Using the technique of linear combination, if we subtract the second equation from the first we can immediately determine one of the coefficients, then use substitution to get the other:
 \begin{align}
-  p(2) - p(1) &= a_1\\
-  p(1) &= a_0 + (p(2) - p(1))\\
-  2 \cdot p(1) - p(2) &= a_0
+  a_1 &= p(2) - p(1)\\
+  a_0 &= p(1) - (p(2) - p(1))\\
+  a_0 &= 2 \cdot p(1) - p(2)
 \end{align}
 
+\newpage
+\onecolumn
 \subsection{
   FROST
 }
