@@ -45,7 +45,11 @@ pub fn lambda(i: usize, key_ids: &[usize]) -> Scalar {
 
 // Is this the best way to return these values?
 #[allow(non_snake_case)]
-pub fn intermediate(msg: &[u8], party_ids: &[usize], nonces: &[PublicNonce]) -> (Vec<Point>, Point) {
+pub fn intermediate(
+    msg: &[u8],
+    party_ids: &[usize],
+    nonces: &[PublicNonce],
+) -> (Vec<Point>, Point) {
     let rhos: Vec<Scalar> = party_ids
         .iter()
         .map(|&i| binding(&id(i), nonces, msg))
