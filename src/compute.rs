@@ -31,10 +31,10 @@ pub fn challenge(publicKey: &Point, R: &Point, msg: &[u8]) -> Scalar {
     hash_to_scalar(&mut hasher)
 }
 
-pub fn lambda(i: usize, indices: &[usize]) -> Scalar {
+pub fn lambda(i: usize, key_ids: &[usize]) -> Scalar {
     let mut lambda = Scalar::one();
     let i_scalar = id(i);
-    for j in indices {
+    for j in key_ids {
         if i != *j {
             let j_scalar = id(*j);
             lambda *= j_scalar / (j_scalar - i_scalar);
@@ -45,8 +45,8 @@ pub fn lambda(i: usize, indices: &[usize]) -> Scalar {
 
 // Is this the best way to return these values?
 #[allow(non_snake_case)]
-pub fn intermediate(msg: &[u8], signers: &[usize], nonces: &[PublicNonce]) -> (Vec<Point>, Point) {
-    let rhos: Vec<Scalar> = signers
+pub fn intermediate(msg: &[u8], party_ids: &[usize], nonces: &[PublicNonce]) -> (Vec<Point>, Point) {
+    let rhos: Vec<Scalar> = party_ids
         .iter()
         .map(|&i| binding(&id(i), nonces, msg))
         .collect();
