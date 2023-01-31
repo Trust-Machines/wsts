@@ -147,7 +147,7 @@ This gives a system of $2$ equations in $2$ unknowns.  Using the technique of li
 
 A Schnorr proof \cite{schnorr} is a zero knowledge proof of ownership of a public key.  Let scalar $x$ be a private key, with point $X = x \cdot G$ the corresponding public key.  To prove knowledge of $x$ given $X$, Schnorr proofs use a $3$-move challenge-response protocol, i.e. a Sigma protocol.
 
-The prover first creates a random scalar $v$, and the corresponding point $V$, and sends them to the verifier.  The verifier then returns a random challenge scalar $c$.  The prover then constructs the response $r = v + cx$.  The proof consists of the tuple $(r, c, V)$.
+The prover first creates a random scalar $v$, and the corresponding point $V$, then sends $V$ to the verifier.  The verifier then returns a random challenge scalar $c$.  The prover then constructs the response $r = v + cx$.  The proof consists of the tuple $(r, c, V)$.
 
 To verify the proof, check that:
 \begin{align}
@@ -292,26 +292,26 @@ Whereas FROST contains two primary parameters ($T$ and $N$), WTF splits the $N$ 
 
 As opposed to FROST, each party is given not only a party ID $i_p \in [1, N_p]$, but also a set of key IDs $i_k \in [1, N_k]$.  We denote the latter set as $K_p$.
 
-Each party $i \in [1, N_p]$ begins DKG by generating a random scalar polynomial $f_i$ with scalar coefficients.  They then construct DKG public shares by multiplying the coefficients of $f_i$ by the generator, to obtain $P_i$.
+Each party $i_p \in [1, N_p]$ begins DKG by generating a random scalar polynomial $f_{i_p}$ with scalar coefficients.  They then construct DKG public shares by multiplying the coefficients of $f_{i_p}$ by the generator, to obtain $P_{i_p}$.
 
 Once the DKG public shares have been distributed, the parties create DKG private shares by evaluating $f_{i_p}$ at all points $j_k \in [1, N_k]$.  These shares consist of a set of tuples $(i_p, (i_k, f_{i_p}(i_k)))$.
 
-Once a party receives its DKG public shares, it first must verify that each share is valid using a similar formula as before:
+Once a party receives its DKG public and private shares, it first must verify that each share is valid using a similar formula as before:
 \begin{align}
   \forall j_p \in [1,N_p], i_k \in K_p; f_{j_p}(i_k) \cdot G = P_{j_p}(i_k)
 \end{align}
 
 Once the private shares are verified, each party computes its shares $s_{i_k}$ of the group secret key by summing the private polynomial evaluations from all the other parties for each key $i_k$. The parties then use each $s_{i_k}$ to construct the corresponding public key $Y_{i_k}$:
 \begin{align}
-  s_{i_k} = \sum_{j=1; j \neq i}^{N} f_j(i) ;\; Y_{i_k} = s_{i_k} \cdot G
+  s_{i_k} = \sum_{j_p = 1; j_p \neq i}^{N_p} f_{j_p}(i_k) ;\; Y_{i_k} = s_{i_k} \cdot G
 \end{align}
 
-Each party computes the group public key $K$ by summing the first coefficient of each public polynomial:
+Each party computes the group public key $Y$ by summing the first coefficient of each public polynomial:
 \begin{align}
   Y = \sum_{j_p=1}^{N_p} P_{j_p}(0)
 \end{align}
 
-At this point DKG is complete, and each party $i$ knows all of its $(s_{i_k}, Y_{i_k})$.
+At this point DKG is complete, and each party $i_p$ knows all of its $(s_{i_k}, Y_{i_k})$.
 
 \subsubsection{
   Gathering Party Signatures
