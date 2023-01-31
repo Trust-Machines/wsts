@@ -65,7 +65,7 @@ FROST (\emph{Flexible Round-Optimized Schnorr Threshold}) \cite{frost} is a syst
 
 The design of FROST assumes that each $party$ controls exactly one key, i.e. the $threshold$ is not weighted.  The naive approach to turning FROST into a weighted threshold scheme involves allowing each $signer$ to control a subset of the $parties$ proportional to its weight.  But this results in inefficiencies in the number of messages required for the protocol, and consequently the total bandwidth.
 
-Here we present optimizations on top of vanilla FROST which reduce these inefficiencies when used as a weighted threshold scheme.  
+Here we present optimizations on top of vanilla FROST which reduce these inefficiencies when used as a weighted threshold scheme.  We call this scheme WTF (\emph{Weighted Threshold FROST}).
 
 \subsection{
   Notation
@@ -73,6 +73,7 @@ Here we present optimizations on top of vanilla FROST which reduce these ineffic
 
 While WTF can be implemented in any group, we will use curve point terminology exclusively.  This will hopefully make it more accessible to engineers wishing to implement it.
 
+Let $G$ be a generator in an elliptic curve group $\mathbb{G}$.  Let $f$ be a polynomial of a scalar variable with scalar coefficients, and $P$ be a scalar polynomial with curve point coefficients.  Both $f$ and $P$ can be evaluated at a scalar, though the latter will use elliptic curve scalar multiplication when evaluating.
 
 \newpage
 \onecolumn
