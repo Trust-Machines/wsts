@@ -73,7 +73,7 @@ Here we present optimizations on top of vanilla FROST which reduce these ineffic
 
 While WTF can be implemented in any group, we will use curve point terminology exclusively.  This will hopefully make it more accessible to engineers wishing to implement it.
 
-Let $G$ be a generator in an elliptic curve group $\mathbb{G}$.  Let $f$ be a polynomial of a scalar variable with scalar coefficients, and $P$ be a scalar polynomial with curve point coefficients.  Both $f$ and $P$ can be evaluated at a scalar, though the latter will use elliptic curve scalar multiplication when evaluating.
+Let $G$ be a generator in an elliptic curve group $\mathbb{G}$.  Let $f$ be a polynomial of a scalar variable with scalar coefficients, and $P$ be a scalar polynomial with curve point coefficients.  Both $f$ and $P$ can be evaluated at a scalar, though the latter will use scalar/point multiplication rather than scalar/scalar.
 
 \newpage
 \onecolumn
