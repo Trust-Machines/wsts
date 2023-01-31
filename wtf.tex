@@ -286,7 +286,7 @@ WTF optimizes this by having each signer control a single party, but that party 
 
 Whereas FROST contains two primary parameters ($T$ and $N$), WTF splits the $N$ parameter into two: the number of parties $N_p$, and the number of keys $N_k$.  $T$ is now a threshold of the keys, not the parties.  Each party must still send an expensive DKG private share for each key, but DKG public and signature shares are now per party.  
 
-\subsubsection{
+\subsection{
   Distributed Key Generation (DKG)
 }
 
@@ -313,7 +313,7 @@ Each party computes the group public key $Y$ by summing the first coefficient of
 
 At this point DKG is complete, and each party $i_p$ knows all of its $(s_{i_k}, Y_{i_k})$.
 
-\subsubsection{
+\subsection{
   Gathering Party Signatures
 }
 
@@ -345,7 +345,7 @@ Finally, each party $i$ can construct its signature share $z_i$:
 \end{align}
 
 
-\subsubsection{
+\subsection{
   Aggregating the Group Signature
 }
 
@@ -361,7 +361,7 @@ Finally the aggregator can construct the group signature $z$:
 
 The full signature consists of $(R, z)$ using $R$ from $(10)$.
 
-\subsubsection{
+\subsection{
   Verifying the Group Signature
 }
 
