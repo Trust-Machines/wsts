@@ -53,7 +53,7 @@
 \noindent\textbf{Abstract.} We present Weighted Threshold FROST (WTF), which optimizes the base FROST implementation to reduce bandwidth when FROST parties control multiple keys.
 
 \par
-\noindent\textbf{Keywords:} Weighted Aggregate Threshold Signatures; FROST
+\noindent\textbf{Keywords:} Weighted Aggregate Threshold Signatures; Zero-Knowledge Proofs; FROST
 \par
 \endgroup
 
@@ -145,7 +145,7 @@ This gives a system of $2$ equations in $2$ unknowns.  Using the technique of li
   Schnorr Proofs
 }
 
-A Schnorr proof is a zero knowledge proof of ownership of a public key.  Let scalar $x$ be a private key, with point $X = x \cdot G$ the corresponding public key.  To prove knowledge of $x$ given $X$, Schnorr proofs use a $3$-move challenge-response protocol, i.e. a Sigma protocol.
+A Schnorr proof \cite{schnorr} is a zero knowledge proof of ownership of a public key.  Let scalar $x$ be a private key, with point $X = x \cdot G$ the corresponding public key.  To prove knowledge of $x$ given $X$, Schnorr proofs use a $3$-move challenge-response protocol, i.e. a Sigma protocol.
 
 The prover first creates a random scalar $v$, and the corresponding point $V$, and sends them to the verifier.  The verifier then returns a random challenge scalar $c$.  The prover then constructs the response $r = v + cx$.  The proof consists of the tuple $(r, c, V)$.
 
@@ -159,7 +159,7 @@ This must be true for a valid proof, since:
   V &= v \cdot G = (r - cx) \cdot G = r \cdot G - cx \cdot G = r \cdot G - c \cdot X\nonumber
 \end{align}
 
-To make this protocol non-interactive, use the Fiat-Shamir transform to construct $c$ by hashing the initial proof elements $(G, X, V)$:
+To make this protocol non-interactive, use the Fiat-Shamir transform \cite{fiatshamir} to construct $c$ by hashing the initial proof elements $(G, X, V)$:
 \begin{align}
   c = H(G, X, V)
 \end{align}
@@ -205,7 +205,24 @@ At this point DKG is complete, and each party $i$ knows $(s_i, Y)$.
   Gathering Party Signatures
 }
 
-In order for polynomial interpolation to work, it is necessary to choose the siging set $S$ before any party can sign, with $|S| >= T$.
+In order for polynomial interpolation to work, it is necessary to choose the siging set $S$ before any party can sign, with $|S| >= T$.  Each party $i \in S$ then constructs a private nonce $(d_i,e_i)$ and corresponding public nonce $(D_i,E_i)$, then sends $(D_i,E_i)$ to all other parties in $S$.
+
+Once nonces have been received, each party $i \in S$ computes the binding values $\rho_j$ and their sum $R$:
+\begin{align}
+  \forall j \in S;\;\rho_j &= H(j, D_j, E_j)\\
+  R &= \sum_{j=1}^{N} \rho_j
+\end{align}
+
+Once they have $R$ and message $m$ they can construct the challenge $c$:
+\begin{align}
+  c = H(Y, R, m)
+\end{align}
+
+Finally, each party $i$ can construct its signature share $z_i$:
+\begin{align}
+  z_i = d_i + \rho_i \cdot e_i + s_i \cdot c \cdot \lambda
+\end{align}
+
 
 \subsubsection{
   Aggregating the Group Signature
@@ -228,12 +245,20 @@ In order for polynomial interpolation to work, it is necessary to choose the sig
 
 \newpage
 \onecolumn
-\begin{thebibliography}{1}
+\begin{thebibliography}{3}
 
 \bibitem{frost}
   Chelsea Komlo, Ian Goldberg
   \emph{FROST: Flexible Round-Optimized Schnorr Threshold Signatures} 2020.12.22.
   \texttt{https://eprint.iacr.org/2020/852.pdf}
+
+\bibitem{schnorr}
+  \emph{Schnorr signature}.
+  \texttt{https://en.wikipedia.org/wiki/Schnorr\%5Fsignature}
+
+\bibitem{fiatshamir}
+  \emph{Fiat Shamir heuristic}.
+  \texttt{https://en.wikipedia.org/wiki/Fiat\%2DShamir\%5Fheuristic}
 
 \end{thebibliography}
 
