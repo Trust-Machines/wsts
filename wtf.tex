@@ -266,6 +266,15 @@ If $R = R'$, the proof is valid.
   Related Work
 }
 
+There are many aggregate threshold signature scheme, some quite similar to FROST.  While FROST is optimized for a reduced number of rounds in the optimistic case of no byzantine actors, there are others which are called $robust$; i.e. they take more rounds in the common case, but can complete even if some signers are byzantine actors.
+
+An excellent example of a robust protocol is Provably Secure Distributed Schnorr Signatures (PSDSS) \cite{psdss}.  The construction features robustness in both the DKG and signing rounds.  At both stages, the protocol will succeed as long as at least $T$ parties complete it honestly.
+
+We did not choose PSDSS as the basis for WTF for two reasons.  First, rather than gather nonces from signing parties in each signing round, it runs an additional DKG to create an ephermal round key.  Since DKG is an expensive protocol in the case of a large number of voting slots, it was suboptimal for our use case.  Also, attempts to use the same techniques as were used on FROST to optimize the bandwidth used did not appear to be viable for PSDSS.
+
+There are also many native weighted threshold signing schemes, but ultimately all were rejected.  Most of them relied on RSA with a trusted setup, and so were considered prima facie unsuitable.
+
+There was one compelling candidate though: An Efficient and Secure Weighted Threshold Signcryption Scheme \cite{eswtss}.  It uses standard elliptic curves, combined with a dynamic knapsack sytem, using the Chinese Remainder theorem to set the voting weights.  We rejected it due to its complexity and lack of track record in production systems.  But it remains an ongoing object of research.
 
 \newpage
 \onecolumn
@@ -276,7 +285,7 @@ If $R = R'$, the proof is valid.
 
 \newpage
 \onecolumn
-\begin{thebibliography}{3}
+\begin{thebibliography}{5}
 
 \bibitem{frost}
   Chelsea Komlo, Ian Goldberg
@@ -290,6 +299,16 @@ If $R = R'$, the proof is valid.
 \bibitem{fiatshamir}
   \emph{Fiat Shamir heuristic}.
   \texttt{https://en.wikipedia.org/wiki/Fiat\%2DShamir\%5Fheuristic}
+
+\bibitem{psdss}
+  D.R. Stinson, R. Strobl
+  \emph{Provably Secure Distributed Schnorr Signatures and a (t,n) Threshold Scheme for Implicit Certificates} ACISP 2001. Lecture Notes in Computer Science, vol 2119 2001.01.23.
+  \texttt{https://doi.org/10.1007/3-540-47719-5\_33}
+
+\bibitem{eswtss}
+  Chien-Hua Tsai
+  \emph{An Efficient and Secure Weighted Threshold Signcryption Scheme} Journal of Internet Technology, vol. 20, no. 5 , pp. 1523-1534, Sep. 2019
+  \texttt{https://jit.ndhu.edu.tw/article/view/2135}
 
 \end{thebibliography}
 
