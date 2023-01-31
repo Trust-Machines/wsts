@@ -61,11 +61,11 @@
   Introduction
 }
 
-$FROST$ (Flexible Round-Optimized Schnorr Threshold) \cite{frost} is a system for making aggregate threshold signatures.  This allows a set of $parties$ to construct a group key, and then sign messages using this key as long as a $threshold$ subset cooperates to form the signature.  This signature is aggregated, so that its size does not depend on the number of signing $parties$.
+FROST (\emph{Flexible Round-Optimized Schnorr Threshold}) \cite{frost} is a system for making aggregate threshold signatures.  This allows a set of $parties$ to construct a group key, and then sign messages using this key as long as a $threshold$ subset cooperates to form the signature.  This signature is aggregated, so that its size does not depend on the number of signing parties.
 
-The design of $FROST$ assumes that each $party$ controls exactly one key, i.e. the threshold is not weighted.  The naive approach to turning $FROST$ into a weighted threshold scheme involves allowing each $signer$ to control a subset of the $parties$ proportional to its weight.  But this results in inefficiencies in the number of messages required for the protocol, and consequently the total bandwidth.
+The design of FROST assumes that each $party$ controls exactly one key, i.e. the $threshold$ is not weighted.  The naive approach to turning FROST into a weighted threshold scheme involves allowing each $signer$ to control a subset of the $parties$ proportional to its weight.  But this results in inefficiencies in the number of messages required for the protocol, and consequently the total bandwidth.
 
-Here we present optimizations on top of vanilla $FROST$ which reduce these inefficiencies when used as a weighted threshold scheme.  
+Here we present optimizations on top of vanilla FROST which reduce these inefficiencies when used as a weighted threshold scheme.  
 
 
 \newpage
@@ -98,7 +98,7 @@ By combining the concepts of aggregate and threshold signatures, we arrive at a 
   Weighted Aggregate Threshold Signatures
 }
 
-Aggregate threshold signatures function well in a blockchain context, but the number of messages and associated protocol bandwidth required grows linearly with the total number of $parties$.  In many use cases, though, not all signers should be given the same weight.  This is particularly relevant to Proof of Stake blockchain systems, where the size of a user's stake gives their vote more weight.
+Aggregate threshold signatures function well in a blockchain context, but the number of messages and associated protocol bandwidth required grows linearly with the total number of parties.  In many use cases, though, not all signers should be given the same weight.  This is particularly relevant to Proof of Stake blockchain systems, where the size of a user's stake gives their vote more weight.
 
 It would be ideal to construct a native weighted threshold scheme, where this size would instead grow proportionally to the number of actual signers, rather than the total number of votes.  
 
@@ -108,10 +108,10 @@ It would be ideal to construct a native weighted threshold scheme, where this si
 
 Consider a polynomial of degree $k$:
 \begin{align}
-  p_n(k) = a_0 + a_1 x + a_2 x^2 + ... + a_n x^k
+  p_k(x) = a_0 + a_1 x + a_2 x^2 + ... + a_k x^k
 \end{align}
 
-There are $k+1$ coefficients needed to form a polynomial of degree $k$.  Thus in order to uniquely determine a polynomial of degree $k$, we will need to evaluate it at $k+1$ points, giving us a system of $k+1$ equations in $k+1$ unknowns.  Typically, we evaluate at the points $[1, k+1]$.  Using these points to determine the coefficients is called Polynomial Interpolation.
+There are $k+1$ coefficients needed to form a polynomial of degree $k$.  Thus in order to uniquely determine a polynomial of degree $k$, we will need to evaluate it at $k+1$ points, giving us a system of $k+1$ equations in $k+1$ unknowns.  Typically, we evaluate at the points $[1, k+1]$.  Using these evaluations to determine the coefficients is called Polynomial Interpolation.
 
 To illustrate this, consider the case of a polynomial of degree $k = 1$:
 \begin{align}
@@ -137,7 +137,7 @@ This gives a system of $2$ equations in $2$ unknowns.  Using the technique of li
   FROST
 }
 
-$FROST$ is an aggregate threshold signing scheme.  It allows for a group of $N$ parties to create a group signing key trustlessly.  Then some threshold $T$ of them can cooperate to form a group signature, which is an aggregate of each individual signature.
+FROST is an aggregate threshold signing scheme.  It allows for a group of $N$ parties to create a group signing key trustlessly.  Then some threshold $T$ of them can cooperate to form a group signature, which is an aggregate of each individual signature.
 
 Thus there are three discrete elements required: distributed key generation, gathering party signatures, and forming an aggregate group signature using the party signatures.
 
@@ -198,7 +198,8 @@ In order for polynomial interpolation to work, it is necessary to choose the sig
 \begin{thebibliography}{1}
 
 \bibitem{frost}
-  \emph{FROST}.
+  Chelsea Komlo, Ian Goldberg
+  \emph{FROST: Flexible Round-Optimized Schnorr Threshold Signatures} 2020.12.22.
   \texttt{https://eprint.iacr.org/2020/852.pdf}
 
 \end{thebibliography}
