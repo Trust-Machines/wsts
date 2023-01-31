@@ -282,6 +282,99 @@ There was one compelling candidate though: An Efficient and Secure Weighted Thre
   WTF: Weighted Threshold FROST
 }
 
+Our contribution is a set of optimizations on top of vanilla FROST to optimize the protocol in a heavily weighted threshold scenario (e.g. $150$ signers controlling a total of $4000$ parties). In FROST, each party controls a single key, which acts as a single vote.  A naive implementation of a weighted threshold scheme on top of FROST involves giving each signer control of multiple parties, proportional to that signer's weight.  This is functional, but suboptimal.
+
+WTF optimizes this by having each signer control a single party, but that party now controls multiple shares of the group key.  Crucially, each party still uses only a single polynomial per DKG round and a single nonce per signing round.  This also allows for a single signature per party, rather than per key.  This leads to substantial savings during both DKG and signing.
+
+Whereas FROST contains two primary parameters ($T$ and $N$), WTF splits the $N$ parameter into two: the number of parties $N_p$, and the number of keys $N_k$.  $T$ is now a threshold of the keys, not the parties.  Each party must still send an expensive DKG private share for each key, but DKG public and signature shares are now per party.  
+
+\subsubsection{
+  Distributed Key Generation (DKG)
+}
+
+As opposed to FROST, each party is given not only a party ID $i_p \in [1, N_p]$, but also a set of key IDs $i_k \in [1, N_k]$.  We denote the latter set as $K_p$.
+
+Each party $i \in [1, N_p]$ begins DKG by generating a random scalar polynomial $f_i$ with scalar coefficients.  They then construct DKG public shares by multiplying the coefficients of $f_i$ by the generator, to obtain $P_i$.
+
+Once the DKG public shares have been distributed, the parties create DKG private shares by evaluating $f_{i_p}$ at all points $j_k \in [1, N_k]$.  These shares consist of a set of tuples $(i_p, (i_k, f_{i_p}(i_k)))$.
+
+Once a party receives its DKG public shares, it first must verify that each share is valid using a similar formula as before:
+\begin{align}
+  \forall j_p \in [1,N_p], i_k \in K_p; f_{j_p}(i_k) \cdot G = P_{j_p}(i_k)
+\end{align}
+
+Once the private shares are verified, each party computes its shares $s_{i_k}$ of the group secret key by summing the private polynomial evaluations from all the other parties for each key $i_k$. The parties then use each $s_{i_k}$ to construct the corresponding public key $Y_{i_k}$:
+\begin{align}
+  s_{i_k} = \sum_{j=1; j \neq i}^{N} f_j(i) ;\; Y_{i_k} = s_{i_k} \cdot G
+\end{align}
+
+Each party computes the group public key $K$ by summing the first coefficient of each public polynomial:
+\begin{align}
+  Y = \sum_{j_p=1}^{N_p} P_{j_p}(0)
+\end{align}
+
+At this point DKG is complete, and each party $i$ knows all of its $(s_{i_k}, Y_{i_k})$.
+
+\newpage
+\onecolumn
+\subsubsection{
+  Gathering Party Signatures
+}
+
+In order for polynomial interpolation to work, it is necessary to choose the siging set $S$ before any party can sign, with $|S| >= T$.  Each party $i \in S$ then constructs a private nonce $(d_i,e_i)$ and corresponding public nonce $(D_i,E_i)$, then sends $(D_i,E_i)$ to all other parties in $S$.
+
+Once nonces have been received, each party $i \in S$ computes the binding values $\rho_j$:
+\begin{align}
+  \forall j \in S;\;\rho_j = H(j, D_j, E_j)
+\end{align}
+
+Next they compute the interpolation value $\lambda_i$:
+\begin{align}
+  \lambda_i = \prod_{j=1; j \neq i}^{N} \frac{j}{j - i}
+\end{align}
+
+Each party also computes the sum $R$:
+\begin{align}
+  R = \sum_{j=1}^{N} D_j + \rho_j \cdot E_j
+\end{align}
+
+Once they have $R$ and message $m$ they can construct the challenge $c$:
+\begin{align}
+  c = H(Y, R, m)
+\end{align}
+
+Finally, each party $i$ can construct its signature share $z_i$:
+\begin{align}
+  z_i = d_i + \rho_i \cdot e_i + s_i \cdot c \cdot \lambda_i
+\end{align}
+
+
+\subsubsection{
+  Aggregating the Group Signature
+}
+
+Once the aggregator has gathered the signature shares $z_i$, it must first verify that they are valid by checking that:
+\begin{align}
+  z_i \cdot G = D_i + \rho_i \cdot E_i + s_i \cdot c \cdot \lambda_i
+\end{align}
+
+Finally the aggregator can construct the group signature $z$:
+\begin{align}
+  z = \sum_{i=1}^{N} z_i
+\end{align}
+
+The full signature consists of $(R, z)$ using $R$ from $(10)$.
+
+\subsubsection{
+  Verifying the Group Signature
+}
+
+To verify the group signature, construct the value $R'$ from the group public key $Y$, challenge $c$, and group signature $z$:
+\begin{align}
+  R' = z \cdot G - c \cdot Y
+\end{align}
+
+If $R = R'$, the proof is valid.
 
 \newpage
 \onecolumn
