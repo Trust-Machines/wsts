@@ -6,7 +6,7 @@
 \usepackage{amsfonts}
 \usepackage{amssymb}
 \usepackage{mathtools}
-%\usepackage[symbol]{footmisc}
+\usepackage[symbol]{footmisc}
 
 \renewcommand{\thefootnote}{\fnsymbol{footnote}}
 
@@ -43,6 +43,7 @@
 \makeatother
 
 \begin{document}
+\onecolumn
 \maketitle
 
 \begingroup
@@ -68,6 +69,7 @@ Here we present optimizations on top of vanilla $FROST$ which reduces these inef
 
 
 \newpage
+\onecolumn
 \section{
   Background
 }
@@ -101,6 +103,35 @@ Aggregate threshold signatures function well in a blockchain context, but the nu
 It would be ideal to construct a native weighted threshold scheme, where this size would instead grow proportionally to the number of actual signers, rather than the total number of votes.  
 
 \subsection{
+  Polynomial Interpolation
+}
+
+Consider a polynomial of degree $n$:
+\begin{align}
+  p_n(x) = a_0 + a_1 x + a_2 x^2 + ... + a_n x^n
+\end{align}
+
+There are $n+1$ coefficients needed to form a polynomial of degree $n$.  Thus in order to uniquely determine a polynomial of degree $n$, we will need to evaluate it at $n+1$ points.
+
+To illustrate this, consider the case of a polynomial of degree $1$:
+\begin{align}
+  p(x) = a_0 + a_1 x
+\end{align}
+
+In order to uniquely determine this polynomial, we will need to ealuate it at $n+1 = 2$ points:
+\begin{align}
+  p(1) &= a_0 + a_1\\
+  p(2) &= a_0 + 2 a_1 
+\end{align}
+
+This gives a system of $2$ equations in $2$ unknowns.  Using the technique of linear combination, if we subtract the second equation from the first we can immediately determine one of the coefficients, then use substitution to get the other:
+\begin{align}
+  p(2) - p(1) &= a_1\\
+  p(1) &= a_0 + (p(2) - p(1))\\
+  2 \cdot p(1) - p(2) &= a_0
+\end{align}
+
+\subsection{
   FROST
 }
 
@@ -110,7 +141,8 @@ $FROST$ is an aggregate threshold signing scheme.  It allows for a group of $par
   Distributed Key Generation (DKG)
 }
 
-Like many DKG schemes, FROST employs the use of polynomial interpolation. 
+Like many DKG schemes, FROST employs the technique of polynomial interpolation.
+
 
 \subsection{
   Group Signature
@@ -118,18 +150,21 @@ Like many DKG schemes, FROST employs the use of polynomial interpolation.
 
 
 \newpage
+\onecolumn
 \section{
   Related Work
 }
 
 
 \newpage
+\onecolumn
 \section{
   WTF
 }
 
 
 \newpage
+\onecolumn
 \begin{thebibliography}{1}
 
 \bibitem{frost}
