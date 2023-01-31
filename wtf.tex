@@ -184,7 +184,7 @@ First, each party is given a sequential ID $i \in [1, N]$, which will be used bo
 
 The parties then evaluate their own $f$ at each $j \in [1,N]$, and send a private DKG share to each consisting of $(j, f_i(j))$.  Each receiving party checks each private share for consistency with the public polynomial of the sending party.  This is done for party $i$ by checking that:
 \begin{align}
-  \forall j \in [1,N] \ni j \neq i;\;f_j(i) * G = P_j(i)
+  \forall j \in [1,N] \ni j \neq i;\;f_j(i) \cdot G = P_j(i)
 \end{align}
 
 Once the private shares are verified, each party computes its share $s_i$ of the group secret key by summing the private polynomial evaluations from all the other parties:
@@ -194,11 +194,13 @@ Once the private shares are verified, each party computes its share $s_i$ of the
 
 Each party computes the group public key $K$ by summing the first coefficient of each public polynomial:
 \begin{align}
-  K = \sum_{j=1}^{N} P_j(0)
+  Y = \sum_{j=1}^{N} P_j(0)
 \end{align}
 
-At this point DKG is complete, and each party $i$ knows $s_i, K$.
+At this point DKG is complete, and each party $i$ knows $(s_i, Y)$.
 
+\newpage
+\onecolumn
 \subsubsection{
   Gathering Party Signatures
 }
