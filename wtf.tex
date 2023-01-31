@@ -290,7 +290,7 @@ Whereas FROST contains two primary parameters ($T$ and $N$), WTF splits the $N$ 
   Distributed Key Generation (DKG)
 }
 
-As opposed to FROST, each party is given not only a party ID $i_p \in [1, N_p]$, but also a set of key IDs $i_k \in [1, N_k]$.  We denote the latter set as $K_p$.
+As opposed to FROST, each party is given not only a party ID $i_p \in [1, N_p]$, but also a set of key IDs $i_k \in [1, N_k]$.  We denote the latter set as $K_{i_p}$.
 
 Each party $i_p \in [1, N_p]$ begins DKG by generating a random scalar polynomial $f_{i_p}$ with scalar coefficients.  They then construct DKG public shares by multiplying the coefficients of $f_{i_p}$ by the generator, to obtain $P_{i_p}$.
 
@@ -298,7 +298,7 @@ Once the DKG public shares have been distributed, the parties create DKG private
 
 Once a party receives its DKG public and private shares, it first must verify that each share is valid using a similar formula as before:
 \begin{align}
-  \forall j_p \in [1,N_p], i_k \in K_p; f_{j_p}(i_k) \cdot G = P_{j_p}(i_k)
+  \forall j_p \in [1,N_p], i_k \in K_{i_p}; f_{j_p}(i_k) \cdot G = P_{j_p}(i_k)
 \end{align}
 
 Once the private shares are verified, each party computes its shares $s_{i_k}$ of the group secret key by summing the private polynomial evaluations from all the other parties for each key $i_k$. The parties then use each $s_{i_k}$ to construct the corresponding public key $Y_{i_k}$:
@@ -324,7 +324,7 @@ Once nonces have been received, each party $i_p \in S$ computes the binding valu
   \forall j_p \in S;\;\rho_{j_p} = H(j_p, D_{j_p}, E_{j_p})
 \end{align}
 
-Next they compute the interpolation value $\lambda_i$:
+Next they compute the interpolation value $\lambda_{i_k}$:
 \begin{align}
   \lambda_i = \prod_{j=1; j \neq i}^{N_k} \frac{j}{j - i}
 \end{align}
