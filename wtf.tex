@@ -60,9 +60,14 @@
   Introduction
 }
 
-FROST \cite{frost} is a system for making aggregate threshold signatures.  
+$FROST$ \cite{frost} is a system for making aggregate threshold signatures.  This allows a set of $parties$ to construct a group key, and then sign messages using this key as long as a $threshold$ subset cooperates to form the signature.  This signature is aggregated, so that its size does not depend on the number of signing $parties$.
 
-%\newpage
+The design of $FROST$ assumes that each $party$ controls exactly one key, i.e. the threshold is not weighted.  The naive approach to turning $FROST$ into a weighted threshold scheme involves allowing each $signer$ to control a subset of the $parties$ relative to their weights.  But this results in inefficiencies in the number of messages required for the protocol, and consequently the total bandwidth.
+
+Here we present optimizations on top of vanilla $FROST$ which reduces these inefficiencies when used as a weighted threshold scheme.  
+
+
+\newpage
 \section{
   Background
 }
@@ -74,18 +79,47 @@ FROST \cite{frost} is a system for making aggregate threshold signatures.
 Threshold signatures allow a number of signers $N$ to collaborate to sign messages.  There are many such protocols, but they all specify a threshold $T$, which is the number of signers necessary to create a valid signature.  
 
 \subsection{
+  Aggregate Signatures
+}
+
+Traditional approaches to the multisignature problem require that each signer signs separately, which means that the size of the signature is grows linearly with the number of required signers.  An aggregate scheme, conversely, condenses these individual signatures into a single group signature.  This allows a large set of signers without increasing the data size necessary to transmit and store the signature.
+
+In a blockchain context, where transaction fees are proportional to the size of the data, this leads to significant savings.  It also prevents the case where a large group signature can exceed the blocksize, thereby artificially limiting the number of signers.
+
+\subsection{
   Aggregate Threshold Signatures
 }
 
+By combining the concepts of aggregate and threshold signatures, we arrive at a construction well suited to a blockchain context.  We can have any number of possible signers, and any threshold required to make a valid signature.  This allows signatures which can be used in many more contexts than a traditional multisig construct, while keeping transaction fees low and taking no more blockchain space than a standard single signature.
 
 \subsection{
   Weighted Aggregate Threshold Signatures
 }
 
+Aggregate threshold signatures function well in a blockchain context, but the number of messages and associated protocol bandwidth required grows linearly with the total number of $parties$.  In many use cases, though, not all signers should be given the same weight.  This is particularly relevant to Proof of Stake blockchain systems, where the size of a users stake gives their votes more weight.
 
+It would be ideal to construct a native weighted threshold scheme, where this size would instead grow proportionally to the number of actual signers, rather than the total number of votes.  
 
 \subsection{
   FROST
+}
+
+$FROST$ is an aggregate threshold signing scheme.  It allows for a group of $parties$ to create a group signing key trustlessly.  Then some specified $threshold$ of them can cooperate to form a group signature, which is an aggregate of each individual signature.  Thus there are two discrete elements required: Distributed Key Generation, and forming an Aggregate Group Signature using the individual party signatures.
+
+\subsection{
+  Distributed Key Generation (DKG)
+}
+
+Like many DKG schemes, FROST employs the use of polynomial interpolation. 
+
+\subsection{
+  Group Signature
+}
+
+
+\newpage
+\section{
+  Related Work
 }
 
 
@@ -95,6 +129,7 @@ Threshold signatures allow a number of signers $N$ to collaborate to sign messag
 }
 
 
+\newpage
 \begin{thebibliography}{1}
 
 \bibitem{frost}
