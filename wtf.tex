@@ -158,9 +158,9 @@ Remember that in polynomial interpolation, you need $k+1$ points to interpolate 
 
 First, each party is given a sequential ID $i \in [1, N]$, which will be used both to identify it and as an element in the underlying math.  Next, each party constructs a random private polynomial $f$ of degree $T-1$, where the coefficients are scalars.  A public DKG share is constructed from $f$ by multiplying each coefficient by a generator $G$.  The ID and public polynomial $P$ is then shared to all other parties.
 
-The parties then evaluate their own $f$ at each $i \in [1,N]$, and send a private DKG share to each consisting of $(i, f(i))$.  Each receiving party checks each private share for consistency with the public polynomial of the sending party.  This is done by checking that
+The parties then evaluate their own $f$ at each $j \in [1,N]$, and send a private DKG share to each consisting of $(j, f_i(j))$.  Each receiving party checks each private share for consistency with the public polynomial of the sending party.  This is done by checking that for party $i$, $\forall j \in [1,N]$:
 \begin{align}
-  f_i(j) * G = P_i(j)
+  f_j(i) * G = P_j(i)
 \end{align}
 
 Once the private shares are verified, each party computes its share $s_i$ of the group secret key by summing the private polynomial evaluations from all the other parties:
