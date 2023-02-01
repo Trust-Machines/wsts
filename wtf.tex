@@ -247,7 +247,7 @@ Finally the aggregator can construct the group signature $z$:
   z = \sum_{i=1}^{N} z_i
 \end{align}
 
-The full signature consists of $(R, z)$ using $R$ from $(10)$.
+The full signature consists of $(R, z)$ using $R$ from $(9)$.
 
 \subsubsection{
   Verifying the Group Signature
@@ -317,7 +317,7 @@ At this point DKG is complete, and each party $i_p$ knows all of its $(s_{i_k}, 
   Gathering Party Signatures
 }
 
-As before, in order for polynomial interpolation to work, it is necessary to choose the siging set $S \ni \forall s \in S, s \in [1, N_k]$ before any party can sign, with $|S| >= T$.  Each party $i_p \in S$ then constructs a private nonce $(d_{i_p},e_{i_p})$ and corresponding public nonce $(D_{i_p},E_{i_p})$, then sends $(D_{i_p},E_{i_p})$ to all other parties with keys in $S$.
+As before, in order for polynomial interpolation to work, it is necessary to choose the signing parties $S_p \ni \forall s_p \in S_p, s_p \in [1, N_p]$, and the corresponding $S_k$ which consists of the union of all $i_k \in K_{i_p}\; \forall i_p \in S_p$, before any party can sign, with $|S_k| >= T$.  Each party $i_p \in S$ then constructs a private nonce $(d_{i_p},e_{i_p})$ and corresponding public nonce $(D_{i_p},E_{i_p})$, then sends $(D_{i_p},E_{i_p})$ to all other parties with keys in $S$.
 
 Once nonces have been received, each party $i_p \in S$ computes the binding values $\rho_{j_p}$:
 \begin{align}
@@ -349,17 +349,17 @@ Finally, each party $i$ can construct its signature share $z_i$:
   Aggregating the Group Signature
 }
 
-Once the aggregator has gathered the signature shares $z_i$, it must first verify that they are valid by checking that:
+Once the aggregator has gathered the signature shares $z_{i_p}$, it must first verify that they are valid by checking that:
 \begin{align}
-  z_i \cdot G = D_i + \rho_i \cdot E_i + s_i \cdot c \cdot \lambda_i
+  z_{i_p} \cdot G = D_{i_p} + \rho_{i_p} \cdot E_{i_p} + \sum_{j_k \in K_{i_p}}^{} Y_{j_k} \cdot c \cdot \lambda_{j_k}
 \end{align}
 
 Finally the aggregator can construct the group signature $z$:
 \begin{align}
-  z = \sum_{i=1}^{N} z_i
+  z = \sum_{i_p \in S_p}^{} z_{i_p}
 \end{align}
 
-The full signature consists of $(R, z)$ using $R$ from $(10)$.
+The full signature consists of $(R, z)$ using $R$ from $(20)$.
 
 \subsection{
   Verifying the Group Signature
