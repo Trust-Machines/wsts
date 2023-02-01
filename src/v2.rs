@@ -425,7 +425,8 @@ mod tests {
             let mut sig_agg =
                 v2::SignatureAggregator::new(N, T, A.clone()).expect("aggregator ctor failed");
 
-            let (nonces, sig_shares, key_ids) = v2::test_helpers::sign(&msg, &mut signers, &mut rng);
+            let (nonces, sig_shares, key_ids) =
+                v2::test_helpers::sign(&msg, &mut signers, &mut rng);
             if let Err(e) = sig_agg.sign(&msg, &nonces, &sig_shares, &key_ids) {
                 panic!("Aggregator sign failed: {:?}", e);
             }
