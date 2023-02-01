@@ -374,14 +374,23 @@ If $R = R'$, the proof is valid.
 
 \newpage
 \onecolumn
+\section{
+  Performance
+}
 
+The WTF reference implementation \cite{tmfrost} contains vanilla FROST in the v1 module, and WTF in the v2 module.  This crate contains criterion benchmarks for both v1 and v2.
+
+The results are quite staggering.  When testing DKG with $4$ signers and $20$ keys, v2 outperforms v1 by an order of magnitude: $53.793 ms$ per DKG round for v1 compared to $8.2657 ms$ for v2.
+
+\newpage
+\onecolumn
 \section{
   Acknowledgements
 }
 
 The author would like to thank Alie Slade for initial work on the WTF algorithm.
 
-\begin{thebibliography}{5}
+\begin{thebibliography}{6}
 
 \bibitem{frost}
   Chelsea Komlo, Ian Goldberg
@@ -405,6 +414,11 @@ The author would like to thank Alie Slade for initial work on the WTF algorithm.
   Chien-Hua Tsai
   \emph{An Efficient and Secure Weighted Threshold Signcryption Scheme} Journal of Internet Technology, vol. 20, no. 5 , pp. 1523-1534, Sep. 2019
   \texttt{https://jit.ndhu.edu.tw/article/view/2135}
+
+\bibitem{tmfrost}
+  Joey Yandle
+  \emph{WTF Reference Implementation}
+  \texttt{https://github.com/Trust-Machines/frost}
 
 \end{thebibliography}
 
