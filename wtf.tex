@@ -270,7 +270,7 @@ There are many aggregate threshold signature scheme, some quite similar to FROST
 
 An excellent example of a robust protocol is Provably Secure Distributed Schnorr Signatures (PSDSS) \cite{psdss}.  The construction features robustness in both the DKG and signing rounds.  At both stages, the protocol will succeed as long as at least $T$ parties complete it honestly.
 
-We did not choose PSDSS as the basis for WTF for two reasons.  First, rather than gather nonces from signing parties in each signing round, it runs an additional DKG to create an ephermal round key.  Since DKG is an expensive protocol in the case of a large number of voting slots, it was suboptimal for our use case.  Also, attempts to use the same techniques as were used on FROST to optimize the bandwidth used did not appear to be viable for PSDSS.
+We did not choose PSDSS as the basis for WTF for two reasons.  First, rather than gather nonces from signing parties in each signing round, it runs an additional DKG to create an ephermal round key.  Since DKG is an expensive protocol in the case of a large number of voting slots, it was suboptimal for our use case.  Also, WTF-style bandwidth reductions did not appear to be viable for PSDSS.
 
 There are also many native weighted threshold signing schemes, but ultimately all were rejected.  Most of them relied on RSA with a trusted setup, and so were considered prima facie unsuitable.
 
@@ -286,11 +286,11 @@ WTF optimizes this by having each signer control a single party, but that party 
 
 Whereas FROST contains two primary parameters ($T$ and $N$), WTF splits the $N$ parameter into two: the number of parties $N_p$, and the number of keys $N_k$.  $T$ is now a threshold of the keys, not the parties.  Each party must still send an expensive DKG private share for each key, but DKG public and signature shares are now per party.  
 
+Each party is given not only a party ID $i_p \in [1, N_p]$ as in FROST, but also a set of key IDs $i_k \in [1, N_k]$.  We denote the latter set as $K_{i_p}$.
+
 \subsection{
   Distributed Key Generation (DKG)
 }
-
-As opposed to FROST, each party is given not only a party ID $i_p \in [1, N_p]$, but also a set of key IDs $i_k \in [1, N_k]$.  We denote the latter set as $K_{i_p}$.
 
 Each party $i_p \in [1, N_p]$ begins DKG by generating a random scalar polynomial $f_{i_p}$ with scalar coefficients.  They then construct DKG public shares by multiplying the coefficients of $f_{i_p}$ by the generator, to obtain $P_{i_p}$.
 
@@ -324,14 +324,14 @@ Once nonces have been received, each party $i_p \in S$ computes the binding valu
   \forall j_p \in S;\;\rho_{j_p} = H(j_p, D_{j_p}, E_{j_p})
 \end{align}
 
-Next they compute the interpolation value $\lambda_{i_k}$:
+Next, $\forall i_k \in K_{i_p}$,  they compute the interpolation values $\lambda_{i_k}$:
 \begin{align}
-  \lambda_i = \prod_{j=1; j \neq i}^{N_k} \frac{j}{j - i}
+  \lambda_{i_k} = \prod_{j_k=1; j_k \neq i_k}^{N_k} \frac{j_k}{j_k - i_k}
 \end{align}
 
 Each party also computes the sum $R$:
 \begin{align}
-  R = \sum_{j=1}^{N} D_j + \rho_j \cdot E_j
+  R = \sum_{j_p=1}^{N_p} D_{j_p} + \rho_{j_p} \cdot E_{j_p}
 \end{align}
 
 Once they have $R$ and message $m$ they can construct the challenge $c$:
@@ -341,7 +341,7 @@ Once they have $R$ and message $m$ they can construct the challenge $c$:
 
 Finally, each party $i$ can construct its signature share $z_i$:
 \begin{align}
-  z_i = d_i + \rho_i \cdot e_i + s_i \cdot c \cdot \lambda_i
+  z_{i_p} = d_{i_p} + \rho_{i_p} \cdot e_{i_p} + \sum_{j_k \in K_{i_p}}^{} s_{j_k} \cdot c \cdot \lambda_{j_k}
 \end{align}
 
 
