@@ -305,6 +305,7 @@ impl SignatureAggregator {
 #[cfg(test)]
 mod tests {
     use crate::common::{PolyCommitment, PublicNonce};
+    use crate::errors::DkgError;
     use crate::v2;
     use crate::v2::SignatureShare;
 
@@ -330,7 +331,7 @@ mod tests {
     fn dkg<RNG: RngCore + CryptoRng>(
         signers: &mut Vec<v2::Party>,
         rng: &mut RNG,
-    ) -> Vec<PolyCommitment> {
+    ) -> Result<Vec<PolyCommitment>, HashMap<usize, DkgError>> {
         let A: Vec<PolyCommitment> = signers.iter().map(|s| s.get_poly_commitment(rng)).collect();
 
         // each party broadcasts their commitments
@@ -343,6 +344,7 @@ mod tests {
 
         // each party collects its shares from the broadcasts
         // maybe this should collect into a hashmap first?
+        let mut secret_errors = HashMap::new();
         for party in signers.iter_mut() {
             let mut h = HashMap::new();
             for key_id in party.key_ids.clone() {
@@ -355,10 +357,16 @@ mod tests {
                 h.insert(key_id, g);
             }
 
-            party.compute_secret(h, &A).expect("compute_secret failed");
+            if let Err(secret_error) = party.compute_secret(h, &A) {
+                secret_errors.insert(party.party_id, secret_error);
+            }
         }
 
-        A
+        if secret_errors.is_empty() {
+            Ok(A)
+        } else {
+            Err(secret_errors)
+        }
     }
 
     // There might be a slick one-liner for this?
@@ -398,7 +406,12 @@ mod tests {
             .map(|(pid, pkids)| v2::Party::new(pid, pkids, party_key_ids.len(), N, T, &mut rng))
             .collect();
 
-        let A = dkg(&mut signers, &mut rng);
+        let A = match dkg(&mut signers, &mut rng) {
+            Ok(A) => A,
+            Err(secret_errors) => {
+                panic!("Got secret errors from DKG: {:?}", secret_errors);
+            }
+        };
 
         // signers [0,1,3] who have T keys
         {
