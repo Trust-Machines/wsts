@@ -78,7 +78,7 @@ pub fn bench_dkg(c: &mut Criterion) {
         (10..15).collect(),
         (15..20).collect(),
     ]
-        .to_vec();
+    .to_vec();
 
     let mut signers: Vec<v2::Party> = party_key_ids
         .iter()
@@ -86,7 +86,9 @@ pub fn bench_dkg(c: &mut Criterion) {
         .map(|(pid, pkids)| v2::Party::new(pid, pkids, party_key_ids.len(), N, T, &mut rng))
         .collect();
 
-    c.bench_function("v2 dkg 20", |b| b.iter(|| dkg(&mut signers, &mut rng)));
+    c.bench_function("v2 dkg 4 parties 20 keys", |b| {
+        b.iter(|| dkg(&mut signers, &mut rng))
+    });
 }
 
 criterion_group!(benches, bench_dkg);
