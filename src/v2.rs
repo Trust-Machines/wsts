@@ -313,7 +313,7 @@ pub mod test_helpers {
 
     #[allow(non_snake_case)]
     pub fn dkg<RNG: RngCore + CryptoRng>(
-        signers: &mut Vec<v2::Party>,
+        signers: &mut [v2::Party],
         rng: &mut RNG,
     ) -> Result<Vec<PolyCommitment>, HashMap<usize, DkgError>> {
         let A: Vec<PolyCommitment> = signers.iter().map(|s| s.get_poly_commitment(rng)).collect();
@@ -406,7 +406,7 @@ mod tests {
             [8, 9].to_vec(),
         ]
         .to_vec();
-        let mut signers = party_key_ids
+        let mut signers: Vec<v2::Party> = party_key_ids
             .iter()
             .enumerate()
             .map(|(pid, pkids)| v2::Party::new(pid, pkids, party_key_ids.len(), N, T, &mut rng))
