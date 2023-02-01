@@ -302,33 +302,17 @@ impl SignatureAggregator {
     }
 }
 
-#[cfg(test)]
-mod tests {
+pub mod test_helpers {
     use crate::common::{PolyCommitment, PublicNonce};
     use crate::errors::DkgError;
     use crate::v2;
     use crate::v2::SignatureShare;
 
     use hashbrown::HashMap;
-    use rand_core::{CryptoRng, OsRng, RngCore};
-
-    #[test]
-    fn party_save_load() {
-        let mut rng = OsRng::default();
-        let ids = [1, 2, 3];
-        let n: usize = 10;
-        let t: usize = 7;
-
-        let signer = v2::Party::new(0, &ids, 1, n, t, &mut rng);
-
-        let state = signer.save();
-        let loaded = v2::Party::load(&state);
-
-        assert_eq!(signer, loaded);
-    }
+    use rand_core::{CryptoRng, RngCore};
 
     #[allow(non_snake_case)]
-    fn dkg<RNG: RngCore + CryptoRng>(
+    pub fn dkg<RNG: RngCore + CryptoRng>(
         signers: &mut Vec<v2::Party>,
         rng: &mut RNG,
     ) -> Result<Vec<PolyCommitment>, HashMap<usize, DkgError>> {
@@ -370,7 +354,7 @@ mod tests {
     }
 
     // There might be a slick one-liner for this?
-    fn sign<RNG: RngCore + CryptoRng>(
+    pub fn sign<RNG: RngCore + CryptoRng>(
         msg: &[u8],
         signers: &mut [v2::Party],
         rng: &mut RNG,
@@ -384,6 +368,28 @@ mod tests {
             .collect();
 
         (nonces, shares, key_ids)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::v2;
+
+    use rand_core::OsRng;
+
+    #[test]
+    fn party_save_load() {
+        let mut rng = OsRng::default();
+        let ids = [1, 2, 3];
+        let n: usize = 10;
+        let t: usize = 7;
+
+        let signer = v2::Party::new(0, &ids, 1, n, t, &mut rng);
+
+        let state = signer.save();
+        let loaded = v2::Party::load(&state);
+
+        assert_eq!(signer, loaded);
     }
 
     #[allow(non_snake_case)]
@@ -406,7 +412,7 @@ mod tests {
             .map(|(pid, pkids)| v2::Party::new(pid, pkids, party_key_ids.len(), N, T, &mut rng))
             .collect();
 
-        let A = match dkg(&mut signers, &mut rng) {
+        let A = match v2::test_helpers::dkg(&mut signers, &mut rng) {
             Ok(A) => A,
             Err(secret_errors) => {
                 panic!("Got secret errors from DKG: {:?}", secret_errors);
@@ -419,7 +425,7 @@ mod tests {
             let mut sig_agg =
                 v2::SignatureAggregator::new(N, T, A.clone()).expect("aggregator ctor failed");
 
-            let (nonces, sig_shares, key_ids) = sign(&msg, &mut signers, &mut rng);
+            let (nonces, sig_shares, key_ids) = v2::test_helpers::sign(&msg, &mut signers, &mut rng);
             if let Err(e) = sig_agg.sign(&msg, &nonces, &sig_shares, &key_ids) {
                 panic!("Aggregator sign failed: {:?}", e);
             }

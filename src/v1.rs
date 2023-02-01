@@ -313,16 +313,82 @@ impl crate::traits::Signer<Point> for Signer {
     }
 }
 
-#[cfg(test)]
-mod tests {
+pub mod test_helpers {
     use crate::common::{PolyCommitment, PublicNonce};
     use crate::errors::DkgError;
     use crate::traits::Signer;
     use crate::v1;
 
     use hashbrown::HashMap;
+    use rand_core::{CryptoRng, RngCore};
+
+    #[allow(non_snake_case)]
+    pub fn dkg<RNG: RngCore + CryptoRng>(
+        signers: &mut Vec<v1::Signer>,
+        rng: &mut RNG,
+    ) -> Result<Vec<PolyCommitment>, HashMap<usize, DkgError>> {
+        let A: Vec<PolyCommitment> = signers
+            .iter()
+            .flat_map(|s| s.get_poly_commitments(rng))
+            .collect();
+
+        // each party broadcasts their commitments
+        // these hashmaps will need to be serialized in tuples w/ the value encrypted
+        let mut broadcast_shares = Vec::new();
+        for signer in signers.iter() {
+            for party in &signer.parties {
+                broadcast_shares.push((party.id, party.get_shares()));
+            }
+        }
+
+        // each party collects its shares from the broadcasts
+        // maybe this should collect into a hashmap first?
+        let mut secret_errors = HashMap::new();
+        for signer in signers.iter_mut() {
+            for party in signer.parties.iter_mut() {
+                let mut h = HashMap::new();
+
+                for (id, share) in &broadcast_shares {
+                    h.insert(*id, share[&party.id]);
+                }
+
+                if let Err(secret_error) = party.compute_secret(h, &A) {
+                    secret_errors.insert(party.id, secret_error);
+                }
+            }
+        }
+
+        if secret_errors.is_empty() {
+            Ok(A)
+        } else {
+            Err(secret_errors)
+        }
+    }
+
+    // There might be a slick one-liner for this?
+    pub fn sign<RNG: RngCore + CryptoRng>(
+        msg: &[u8],
+        signers: &mut [v1::Signer],
+        rng: &mut RNG,
+    ) -> (Vec<PublicNonce>, Vec<v1::SignatureShare>) {
+        let ids: Vec<usize> = signers.iter().flat_map(|s| s.get_ids()).collect();
+        let nonces: Vec<PublicNonce> = signers.iter_mut().flat_map(|s| s.gen_nonces(rng)).collect();
+        let shares = signers
+            .iter()
+            .flat_map(|s| s.sign(msg, &ids, &nonces))
+            .collect();
+
+        (nonces, shares)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::traits::Signer;
+    use crate::v1;
+
     use num_traits::Zero;
-    use rand_core::{CryptoRng, OsRng, RngCore};
+    use rand_core::OsRng;
 
     #[test]
     fn signer_new() {
@@ -374,65 +440,6 @@ mod tests {
     }
 
     #[allow(non_snake_case)]
-    fn dkg<RNG: RngCore + CryptoRng>(
-        signers: &mut Vec<v1::Signer>,
-        rng: &mut RNG,
-    ) -> Result<Vec<PolyCommitment>, HashMap<usize, DkgError>> {
-        let A: Vec<PolyCommitment> = signers
-            .iter()
-            .flat_map(|s| s.get_poly_commitments(rng))
-            .collect();
-
-        // each party broadcasts their commitments
-        // these hashmaps will need to be serialized in tuples w/ the value encrypted
-        let mut broadcast_shares = Vec::new();
-        for signer in signers.iter() {
-            for party in &signer.parties {
-                broadcast_shares.push((party.id, party.get_shares()));
-            }
-        }
-
-        // each party collects its shares from the broadcasts
-        // maybe this should collect into a hashmap first?
-        let mut secret_errors = HashMap::new();
-        for signer in signers.iter_mut() {
-            for party in signer.parties.iter_mut() {
-                let mut h = HashMap::new();
-
-                for (id, share) in &broadcast_shares {
-                    h.insert(*id, share[&party.id]);
-                }
-
-                if let Err(secret_error) = party.compute_secret(h, &A) {
-                    secret_errors.insert(party.id, secret_error);
-                }
-            }
-        }
-
-        if secret_errors.is_empty() {
-            Ok(A)
-        } else {
-            Err(secret_errors)
-        }
-    }
-
-    // There might be a slick one-liner for this?
-    fn sign<RNG: RngCore + CryptoRng>(
-        msg: &[u8],
-        signers: &mut [v1::Signer],
-        rng: &mut RNG,
-    ) -> (Vec<PublicNonce>, Vec<v1::SignatureShare>) {
-        let ids: Vec<usize> = signers.iter().flat_map(|s| s.get_ids()).collect();
-        let nonces: Vec<PublicNonce> = signers.iter_mut().flat_map(|s| s.gen_nonces(rng)).collect();
-        let shares = signers
-            .iter()
-            .flat_map(|s| s.sign(msg, &ids, &nonces))
-            .collect();
-
-        (nonces, shares)
-    }
-
-    #[allow(non_snake_case)]
     #[test]
     fn aggregator_sign() {
         let mut rng = OsRng::default();
@@ -451,7 +458,7 @@ mod tests {
             .map(|ids| v1::Signer::new(ids, N, T, &mut rng))
             .collect();
 
-        let A = match dkg(&mut signers, &mut rng) {
+        let A = match v1::test_helpers::dkg(&mut signers, &mut rng) {
             Ok(A) => A,
             Err(secret_errors) => {
                 panic!("Got secret errors from DKG: {:?}", secret_errors);
@@ -464,7 +471,7 @@ mod tests {
             let mut sig_agg =
                 v1::SignatureAggregator::new(N, T, A.clone()).expect("aggregator ctor failed");
 
-            let (nonces, sig_shares) = sign(&msg, &mut signers, &mut rng);
+            let (nonces, sig_shares) = v1::test_helpers::sign(&msg, &mut signers, &mut rng);
             if let Err(e) = sig_agg.sign(&msg, &nonces, &sig_shares) {
                 panic!("Aggregator sign failed: {:?}", e);
             }
