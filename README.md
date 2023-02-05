@@ -1,5 +1,7 @@
 # FROST
 
+![ci](https://github.com/Trust-Machines/frost/actions/workflows/ci.yml/badge.svg)
+
 [```FROST```](https://eprint.iacr.org/2020/852.pdf) is a system for making ```Flexible Round Optimized Schnorr Threshold``` signatures.  It allows a group of ```N``` parties, each of whom controls a single key, to make a valid ```Schnorr``` signature, as long as ```T``` (the ```threshold```) of them complete the protocol honestly.  While there are many other threshold signature schemes, ```FROST``` has several features which make it particularly useful in a cryptocurrency context.
 
 First, it is optimized for a small number of rounds in the common case where there are no byzantine actors present.  Since the protocol allows detection any bad actors in the system, it makes sense to optimize for the case where there are none.  Such byzantine actors can be sanctioned in a way that severely disincentivezes attempts to subvert the protocol.
