@@ -1,4 +1,4 @@
-use p256k1::{point::Compressed, point::Point, scalar::Scalar};
+use p256k1::{point::Compressed, point::Error as PointError, point::Point, scalar::Scalar};
 use sha3::{Digest, Sha3_256};
 
 #[allow(dead_code)]
@@ -21,10 +21,10 @@ pub fn decode_scalar(s: &String) -> Scalar {
 }
 
 #[allow(dead_code)]
-pub fn decode_point(s: &String) -> Point {
+pub fn decode_point(s: &String) -> Result<Point, PointError> {
     let vec = hex::decode(s).unwrap();
     let compressed = Compressed::from(vec.as_slice());
-    Point::from(compressed)
+    Point::try_from(compressed)
 }
 
 #[allow(dead_code)]
