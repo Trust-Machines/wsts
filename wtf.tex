@@ -7,6 +7,7 @@
 \usepackage{amssymb}
 \usepackage{mathtools}
 \usepackage[symbol]{footmisc}
+\usepackage{caption}
 
 \renewcommand{\thefootnote}{\fnsymbol{footnote}}
 
@@ -75,6 +76,8 @@ While WTF can be implemented in any group, we will use curve point terminology e
 
 Let $G$ be a generator in an elliptic curve group $\mathbb{G}$.  Let $f$ be a polynomial of a scalar variable with scalar coefficients, and $P$ be a scalar polynomial with curve point coefficients.  Both $f$ and $P$ can be evaluated at a scalar, though the latter will use scalar/point multiplication rather than scalar/scalar.
 
+Let $H$ be a hash function, which maps a series of binary inputs to a fixed size binary digest.  For a hash function to be effective, this mapping must be $one-way$; i.e. it should be impossible to go from a hash digest back to the binary inputs.  The most common hash functions include SHA2, SHA3, and Blake, each of which can create a variety of digest sizes, frequently $256$ or $512$ bits.
+
 \newpage
 \onecolumn
 \section{
@@ -115,28 +118,25 @@ It would be ideal to construct a native weighted threshold scheme, where this si
 
 Consider a polynomial of degree $k$:
 \begin{align}
-  p_k(x) = a_0 + a_1 x + a_2 x^2 + ... + a_k x^k
+  p_k(x) = a_0 + a_1 x + a_2 x^2 + ... + a_k x^k\nonumber
 \end{align}
 
-There are $k+1$ coefficients needed to form a polynomial of degree $k$.  Thus in order to uniquely determine a polynomial of degree $k$, we will need to evaluate it at $k+1$ points, giving us a system of $k+1$ equations in $k+1$ unknowns.  Typically, we evaluate at the points $[1, k+1]$.  Using these evaluations to determine the coefficients is called Polynomial Interpolation.
+There are $k+1$ coefficients needed to form a polynomial of degree $k$.  Thus in order to uniquely determine a polynomial of degree $k$, we will need to evaluate it at $k+1$ points, giving us a system of $k+1$ equations in $k+1$ unknowns.  Typically, we evaluate at the points $[1, k+1]$.  This is called polynomial interpolation.
 
-To illustrate this, consider the case of a polynomial of degree $k = 1$:
+While we can use linear algebra to solve these equations, there is no closed form which can be used algebraically.  Lagrange interpolation \cite{lagrange} is an alternative approach which does provide a closed form.  To interpolate $f(x)$ it uses the Lagrange polynomial $L(x)$ and the Lagrange bases $l_i(x)$:
 \begin{align}
-  p(x) = a_0 + a_1 x\nonumber
+  L(x) &= \sum_{i=1}^{k+1} f(x_i) \cdot l_i(x)\\
+  l_i(x) &= \prod_{j=1, j \neq i}^{k+1} \frac{x - x_j}{x_i - x_j}
 \end{align}
 
-In order to uniquely determine this polynomial, we will need to ealuate it at $k+1 = 2$ points:
+We can see that $l_i(x_i)$ must be $1$, since $\frac{x_i - x_j}{x_i - x_j} = 1$.  For all other $x_m$, $l_i(x_m)$ must be $0$, since one of the top terms will be $x_m - x_m$, hence the product must be $0$.  So $\forall i \in [1,k+1];\; L(x_i) = f(x_i)$.
+
+If we only need to evaluate the interpolated polynomial at $0$, we can condense $l_i(0)$ to:
 \begin{align}
-  p(1) &= a_0 + a_1\nonumber\\
-  p(2) &= a_0 + 2 a_1\nonumber
+  l_i(0) &= \prod_{j=1; j \neq i}^{k+1} \frac{x_j}{x_j - x_i}
 \end{align}
 
-This gives a system of $2$ equations in $2$ unknowns.  Using the technique of linear combination, if we subtract the first equation from the second we can immediately determine one of the coefficients, then use substitution to get the other:
-\begin{align}
-  a_1 &= p(2) - p(1)\nonumber\\
-  a_0 &= p(1) - (p(2) - p(1))\nonumber\\
-      &= 2 \cdot p(1) - p(2)\nonumber
-\end{align}
+We call this $\lambda_i$, and use it to quickly evaluate $L(0)$ when given a set $(x_i, f(x_i))$.
 
 \newpage
 \onecolumn
@@ -145,9 +145,9 @@ This gives a system of $2$ equations in $2$ unknowns.  Using the technique of li
   Schnorr Proofs
 }
 
-A Schnorr proof \cite{schnorr} is a zero knowledge proof of ownership of a public key.  Let scalar $x$ be a private key, with point $X = x \cdot G$ the corresponding public key.  To prove knowledge of $x$ given $X$, Schnorr proofs use a $3$-move challenge-response protocol, i.e. a Sigma protocol.
+A Schnorr proof \cite{schnorr} is a zero knowledge proof of ownership of a public key.  Let scalar $x$ be a private key, with point $X = x \cdot G$ the corresponding public key.  To prove knowledge of $x$ given $X$, Schnorr proofs use a $3$-move commitment-challenge-response protocol, i.e. a Sigma protocol.
 
-The prover first creates a random scalar $v$, and the corresponding point $V$, then sends $V$ to the verifier.  The verifier then returns a random challenge scalar $c$.  The prover then constructs the response $r = v + cx$.  The proof consists of the tuple $(r, c, V)$.
+The prover first commits to a random scalar $v$ with the corresponding point $V$, then sends $V$ to the verifier.  The verifier then returns a random challenge scalar $c$.  The prover then constructs the response $r = v + cx$.  The proof consists of the tuple $(r, c, V)$.
 
 To verify the proof, check that:
 \begin{align}
@@ -168,7 +168,7 @@ To make this protocol non-interactive, use the Fiat-Shamir transform \cite{fiats
   FROST
 }
 
-FROST is an aggregate threshold signing scheme.  It allows for a group of $N$ parties to create a distributed group signing key, then some threshold $T$ of them can cooperate to sign a message.  This group signature is an aggregate of the individual party signatures.
+FROST is an aggregate threshold signing scheme.  It allows for a group of $N$ parties to create a distributed group signing key, then some threshold $T$ of them can cooperate to sign a message.  This group signature is an aggregate of the individual party signatures, and functions as a Schnorr proof.
 
 Thus there are three discrete elements required: distributed key generation, gathering party signatures, and forming an aggregate group signature using the party signatures.
 
@@ -180,19 +180,19 @@ Like many DKG schemes, FROST employs the technique of polynomial interpolation. 
 
 Remember that in polynomial interpolation, you need $k+1$ points to interpolate a degree $k$ polynomial.  FROST specifies a threshold $T$, which is the number of signers necessary to sign a message.  Thus we will need a polynomial of degree $T-1$ so that any group of $T$ signers will be able to interpolate the key, and thereby sign.
 
-First, each party is given a sequential ID $i \in [1, N]$, which will be used both to identify it and as an element in the underlying math.  Next, each party constructs a random private polynomial $f$ of degree $T-1$, where the coefficients are scalars.  A public DKG share is constructed from $f$ by multiplying each coefficient by a generator $G$.  The ID and public polynomial $P$ is then shared to all other parties.
+First, each party is given a sequential ID $i \in [1, N]$, which will be used both to identify it and as an element in the underlying math.  Next, each party $i$ constructs a random private polynomial $f_i$ of degree $T-1$, where the coefficients are scalars.  A public DKG share is constructed from $f_i$ by multiplying each coefficient by a generator $G$.  The ID $i$ and public polynomial $P_i$ is then shared to all other parties.
 
-The parties then evaluate their own $f$ at each $j \in [1,N]$, and send a private DKG share to each consisting of $(j, f_i(j))$.  Each receiving party checks each private share for consistency with the public polynomial of the sending party.  This is done for party $i$ by checking that:
+Each party $i$ evaluates its own $f_i$ at each $j \in [1,N]$, and send a private DKG share to each consisting of $(j, f_i(j))$.  Each receiving party checks each private share for consistency with the public polynomial of the sending party.  This is done for party $i$ by checking that:
 \begin{align}
   \forall j \in [1,N] \ni j \neq i;\;f_j(i) \cdot G = P_j(i)
 \end{align}
 
-Once the private shares are verified, each party computes its share $s_i$ of the group secret key by summing the private polynomial evaluations from all the other parties, then uses it to construct its public key $Y_i$:
+Once the private shares are verified, each party $i$ computes its share $s_i$ of the group secret key by summing the private polynomial evaluations at $i$ from all parties, then uses it to construct its public key $Y_i$:
 \begin{align}
-  s_i = \sum_{j=1; j \neq i}^{N} f_j(i) ;\; Y_i = s_i \cdot G
+  s_i = \sum_{j=1}^{N} f_j(i) ;\; Y_i = s_i \cdot G
 \end{align}
 
-Each party computes the group public key $K$ by summing the first coefficient of each public polynomial:
+Each party computes the group public key $Y$ by summing the first coefficient of each public polynomial:
 \begin{align}
   Y = \sum_{j=1}^{N} P_j(0)
 \end{align}
@@ -214,7 +214,7 @@ Once nonces have been received, each party $i \in S$ computes the binding values
 
 Next they compute the interpolation value $\lambda_i$:
 \begin{align}
-  \lambda_i = \prod_{j=1; j \neq i}^{N} \frac{j}{j - i}
+  \lambda_i = \prod_{j \in S; j \neq i}^{} \frac{j}{j - i}
 \end{align}
 
 Each party also computes the sum $R$:
@@ -244,10 +244,10 @@ Once the aggregator has gathered the signature shares $z_i$, it must first verif
 
 Finally the aggregator can construct the group signature $z$:
 \begin{align}
-  z = \sum_{i=1}^{N} z_i
+  z = \sum_{i \in S}^{} z_i
 \end{align}
 
-The full signature consists of $(R, z)$ using $R$ from $(9)$.
+The full signature consists of $(R, z)$ using $R$ from $(11)$.
 
 \subsubsection{
   Verifying the Group Signature
@@ -260,6 +260,19 @@ To verify the group signature, construct the value $R'$ from the group public ke
 
 If $R = R'$, the proof is valid.
 
+\subsubsection{
+  FROST as a Schnorr Proof
+}
+
+How does the FROST algorithm produce a Schnorr Proof?  To do so, it should first commit to some randomness $v$ via $V$, produce a challenge that depends on $V$, and then give a response that combines the commitment $v$, challenge $c$, and underlying secret $x$: $r = v + cx$.
+
+This is exactly what FROST does.  The committed values are the nonces $(d_i, e_i)$, shared as $(D_i, E_i)$, and aggregated into the sum $R$, which is used to construct the challenge.  And if we expand the aggregation of the party signatures $z_i$, we can see that the response, the signature $z$, is indeed $v + cx$:
+\begin{align}
+  z = \sum_{i \in S}^{} z_i = \sum_{i \in S}^{} d_i + \rho_i \cdot e_i + s_i \cdot c \cdot \lambda_i = \sum_{i \in S}^{} (d_i + \rho_i \cdot e_i) + c \cdot \sum_{i \in S}^{}(s_i \cdot \lambda_i)\nonumber
+\end{align}
+
+As we know from Lagrange interpolation, $\sum_{i \in S}^{} s_i \cdot \lambda_i$ is the group polynomial evaluated at $0$, which is the group private key.
+
 \newpage
 \onecolumn
 \section{
@@ -270,7 +283,7 @@ There are many aggregate threshold signature scheme, some quite similar to FROST
 
 An excellent example of a robust protocol is Provably Secure Distributed Schnorr Signatures (PSDSS) \cite{psdss}.  The construction features robustness in both the DKG and signing rounds.  At both stages, the protocol will succeed as long as at least $T$ parties complete it honestly.
 
-We did not choose PSDSS as the basis for WTF for two reasons.  First, rather than gather nonces from signing parties in each signing round, it runs an additional DKG to create an ephermal round key.  Since DKG is an expensive protocol in the case of a large number of voting slots, it was suboptimal for our use case.  Also, WTF-style bandwidth reductions did not appear to be viable for PSDSS.
+We did not choose PSDSS as the basis for WTF for two reasons.  First, rather than gather nonces from signing parties in each signing round, it runs an additional DKG to create an ephemeral round key.  Since DKG is an expensive protocol in the case of a large number of voting slots, it was suboptimal for our use case.  Also, WTF-style bandwidth reductions did not appear to be viable for PSDSS.
 
 There are also many native weighted threshold signing schemes, but ultimately all were rejected.  Most of them relied on RSA with a trusted setup, and so were considered prima facie unsuitable.
 
@@ -301,9 +314,9 @@ Once a party receives its DKG public and private shares, it first must verify th
   \forall j_p \in [1,N_p], i_k \in K_{i_p}; f_{j_p}(i_k) \cdot G = P_{j_p}(i_k)
 \end{align}
 
-Once the private shares are verified, each party computes its shares $s_{i_k}$ of the group secret key by summing the private polynomial evaluations from all the other parties for each key $i_k$. The parties then use each $s_{i_k}$ to construct the corresponding public key $Y_{i_k}$:
+Once the private shares are verified, each party $i_p$ computes its shares $s_{i_k}$ of the group secret key by summing the private polynomial evaluations from all parties for each key $i_k$. The parties then use each $s_{i_k}$ to construct the corresponding public key $Y_{i_k}$:
 \begin{align}
-  s_{i_k} = \sum_{j_p = 1; j_p \neq i}^{N_p} f_{j_p}(i_k) ;\; Y_{i_k} = s_{i_k} \cdot G
+  s_{i_k} = \sum_{j_p = 1}^{N_p} f_{j_p}(i_k) ;\; Y_{i_k} = s_{i_k} \cdot G
 \end{align}
 
 Each party computes the group public key $Y$ by summing the first coefficient of each public polynomial:
@@ -317,16 +330,16 @@ At this point DKG is complete, and each party $i_p$ knows all of its $(s_{i_k}, 
   Gathering Party Signatures
 }
 
-As before, in order for polynomial interpolation to work, it is necessary to choose the signing parties $S_p \ni \forall s_p \in S_p, s_p \in [1, N_p]$, and the corresponding $S_k$ which consists of the union of all $i_k \in K_{i_p}\; \forall i_p \in S_p$, before any party can sign, with $|S_k| >= T$.  Each party $i_p \in S$ then constructs a private nonce $(d_{i_p},e_{i_p})$ and corresponding public nonce $(D_{i_p},E_{i_p})$, then sends $(D_{i_p},E_{i_p})$ to all other parties with keys in $S$.
+As before, in order for polynomial interpolation to work, it is necessary to choose the signing parties $S_p \ni \forall s_p \in S_p, s_p \in [1, N_p]$, and the corresponding $S_k$ which consists of the union of all $i_k \in K_{i_p}\; \forall i_p \in S_p$, before any party can sign, with $|S_k| >= T$.  Each party $i_p \in S_p$ then constructs a private nonce $(d_{i_p},e_{i_p})$ and corresponding public nonce $(D_{i_p},E_{i_p})$, then sends $(D_{i_p},E_{i_p})$ to all other parties with keys in $S_k$.
 
-Once nonces have been received, each party $i_p \in S$ computes the binding values $\rho_{j_p}$:
+Once nonces have been received, each party $i_p \in S_p$ computes the binding values $\rho_{j_p}$:
 \begin{align}
-  \forall j_p \in S;\;\rho_{j_p} = H(j_p, D_{j_p}, E_{j_p})
+  \forall j_p \in S_p;\;\rho_{j_p} = H(j_p, D_{j_p}, E_{j_p})
 \end{align}
 
 Next, $\forall i_k \in K_{i_p}$,  they compute the interpolation values $\lambda_{i_k}$:
 \begin{align}
-  \lambda_{i_k} = \prod_{j_k=1; j_k \neq i_k}^{N_k} \frac{j_k}{j_k - i_k}
+  \lambda_{i_k} = \prod_{j_k \in S_k; j_k \neq i_k}^{} \frac{j_k}{j_k - i_k}
 \end{align}
 
 Each party also computes the sum $R$:
@@ -339,7 +352,7 @@ Once they have $R$ and message $m$ they can construct the challenge $c$:
   c = H(Y, R, m)
 \end{align}
 
-Finally, each party $i$ can construct its signature share $z_i$:
+Finally, each party $i_p$ can construct its signature share $z_i$:
 \begin{align}
   z_{i_p} = d_{i_p} + \rho_{i_p} \cdot e_{i_p} + \sum_{j_k \in K_{i_p}}^{} s_{j_k} \cdot c \cdot \lambda_{j_k}
 \end{align}
@@ -359,7 +372,7 @@ Finally the aggregator can construct the group signature $z$:
   z = \sum_{i_p \in S_p}^{} z_{i_p}
 \end{align}
 
-The full signature consists of $(R, z)$ using $R$ from $(20)$.
+The full signature consists of $(R, z)$ using $R$ from $(22)$.
 
 \subsection{
   Verifying the Group Signature
@@ -372,15 +385,50 @@ To verify the group signature, construct the value $R'$ from the group public ke
 
 If $R = R'$, the proof is valid.
 
+\subsubsection{
+  WTF as a Schnorr Proof
+}
+
+WTF constructs a Schnorr proof in the same way as FROST, with the same commitment value and challenge.  The response, the signature $z$, likewise expands to $v + cx$:
+\begin{align}
+  z = \sum_{i_p \in S_p}^{} z_{i_p} = \sum_{i_p \in S_p}^{} d_{i_p} + \rho_{i_p} \cdot e_{i_p} + \sum_{j_k \in K_{i_p}}^{} s_{j_k} \cdot c \cdot \lambda_{j_k} = \sum_{i_p \in S_p}^{} (d_{i_p} + \rho_{i_p} \cdot e_{i_p}) + c \cdot \sum_{j_k \in S_k}^{} (s_{j_k} \cdot \lambda_{j_k})\nonumber
+\end{align}
+
+As we know from Lagrange interpolation, $\sum_{j_k \in S_k}^{} s_{j_k} \cdot \lambda_{j_k}$ is the group polynomial evaluated at $0$, which is the group private key.
+
 \newpage
 \onecolumn
 \section{
   Performance
 }
 
-The WTF reference implementation \cite{tmfrost} contains vanilla FROST in the v1 module, and WTF in the v2 module.  This crate contains criterion benchmarks for both v1 and v2.
+The WTF Rust reference implementation \cite{tmfrost} contains vanilla FROST in the v1 module, and WTF in the v2 module.  This crate contains criterion benchmarks for both v1 and v2.
 
-The results are quite staggering.  When testing DKG with $4$ signers and $20$ keys, v2 outperforms v1 by an order of magnitude: $53.793 ms$ per DKG round for v1 compared to $8.2657 ms$ for v2.
+The results are quite staggering.  When testing DKG with $4$ signers and $20$ keys, v2 outperforms v1 by an order of magnitude: $53 ms$ per DKG round for v1 compared to $8.3 ms$ for v2.  Similar speedups were noted for party signing and group signing.
+
+In the table, $N_s$ will refer to the number of signers, which is $N$ in FROST and $N_p$ in WTF.  $N_k$ is the number of keys, and $T$ is the threshold.
+
+\begin{center}
+  \captionof{table}{FROST vs WTF (runtime)}
+  \begin{tabular}{ c|c|c|c|c|c|c|c|c } 
+    \multicolumn{3}{c|}{} & \multicolumn{2}{|c|}{DKG}& \multicolumn{2}{|c|}{Party Sign} & \multicolumn{2}{|c}{Group Sign} \\
+    \hline
+    \hline
+    $N_s$ & $N_k$ & $T$ & v1 & v2 & v1 & v2 & v1 & v2 \\ 
+    \hline
+    \hline
+    4 & 20 & 13 & 53ms & 8.3ms & 18ms & 0.80ms & 2.1ms & 0.85ms \\ 
+    4 & 40 & 13 & 200ms & 15ms & 120ms & 2.0ms & 6.5ms & 2.2ms \\ 
+    4 & 40 & 26 & 420ms & 36ms & 120ms & 2.0ms & 6.6ms & 2.3ms \\ 
+    4 & 60 & 26 & 1000ms & 59ms & 380ms & 4.0ms & 13ms & 4.6ms \\ 
+    4 & 60 & 40 & 1900ms & 120ms & 380ms & 4.0ms & 13ms & 4.6ms \\ 
+    4 & 80 & 40 & 3400ms & 160ms & 880ms & 6.7ms & 23ms & 7.6ms \\ 
+    4 & 80 & 53 & 4900ms & 240ms & 880ms & 6.7ms & 23ms & 7.6ms \\ 
+    4 & 100 & 53 & 7900ms & 300ms & 1700ms & 10ms & 35ms & 12ms \\ 
+    4 & 100 & 66 & 10000ms & 400ms & 1700ms & 10ms & 35ms & 12ms \\ 
+  \end{tabular}
+\end{center}
+
 
 \newpage
 \onecolumn
@@ -390,12 +438,16 @@ The results are quite staggering.  When testing DKG with $4$ signers and $20$ ke
 
 The author would like to thank Alie Slade for initial work on the WTF algorithm.
 
-\begin{thebibliography}{6}
+\begin{thebibliography}{7}
 
 \bibitem{frost}
   Chelsea Komlo, Ian Goldberg
   \emph{FROST: Flexible Round-Optimized Schnorr Threshold Signatures} 2020.12.22.
   \texttt{https://eprint.iacr.org/2020/852.pdf}
+
+\bibitem{lagrange}
+  \emph{Lagrange polynomial}.
+  \texttt{https://en.wikipedia.org/wiki/Lagrange\%5Fpolynomial}
 
 \bibitem{schnorr}
   \emph{Schnorr signature}.

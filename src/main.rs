@@ -1,146 +1,98 @@
-use rand_core::{CryptoRng, OsRng, RngCore};
+use rand_core::OsRng;
 use std::{env, time};
 
-use frost::{
-    common::{PolyCommitment, PublicNonce},
-    v1::{Party, SignatureAggregator, SignatureShare},
-};
-use hashbrown::HashMap;
-
-// This will eventually need to be replaced by rpcs
-#[allow(non_snake_case)]
-fn distribute(parties: &mut Vec<Party>, A: &[PolyCommitment]) -> u128 {
-    // each party broadcasts their commitments
-    // these hashmaps will need to be serialized in tuples w/ the value encrypted
-    let mut broadcast_shares = Vec::new();
-    for party in parties.iter() {
-        broadcast_shares.push(party.get_shares());
-    }
-
-    let mut total_compute_secret_time = 0;
-
-    // each party collects its shares from the broadcasts
-    // maybe this should collect into a hashmap first?
-    for i in 0..parties.len() {
-        let mut h = HashMap::new();
-        for j in 0..parties.len() {
-            h.insert(j, broadcast_shares[j][&i]);
-        }
-        let compute_secret_start = time::Instant::now();
-        parties[i].compute_secret(h, A).unwrap();
-        let compute_secret_time = compute_secret_start.elapsed();
-        total_compute_secret_time += compute_secret_time.as_micros();
-    }
-
-    total_compute_secret_time
-}
-
-#[allow(non_snake_case)]
-fn select_parties<RNG: RngCore + CryptoRng>(N: usize, T: usize, rng: &mut RNG) -> Vec<usize> {
-    let mut indices: Vec<usize> = Vec::new();
-
-    for i in 0..N {
-        indices.push(i);
-    }
-
-    while indices.len() > T {
-        let i = rng.next_u64() as usize % indices.len();
-        indices.swap_remove(i);
-    }
-
-    indices
-}
-
-// There might be a slick one-liner for this?
-fn collect_signatures(
-    parties: &[Party],
-    signers: &[usize],
-    nonces: &[PublicNonce],
-    msg: &[u8],
-) -> Vec<SignatureShare> {
-    let mut sigs = Vec::new();
-    for i in 0..signers.len() {
-        let party = &parties[signers[i]];
-        sigs.push(party.sign(msg, signers, nonces));
-    }
-    sigs
-}
+use frost::{common::test_helpers::gen_signer_ids, v1, v2};
 
 #[allow(non_snake_case)]
 fn main() {
     let args: Vec<String> = env::args().collect();
-    let num_sigs = 7;
     let N: usize = if args.len() > 1 {
         args[1].parse::<usize>().unwrap()
     } else {
-        10
+        20
     };
     let T: usize = if args.len() > 2 {
         args[2].parse::<usize>().unwrap()
     } else {
         (N * 2) / 3
     };
+    let K: usize = if args.len() > 3 {
+        args[3].parse::<usize>().unwrap()
+    } else {
+        4
+    };
 
     let mut rng = OsRng::default();
+    let msg = "It was many and many a year ago".as_bytes();
 
-    // Initial set-up
-    let mut parties: Vec<Party> = (0..N).map(|i| Party::new(i, N, T, &mut rng)).collect();
-    let A: Vec<PolyCommitment> = parties
-        .iter()
-        .map(|p| p.get_poly_commitment(&mut rng))
-        .collect();
-    let total_compute_secret_time = distribute(&mut parties, &A);
+    println!("With N={N} T={T} K={K}:");
 
-    let mut total_sig_time = 0;
-    let mut total_party_sig_time = 0;
-    for _ in 0..num_sigs {
-        let msg = "It was many and many a year ago".as_bytes();
-        let signers = select_parties(N, T, &mut rng);
-
-        let nonces: Vec<PublicNonce> = signers
+    // v1
+    {
+        let signer_ids = gen_signer_ids(N, K);
+        let mut signers: Vec<v1::Signer> = signer_ids
             .iter()
-            .map(|i| parties[*i].gen_nonce(&mut rng))
+            .map(|ids| v1::Signer::new(ids, N, T, &mut rng))
             .collect();
 
-        let mut sig_agg =
-            SignatureAggregator::new(N, T, A.clone()).expect("aggregator ctor failed");
+        let dkg_start = time::Instant::now();
+        let A = v1::test_helpers::dkg(&mut signers, &mut rng).expect("v1 dkg failed");
+        let dkg_time = dkg_start.elapsed();
+        let mut signers: Vec<v1::Signer> = (0..(K * 3 / 4)).map(|i| signers[i].clone()).collect();
 
-        let party_sig_start = time::Instant::now();
-        let sig_shares = collect_signatures(&parties, &signers, &nonces, msg);
-        let party_sig_time = party_sig_start.elapsed();
-        let sig_start = time::Instant::now();
-        let sig_res = sig_agg.sign(msg, &nonces, &sig_shares);
-        let sig_time = sig_start.elapsed();
+        let mut aggregator = v1::SignatureAggregator::new(N, T, A).expect("aggregator ctor failed");
 
-        total_party_sig_time += party_sig_time.as_micros();
-        total_sig_time += sig_time.as_micros();
+        let party_sign_start = time::Instant::now();
+        let (nonces, sig_shares) = v1::test_helpers::sign(msg, &mut signers, &mut rng);
+        let party_sign_time = party_sign_start.elapsed();
 
-        match sig_res {
-            Ok(sig) => {
-                println!("Signature (R,z) = \n({},{})", sig.R, sig.z);
-            }
-            Err(sig_error) => {
-                panic!("Signing failed: {sig_error:?}");
-            }
-        }
+        let group_sign_start = time::Instant::now();
+        let _sig = aggregator
+            .sign(msg, &nonces, &sig_shares)
+            .expect("v1 group sign failed");
+        let group_sign_time = group_sign_start.elapsed();
+
+        println!("v1 dkg time {}ms", dkg_time.as_millis());
+        println!(
+            "v1 party sign time {}ms ({}ms/party)",
+            party_sign_time.as_millis(),
+            party_sign_time.as_millis() / (N as u128)
+        );
+        println!("v1 group sign time {}ms", group_sign_time.as_millis());
     }
-    println!("With {N} parties and {T} signers:");
-    println!(
-        "{} party secrets in {} us ({} us/secret)",
-        N,
-        total_compute_secret_time,
-        total_compute_secret_time / (N as u128)
-    );
-    println!(
-        "{} party signatures in {} us ({} us/sig)",
-        num_sigs * T as u32,
-        total_party_sig_time,
-        total_party_sig_time / (num_sigs * (T as u32)) as u128
-    );
-    println!(
-        "{} signatures in {} us ({} us/sig)",
-        num_sigs,
-        total_sig_time,
-        total_sig_time / num_sigs as u128
-    );
+
+    // v2
+    {
+        let signer_ids = gen_signer_ids(N, K);
+        let mut signers: Vec<v2::Party> = signer_ids
+            .iter()
+            .enumerate()
+            .map(|(pid, pkids)| v2::Party::new(pid, pkids, K, N, T, &mut rng))
+            .collect();
+
+        let dkg_start = time::Instant::now();
+        let A = v2::test_helpers::dkg(&mut signers, &mut rng).expect("v2 dkg failed");
+        let dkg_time = dkg_start.elapsed();
+        let mut signers: Vec<v2::Party> = (0..(K * 3 / 4)).map(|i| signers[i].clone()).collect();
+
+        let mut aggregator = v2::SignatureAggregator::new(N, T, A).expect("aggregator ctor failed");
+
+        let party_sign_start = time::Instant::now();
+        let (nonces, sig_shares, key_ids) = v2::test_helpers::sign(msg, &mut signers, &mut rng);
+        let party_sign_time = party_sign_start.elapsed();
+
+        let group_sign_start = time::Instant::now();
+        let _sig = aggregator
+            .sign(msg, &nonces, &sig_shares, &key_ids)
+            .expect("v2 group sign failed");
+        let group_sign_time = group_sign_start.elapsed();
+
+        println!("v2 dkg time {}ms", dkg_time.as_millis());
+        println!(
+            "v2 party sign time {}ms ({}ms/party)",
+            party_sign_time.as_millis(),
+            party_sign_time.as_millis() / (K as u128)
+        );
+        println!("v2 group sign time {}ms", group_sign_time.as_millis());
+    }
 }

@@ -87,7 +87,7 @@ impl Party {
     pub fn get_shares(&self) -> HashMap<usize, Scalar> {
         let mut shares = HashMap::new();
         for i in 0..self.n {
-            shares.insert(i, self.f.eval(Scalar::from((i + 1) as u32)));
+            shares.insert(i, self.f.eval(compute::id(i)));
         }
         shares
     }

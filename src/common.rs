@@ -103,3 +103,20 @@ impl Signature {
         R == self.R
     }
 }
+
+pub mod test_helpers {
+    pub fn gen_signer_ids(n: usize, k: usize) -> Vec<Vec<usize>> {
+        let mut ids = Vec::new();
+        let m = n / k;
+
+        for i in 0..k {
+            let mut pids = Vec::new();
+            for j in 0..m {
+                pids.push(i * m + j);
+            }
+            ids.push(pids);
+        }
+
+        ids
+    }
+}

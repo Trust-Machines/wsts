@@ -77,6 +77,7 @@ jobs:
       - run: sudo apt-get install texlive
       - run: sudo apt-get install texlive-latex-extra
       - run: pdflatex ./wtf.tex
+      - run: pdflatex ./wtf.tex
       - name: upload pdf
         uses: actions/upload-artifact@v3
         with:
