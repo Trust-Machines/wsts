@@ -239,7 +239,7 @@ Finally, each party $i$ can construct its signature share $z_i$:
 
 Once the aggregator has gathered the signature shares $z_i$, it must first verify that they are valid by checking that:
 \begin{align}
-  z_i \cdot G = D_i + \rho_i \cdot E_i + s_i \cdot c \cdot \lambda_i
+  z_i \cdot G = D_i + \rho_i \cdot E_i + Y_i \cdot c \cdot \lambda_i
 \end{align}
 
 Finally the aggregator can construct the group signature $z$:
