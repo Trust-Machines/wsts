@@ -76,6 +76,9 @@ jobs:
           override: true
       - run: sudo apt-get install texlive
       - run: sudo apt-get install texlive-latex-extra
+      # We have to build the pdf twice. The way the bibliography works is that the 
+      # first run creates the bibtex aux files, then the second run puts the ref 
+      # numbers into the inline citations.
       - run: pdflatex ./wtf.tex
       - run: pdflatex ./wtf.tex
       - name: upload pdf
