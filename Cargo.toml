@@ -12,7 +12,7 @@ hex = "0.4.3"
 num-traits = "0.2"
 polynomial = { version = "0.2.5", features = ["serde"] }
 rand_core = "0.5"
-p256k1 = { git = "https://github.com/Trust-Machines/p256k1", rev = "7baccde71130453e503c21dd1109f3005946c13e" }
+p256k1 = { version = "1.0" }
 serde = { version = "1.0", features = ["derive"] }
 sha3 = "0.10.5"
 thiserror = "1.0"
