@@ -1,6 +1,6 @@
 use core::iter::zip;
 use num_traits::{One, Zero};
-use p256k1::{point::Point, scalar::Scalar};
+use p256k1::{point::Error as PointError, point::Point, scalar::Scalar};
 use sha3::{Digest, Sha3_256};
 
 use crate::common::PublicNonce;
@@ -64,4 +64,15 @@ pub fn intermediate(
 
 pub fn id(i: usize) -> Scalar {
     Scalar::from((i + 1) as u32)
+}
+
+pub fn poly(x: &Scalar, f: &Vec<Point>) -> Result<Point, PointError> {
+    let mut s = Vec::with_capacity(f.len());
+    let mut pow = Scalar::one();
+    for _ in 0..f.len() {
+        s.push(pow);
+        pow *= x;
+    }
+
+    Point::multimult(s, f.clone())
 }

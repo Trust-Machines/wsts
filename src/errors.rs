@@ -1,4 +1,4 @@
-use p256k1::scalar::Scalar;
+use p256k1::{point::Error as PointError, scalar::Scalar};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -11,6 +11,14 @@ pub enum DkgError {
     NotEnoughShares(Vec<usize>),
     #[error("bad shares {0:?}")]
     BadShares(Vec<usize>),
+    #[error("point error {0:?}")]
+    Point(PointError),
+}
+
+impl From<PointError> for DkgError {
+    fn from(e: PointError) -> Self {
+        DkgError::Point(e)
+    }
 }
 
 #[derive(Error, Debug)]

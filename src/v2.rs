@@ -163,11 +163,7 @@ impl Party {
         for key_id in &self.key_ids {
             for (sender, s) in &shares[key_id] {
                 let Ai = &A[*sender];
-                if s * G
-                    != (0..Ai.A.len()).fold(Point::zero(), |s, j| {
-                        s + (compute::id(*key_id) ^ j) * Ai.A[j]
-                    })
-                {
+                if s * G != compute::poly(&compute::id(*key_id), &Ai.A)? {
                     bad_shares.push(*sender);
                 }
             }

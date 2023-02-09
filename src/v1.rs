@@ -120,7 +120,7 @@ impl Party {
         let mut bad_shares = Vec::new();
         for (i, s) in shares.iter() {
             let Ai = &A[*i];
-            if s * G != (0..Ai.A.len()).fold(Point::zero(), |s, j| s + (self.id() ^ j) * Ai.A[j]) {
+            if s * G != compute::poly(&self.id(), &Ai.A)? {
                 bad_shares.push(*i);
             }
         }
