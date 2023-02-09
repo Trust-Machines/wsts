@@ -1,5 +1,5 @@
 [package]
-name = "frost"
+name = "wtfrost"
 version = "1.0.0"
 edition = "2021"
 authors = ["Joey Yandle <xoloki@gmail.com>"]
@@ -39,5 +39,5 @@ path = "src/lib.rs"    # The source file of the target.
 crate-type = ["lib"]   # The crate types to generate.
 
 [[bin]]
-name = "frost"
+name = "wtfrost"
 path = "src/main.rs"

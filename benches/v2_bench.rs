@@ -1,6 +1,6 @@
-use frost::common::test_helpers::gen_signer_ids;
-use frost::v2;
-use frost::v2::test_helpers::{dkg, sign};
+use wtfrost::common::test_helpers::gen_signer_ids;
+use wtfrost::v2;
+use wtfrost::v2::test_helpers::{dkg, sign};
 
 use criterion::{criterion_group, criterion_main, Criterion};
 use rand_core::OsRng;

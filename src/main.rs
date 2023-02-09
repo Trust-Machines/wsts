@@ -1,7 +1,7 @@
 use rand_core::OsRng;
 use std::{env, time};
 
-use frost::{common::test_helpers::gen_signer_ids, v1, v2};
+use wtfrost::{common::test_helpers::gen_signer_ids, v1, v2};
 
 #[allow(non_snake_case)]
 fn main() {
