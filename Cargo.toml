@@ -4,11 +4,9 @@ version = "1.0.0"
 edition = "2021"
 authors = ["Joey Yandle <xoloki@gmail.com>"]
 license = "Apache-2.0"
-description = "Weighted Threshold FROST"
+description = "Weighted Threshold implementation of FROST, a Schnorr aggregated threshold signature scheme"
 readme = "README.md"
 repository = "https://github.com/Trust-Machines/frost/"
-homepage = "https://wtfrost.pages.dev/"
-documentation = "https://wtfrost.pages.dev/frost/"
 keywords = ["cryptography", "crypto", "frost"]
 categories = ["cryptography"]
 
