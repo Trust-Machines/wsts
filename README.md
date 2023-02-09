@@ -1,6 +1,6 @@
-# FROST
+# WTFROST
 
-![ci](https://github.com/Trust-Machines/frost/actions/workflows/ci.yml/badge.svg)
+[![ci](https://github.com/Trust-Machines/frost/actions/workflows/ci.yml/badge.svg)](https://github.com/Trust-Machines/frost/actions/workflows/ci.yml)
 
 [```FROST```](https://eprint.iacr.org/2020/852.pdf) is a system for making ```Flexible Round Optimized Schnorr Threshold``` signatures.  It allows a group of ```N``` parties, each of whom controls a single key, to make a valid ```Schnorr``` signature, as long as ```T``` (the ```threshold```) of them complete the protocol honestly.  While there are many other threshold signature schemes, ```FROST``` has several features which make it particularly useful in a cryptocurrency context.
 
@@ -18,4 +18,4 @@ This crate uses the Bitcoin ```secp256k1``` curve.  But since the C ```libsecp25
 
 ## Source Code Documentation
 
-[FROST](https://wtfrost.pages.dev/frost/)
+[WTFROST](https://wtfrost.pages.dev/wtfrost/)
