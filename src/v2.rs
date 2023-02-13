@@ -1,3 +1,4 @@
+use hashbrown::{HashMap, HashSet};
 use num_traits::Zero;
 use p256k1::{
     point::{Point, G},
@@ -13,41 +14,55 @@ use crate::errors::{AggregatorError, DkgError};
 use crate::schnorr::ID;
 use crate::vss::VSS;
 
-use hashbrown::{HashMap, HashSet};
-
+/// A map of public keys indexed by key ID
 pub type PubKeyMap = HashMap<usize, Point>;
+/// A map of private keys indexed by key ID
 pub type PrivKeyMap = HashMap<usize, Scalar>;
+/// A signing set of key IDs indexed by party ID
 pub type SelectedSigners = HashMap<usize, HashSet<usize>>;
+/// The SignatureShare type for v2
 pub type SignatureShare = crate::common::SignatureShare<PubKeyMap>;
 
 #[derive(Serialize, Deserialize)]
+/// The saved state required to construct a party
 pub struct PartyState {
+    /// The party ID
     pub party_id: usize,
+    /// The key IDs for this party
     pub key_ids: Vec<usize>,
-    pub public_keys: PubKeyMap,
+    /// The total number of keys
     pub num_keys: usize,
+    /// The total number of parties
     pub num_parties: usize,
+    /// The party's private polynomial
     pub polynomial: Polynomial<Scalar>,
+    /// The private keys for this party, indexed by ID
     pub private_keys: PrivKeyMap,
+    /// The aggregate group public key
     pub group_key: Point,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[allow(non_snake_case)]
+/// A WTF party, which encapsulates a single polynomial, nonce, and one private key per key ID
 pub struct Party {
+    /// The party ID
     pub party_id: usize,
+    /// The key IDs for this party
     pub key_ids: Vec<usize>,
-    pub public_keys: PubKeyMap, // key is key_id
+    /// The public keys for this party, indexed by ID
+    pub public_keys: PubKeyMap,
     num_keys: usize,
     num_parties: usize,
-    f: Polynomial<Scalar>,    // one poly per party
-    private_keys: PrivKeyMap, // key is key_id
+    f: Polynomial<Scalar>,
+    private_keys: PrivKeyMap,
     group_key: Point,
     nonce: Nonce,
 }
 
 impl Party {
     #[allow(non_snake_case)]
+    /// Construct a random Party with the passed party ID, key IDs, and parameters
     pub fn new<RNG: RngCore + CryptoRng>(
         party_id: usize,
         key_ids: &[usize],
@@ -69,6 +84,7 @@ impl Party {
         }
     }
 
+    /// Load a party from `state`
     pub fn load(state: &PartyState) -> Self {
         Self {
             party_id: state.party_id,
@@ -77,12 +93,17 @@ impl Party {
             num_parties: state.num_parties,
             f: state.polynomial.clone(),
             private_keys: state.private_keys.clone(),
-            public_keys: state.public_keys.clone(),
+            public_keys: state
+                .private_keys
+                .iter()
+                .map(|(i, k)| (*i, k * G))
+                .collect::<HashMap<usize, Point>>(),
             group_key: state.group_key,
             nonce: Nonce::zero(),
         }
     }
 
+    /// Save the state required to reconstruct the party
     pub fn save(&self) -> PartyState {
         PartyState {
             party_id: self.party_id,
@@ -91,11 +112,11 @@ impl Party {
             num_parties: self.num_parties,
             polynomial: self.f.clone(),
             private_keys: self.private_keys.clone(),
-            public_keys: self.public_keys.clone(),
             group_key: self.group_key,
         }
     }
 
+    /// Generate and store a private nonce for a signing round
     pub fn gen_nonce<RNG: RngCore + CryptoRng>(&mut self, rng: &mut RNG) -> PublicNonce {
         self.nonce = Nonce::random(rng);
 
@@ -103,6 +124,7 @@ impl Party {
     }
 
     #[allow(non_snake_case)]
+    /// Get a public commitment to the private polynomial
     pub fn get_poly_commitment<RNG: RngCore + CryptoRng>(&self, rng: &mut RNG) -> PolyCommitment {
         PolyCommitment {
             id: ID::new(&self.id(), &self.f.data()[0], rng),
@@ -112,6 +134,7 @@ impl Party {
         }
     }
 
+    /// Get the shares of this party's private polynomial for all keys
     pub fn get_shares(&self) -> HashMap<usize, Scalar> {
         let mut shares = HashMap::new();
         for i in 0..self.num_keys {
@@ -120,9 +143,8 @@ impl Party {
         shares
     }
 
-    // TODO: Maybe this should be private? If receive_share is keeping track
-    // of which it receives, then this could be called when it has N shares from unique ids
     #[allow(non_snake_case)]
+    /// Compute this party's share of the group secret key
     pub fn compute_secret(
         &mut self,
         shares: HashMap<usize, Vec<(usize, Scalar)>>,
@@ -186,11 +208,13 @@ impl Party {
         Ok(&self.public_keys)
     }
 
+    /// Compute a Scalar from this party's ID
     pub fn id(&self) -> Scalar {
         compute::id(self.party_id)
     }
 
     #[allow(non_snake_case)]
+    /// Sign `msg` with this party's shares of the group private key, using the set of `party_ids`, `key_ids` and corresponding `nonces`
     pub fn sign(
         &self,
         msg: &[u8],
@@ -215,14 +239,19 @@ impl Party {
 }
 
 #[allow(non_snake_case)]
+/// The group signature aggregator
 pub struct SignatureAggregator {
+    /// The total number of keys
     pub num_keys: usize,
+    /// The threshold of signing keys needed to construct a valid signature
     pub threshold: usize,
+    /// The aggregate group public key
     pub group_key: Point, // the group's combined public key
 }
 
 impl SignatureAggregator {
     #[allow(non_snake_case)]
+    /// Construct a SignatureAggregator with the passed parameters and polynomial commitments
     pub fn new(
         num_keys: usize,
         threshold: usize,
@@ -252,6 +281,7 @@ impl SignatureAggregator {
     }
 
     #[allow(non_snake_case)]
+    /// Check and aggregate the party signatures
     pub fn sign(
         &mut self,
         msg: &[u8],
@@ -298,6 +328,7 @@ impl SignatureAggregator {
     }
 }
 
+/// Helper functions for tests
 pub mod test_helpers {
     use crate::common::{PolyCommitment, PublicNonce};
     use crate::errors::DkgError;
@@ -308,6 +339,7 @@ pub mod test_helpers {
     use rand_core::{CryptoRng, RngCore};
 
     #[allow(non_snake_case)]
+    /// Run a distributed key generation round
     pub fn dkg<RNG: RngCore + CryptoRng>(
         signers: &mut [v2::Party],
         rng: &mut RNG,
@@ -349,7 +381,7 @@ pub mod test_helpers {
         }
     }
 
-    // There might be a slick one-liner for this?
+    /// Run a signing round for the passed `msg`
     pub fn sign<RNG: RngCore + CryptoRng>(
         msg: &[u8],
         signers: &mut [v2::Party],

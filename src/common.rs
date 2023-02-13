@@ -12,24 +12,32 @@ use crate::schnorr::ID;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[allow(non_snake_case)]
+/// A commitment to a polynonial, with a Schnorr proof of ownership bound to the ID
 pub struct PolyCommitment {
+    /// The party ID with a schnorr proof
     pub id: ID,
+    /// The public polynomial which commits to the secret polynomial
     pub A: Vec<Point>,
 }
 
 impl PolyCommitment {
+    /// Verify the wrapped schnorr ID
     pub fn verify(&self) -> bool {
         self.id.verify(&self.A[0])
     }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+/// A composite private nonce used as a random commitment in the protocol
 pub struct Nonce {
+    /// The first committed value
     pub d: Scalar,
+    /// The second committed value
     pub e: Scalar,
 }
 
 impl Nonce {
+    /// Construct a random nonce
     pub fn random<RNG: RngCore + CryptoRng>(rng: &mut RNG) -> Self {
         Self {
             d: Scalar::random(rng),
@@ -64,12 +72,16 @@ impl Add for Nonce {
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[allow(non_snake_case)]
+/// A commitment to the private nonce
 pub struct PublicNonce {
+    /// A commitment to the private nonce's first value
     pub D: Point,
+    /// A commitment to the private nonce's second value
     pub E: Point,
 }
 
 impl PublicNonce {
+    /// Construct a public nonce from a private nonce
     pub fn from(n: &Nonce) -> Self {
         Self {
             D: &n.d * G,
@@ -81,21 +93,28 @@ impl PublicNonce {
 // TODO: Remove public key from here
 // The SA should get that as usual
 #[derive(Clone, Debug, Deserialize, Serialize)]
+/// A share of the party signature with related values
 pub struct SignatureShare<T> {
+    /// The ID of the party
     pub id: usize,
+    /// The party signature
     pub z_i: Scalar,
+    /// The party's public key
     pub public_key: T,
 }
 
 #[allow(non_snake_case)]
+/// An aggregated group signature
 pub struct Signature {
+    /// The sum of the public nonces with commitments to the signed message
     pub R: Point,
+    /// The sum of the party signatures
     pub z: Scalar,
 }
 
 impl Signature {
-    // verify: R' = z * G + -c * publicKey, pass if R' == R
     #[allow(non_snake_case)]
+    /// Verify the aggregated group signature
     pub fn verify(&self, public_key: &Point, msg: &[u8]) -> bool {
         let c = challenge(public_key, &self.R, msg);
         let R = &self.z * G + (-c) * public_key;
@@ -104,7 +123,9 @@ impl Signature {
     }
 }
 
+/// Helper functions for tests
 pub mod test_helpers {
+    /// Generate a set of `k` vectors which divide `n` IDs evenly
     pub fn gen_signer_ids(n: usize, k: usize) -> Vec<Vec<usize>> {
         let mut ids = Vec::new();
         let m = n / k;

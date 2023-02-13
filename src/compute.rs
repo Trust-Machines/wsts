@@ -7,6 +7,7 @@ use crate::common::PublicNonce;
 use crate::util::hash_to_scalar;
 
 #[allow(non_snake_case)]
+/// Compute a binding value from the party ID, public nonces, and signed message
 pub fn binding(id: &Scalar, B: &[PublicNonce], msg: &[u8]) -> Scalar {
     let mut hasher = Sha3_256::new();
 
@@ -21,6 +22,7 @@ pub fn binding(id: &Scalar, B: &[PublicNonce], msg: &[u8]) -> Scalar {
 }
 
 #[allow(non_snake_case)]
+/// Compute the schnorr challenge from the public key, aggregated commitments, and the signed message
 pub fn challenge(publicKey: &Point, R: &Point, msg: &[u8]) -> Scalar {
     let mut hasher = Sha3_256::new();
 
@@ -31,6 +33,7 @@ pub fn challenge(publicKey: &Point, R: &Point, msg: &[u8]) -> Scalar {
     hash_to_scalar(&mut hasher)
 }
 
+/// Compute the Lagrange interpolation value
 pub fn lambda(i: usize, key_ids: &[usize]) -> Scalar {
     let mut lambda = Scalar::one();
     let i_scalar = id(i);
@@ -45,6 +48,7 @@ pub fn lambda(i: usize, key_ids: &[usize]) -> Scalar {
 
 // Is this the best way to return these values?
 #[allow(non_snake_case)]
+/// Compute the intermediate values used in both the parties and the aggregator
 pub fn intermediate(
     msg: &[u8],
     party_ids: &[usize],
@@ -62,10 +66,12 @@ pub fn intermediate(
     (R_vec, R)
 }
 
+/// Compute a one-based Scalar from a zero-based integer
 pub fn id(i: usize) -> Scalar {
     Scalar::from((i + 1) as u32)
 }
 
+/// Evaluate the public polynomial `f` at scalar `x` using multi-exponentiation
 pub fn poly(x: &Scalar, f: &Vec<Point>) -> Result<Point, PointError> {
     let mut s = Vec::with_capacity(f.len());
     let mut pow = Scalar::one();

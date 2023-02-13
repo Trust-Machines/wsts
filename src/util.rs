@@ -2,6 +2,7 @@ use p256k1::{point::Compressed, point::Error as PointError, point::Point, scalar
 use sha3::{Digest, Sha3_256};
 
 #[allow(dead_code)]
+/// Digest the hasher to a Scalar
 pub fn hash_to_scalar(hasher: &mut Sha3_256) -> Scalar {
     let h = hasher.clone();
     let hash = h.finalize();
@@ -12,6 +13,7 @@ pub fn hash_to_scalar(hasher: &mut Sha3_256) -> Scalar {
 }
 
 #[allow(dead_code)]
+/// Decode the String `s` to a Scalar
 pub fn decode_scalar(s: &String) -> Scalar {
     let vec = hex::decode(s).unwrap();
     let mut bytes: [u8; 32] = [0; 32];
@@ -21,6 +23,7 @@ pub fn decode_scalar(s: &String) -> Scalar {
 }
 
 #[allow(dead_code)]
+/// Decode the String `s` to a Point, returning any errors
 pub fn decode_point(s: &String) -> Result<Point, PointError> {
     let vec = hex::decode(s).unwrap();
     let compressed = Compressed::from(vec.as_slice());
@@ -28,11 +31,13 @@ pub fn decode_point(s: &String) -> Result<Point, PointError> {
 }
 
 #[allow(dead_code)]
+/// Encode the Scalar `s` to a String
 pub fn encode_scalar(s: &Scalar) -> String {
     hex::encode(s.as_bytes())
 }
 
 #[allow(dead_code)]
+/// Encode the Point `p` to a String
 pub fn encode_point(p: &Point) -> String {
     hex::encode(p.compress().as_bytes())
 }
