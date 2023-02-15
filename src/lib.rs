@@ -11,7 +11,7 @@ pub mod errors;
 pub mod schnorr;
 /// Traits which are used for v1 and v2
 pub mod traits;
-/// Utilities for hashing and encoding/decoding points and scalars
+/// Utilities for hashing scalars
 pub mod util;
 /// Version 1 of WTFROST, which encapsulates a number of parties using vanilla FROST
 pub mod v1;

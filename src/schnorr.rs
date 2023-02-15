@@ -38,7 +38,7 @@ impl ID {
     pub fn challenge(id: &Scalar, K: &Point, A: &Point) -> Scalar {
         let mut hasher = Sha3_256::new();
 
-        hasher.update(id.as_bytes());
+        hasher.update(id.to_bytes());
         hasher.update(K.compress().as_bytes());
         hasher.update(A.compress().as_bytes());
 

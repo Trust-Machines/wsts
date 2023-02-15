@@ -11,7 +11,7 @@ use crate::util::hash_to_scalar;
 pub fn binding(id: &Scalar, B: &[PublicNonce], msg: &[u8]) -> Scalar {
     let mut hasher = Sha3_256::new();
 
-    hasher.update(id.as_bytes());
+    hasher.update(id.to_bytes());
     for b in B {
         hasher.update(b.D.compress().as_bytes());
         hasher.update(b.E.compress().as_bytes());
