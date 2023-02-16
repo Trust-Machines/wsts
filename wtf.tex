@@ -64,7 +64,7 @@
 
 FROST \emph{(Flexible Round-Optimized Schnorr Threshold)} \cite{frost} is a system for making aggregate threshold signatures.  This allows a set of $parties$ to construct a group key, and then sign messages using this key as long as a $threshold$ subset cooperates to form the signature.  This signature is aggregated, so that its size does not depend on the number of signing parties.
 
-The design of FROST assumes that each $party$ controls exactly one key, i.e. the $threshold$ is not weighted.  The naive approach to turning FROST into a weighted threshold scheme involves allowing each $signer$ to control a subset of the $parties$ proportional to its weight.  But this results in inefficiencies in the number of messages required for the protocol, and consequently the total bandwidth.
+The design of FROST assumes that each $party$ controls exactly one key, i.e. the $threshold$ is not weighted.  The naive approach to turning FROST into a weighted threshold scheme involves allowing each $signer$ to control a subset of the $parties$ proportional to its weight.  But this results in inefficiencies in the number of messages required for the protocol, total bandwidth, and computational complexity.
 
 Here we present optimizations on top of vanilla FROST which reduce these inefficiencies when used as a weighted threshold scheme.  We call this scheme WTF \emph{(Weighted Threshold FROST)}.
 
@@ -118,7 +118,7 @@ It would be ideal to construct a native weighted threshold scheme, where this si
 
 Consider a polynomial of degree $k$:
 \begin{align}
-  p_k(x) = a_0 + a_1 x + a_2 x^2 + ... + a_k x^k\nonumber
+  f(x) = a_0 + a_1 x + a_2 x^2 + ... + a_k x^k\nonumber
 \end{align}
 
 There are $k+1$ coefficients needed to form a polynomial of degree $k$.  Thus in order to uniquely determine a polynomial of degree $k$, we will need to evaluate it at $k+1$ points, giving us a system of $k+1$ equations in $k+1$ unknowns.  Typically, we evaluate at the points $[1, k+1]$.  This is called polynomial interpolation.
@@ -129,7 +129,7 @@ While we can use linear algebra to solve these equations, there is no closed for
   l_i(x) &= \prod_{j=1, j \neq i}^{k+1} \frac{x - x_j}{x_i - x_j}
 \end{align}
 
-We can see that $l_i(x_i)$ must be $1$, since $\frac{x_i - x_j}{x_i - x_j} = 1$.  For all other $x_m$, $l_i(x_m)$ must be $0$, since one of the top terms will be $x_m - x_m$, hence the product must be $0$.  So $\forall i \in [1,k+1];\; L(x_i) = f(x_i)$.
+We can see that $l_i(x_i)$ must be $1$, since $\frac{x_i - x_j}{x_i - x_j} = 1$.  For all $m \in [1, k+1] \ni m \neq i$, $l_i(x_m)$ must be $0$, since one of the top terms will be $x_m - x_m$, hence the product must be $0$.  So $\forall i \in [1,k+1];\; L(x_i) = f(x_i)$.
 
 If we only need to evaluate the interpolated polynomial at $0$, we can condense $l_i(0)$ to:
 \begin{align}
