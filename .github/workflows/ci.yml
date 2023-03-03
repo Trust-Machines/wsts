@@ -64,8 +64,7 @@ jobs:
           command: clippy
           args: -- -D warnings -A clippy::op-ref -A clippy::needless-range-loop
 
-  tex:
-    name: tex
+  doc:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -74,15 +73,17 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
-      - run: sudo apt-get install texlive
-      - run: sudo apt-get install texlive-latex-extra
-      # We have to build the pdf twice. The way the bibliography works is that the 
-      # first run creates the bibtex aux files, then the second run puts the ref 
-      # numbers into the inline citations.
-      - run: pdflatex ./wtf.tex
-      - run: pdflatex ./wtf.tex
+      - name: Install LaTeX
+        run: ./.doc/install-latex-ubuntu.sh
+      - name: Build WebSite
+        run: ./.doc/build.sh
       - name: upload pdf
         uses: actions/upload-artifact@v3
         with:
           name: wtf.pdf
           path: wtf.pdf
+      - name: upload website
+        uses: actions/upload-artifact@v3
+        with:
+          name: website
+          path: ./target/doc/
