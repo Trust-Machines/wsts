@@ -19,5 +19,5 @@ This crate uses the Bitcoin ```secp256k1``` curve.  But since the C ```libsecp25
 
 ## Documentation
 
-- [API Reference](https://trust-machines.github.io/wtfrost/frost),
+- [API Reference](https://trust-machines.github.io/frost/wtfrost),
 - [wtf.pdf](https://trust-machines.github.io/frost/wtf.pdf).
