@@ -1,7 +1,7 @@
 use core::iter::zip;
 use num_traits::{One, Zero};
 use p256k1::{point::Error as PointError, point::Point, scalar::Scalar};
-use sha3::{Digest, Sha3_256};
+use sha2::{Digest, Sha256};
 
 use crate::common::PublicNonce;
 use crate::util::hash_to_scalar;
@@ -9,7 +9,7 @@ use crate::util::hash_to_scalar;
 #[allow(non_snake_case)]
 /// Compute a binding value from the party ID, public nonces, and signed message
 pub fn binding(id: &Scalar, B: &[PublicNonce], msg: &[u8]) -> Scalar {
-    let mut hasher = Sha3_256::new();
+    let mut hasher = Sha256::new();
 
     hasher.update(id.to_bytes());
     for b in B {
@@ -24,11 +24,20 @@ pub fn binding(id: &Scalar, B: &[PublicNonce], msg: &[u8]) -> Scalar {
 #[allow(non_snake_case)]
 /// Compute the schnorr challenge from the public key, aggregated commitments, and the signed message
 pub fn challenge(publicKey: &Point, R: &Point, msg: &[u8]) -> Scalar {
-    let mut hasher = Sha3_256::new();
+    // we should be hashing a hash of the msg, not the msg itself
+    let prefix = "BIP0340/challenge";
+    let mut hasher = Sha256::new();
+    let mut msg_hasher = Sha256::new();
 
-    hasher.update(publicKey.compress().as_bytes());
-    hasher.update(R.compress().as_bytes());
-    hasher.update(msg);
+    msg_hasher.update(msg);
+
+    let msg_hash = msg_hasher.finalize();
+
+    // for bip340 add prefix, swap the order of Y/R, and only hash the x coords
+    hasher.update(prefix.as_bytes());
+    hasher.update(R.x().to_bytes());
+    hasher.update(publicKey.x().to_bytes());
+    hasher.update(msg_hash);
 
     hash_to_scalar(&mut hasher)
 }

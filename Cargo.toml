@@ -18,10 +18,11 @@ hashbrown = { version = "0.13", features = ["serde"] }
 hex = "0.4.3"
 num-traits = "0.2"
 polynomial = { version = "0.2.5", features = ["serde"] }
+primitive-types = "0.12"
 rand_core = "0.6"
-p256k1 = "3.0"
+p256k1 = { git = "https://github.com/Trust-Machines/p256k1", branch = "master" }
 serde = { version = "1.0", features = ["derive"] }
-sha3 = "0.10.5"
+sha2 = "0.10"
 thiserror = "1.0"
 
 [dev-dependencies]

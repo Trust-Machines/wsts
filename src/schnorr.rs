@@ -4,7 +4,7 @@ use p256k1::{
 };
 use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
-use sha3::{Digest, Sha3_256};
+use sha2::{Digest, Sha256};
 
 use crate::util::hash_to_scalar;
 
@@ -36,7 +36,7 @@ impl ID {
 
     /// Compute the schnorr challenge
     pub fn challenge(id: &Scalar, K: &Point, A: &Point) -> Scalar {
-        let mut hasher = Sha3_256::new();
+        let mut hasher = Sha256::new();
 
         hasher.update(id.to_bytes());
         hasher.update(K.compress().as_bytes());

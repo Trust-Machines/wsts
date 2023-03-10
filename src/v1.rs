@@ -34,8 +34,9 @@ pub struct Party {
     pub id: usize,
     /// The public key
     pub public_key: Point,
+    /// The polynomial used for Lagrange interpolation
+    pub f: Polynomial<Scalar>,
     n: usize,
-    f: Polynomial<Scalar>,
     private_key: Scalar,
     group_key: Point,
     nonce: Nonce,
@@ -93,6 +94,12 @@ impl Party {
                 .map(|i| &self.f.data()[i] * G)
                 .collect(),
         }
+    }
+
+    /// Make a new polynomial
+    pub fn reset_poly<RNG: RngCore + CryptoRng>(&mut self, rng: &mut RNG) {
+        let t = self.f.data().len();
+        self.f = VSS::random_poly(t - 1, rng);
     }
 
     /// Get the shares of this party's private polynomial for all parties
@@ -312,6 +319,13 @@ impl Signer {
             n: self.n,
             group_key: self.group_key,
             parties,
+        }
+    }
+
+    /// Get the polynomial commitments for all encapsulated parties
+    pub fn reset_polys<RNG: RngCore + CryptoRng>(&mut self, rng: &mut RNG) {
+        for party in self.parties.iter_mut() {
+            party.reset_poly(rng);
         }
     }
 

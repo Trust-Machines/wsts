@@ -1,6 +1,8 @@
 #![deny(missing_docs)]
 #![doc = include_str!("../README.md")]
 
+/// Functions for doing BIP-340 schnorr proofs
+pub mod bip340;
 /// Types which are common to both v1 and v2
 pub mod common;
 /// Functions to perform various computations needed for v1 and v2
@@ -20,4 +22,6 @@ pub mod v2;
 /// Shamir secret sharing, using in distributed key generation
 pub mod vss;
 
-pub use p256k1::{point::Error as PointError, point::Point, point::G, scalar::Scalar};
+pub use p256k1::{
+    field, point::Error as PointError, point::Point, point::G, point::N, scalar::Scalar,
+};
