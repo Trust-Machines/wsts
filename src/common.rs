@@ -1,4 +1,7 @@
-use core::ops::Add;
+use core::{
+    fmt::{Debug, Display, Formatter, Result as FmtResult},
+    ops::Add,
+};
 use num_traits::Zero;
 use p256k1::{
     point::{Point, G},
@@ -24,6 +27,16 @@ impl PolyCommitment {
     /// Verify the wrapped schnorr ID
     pub fn verify(&self) -> bool {
         self.id.verify(&self.A[0])
+    }
+}
+
+impl Display for PolyCommitment {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        write!(f, "{}", self.id.id)?;
+        for p in &self.A {
+            write!(f, " {}", p)?;
+        }
+        Ok(())
     }
 }
 

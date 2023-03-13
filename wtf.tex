@@ -205,7 +205,7 @@ At this point DKG is complete, and each party $i$ knows $(s_i, Y_i)$ and the gro
   Gathering Party Signatures
 }
 
-In order for polynomial interpolation to work, it is necessary to choose the siging set $S$ before any party can sign, with $|S| >= T$.  Each party $i \in S$ then constructs a private nonce $(d_i,e_i)$ and corresponding public nonce $(D_i,E_i)$, then sends $(D_i,E_i)$ to all other parties in $S$.
+In order for polynomial interpolation to work, it is necessary to choose the signing set $S$ before any party can sign, with $|S| >= T$.  Each party $i \in S$ then constructs a private nonce $(d_i,e_i)$ and corresponding public nonce $(D_i,E_i)$, then sends $(D_i,E_i)$ to all other parties in $S$.
 
 Once nonces have been received, each party $i \in S$ computes the binding values $\rho_j$:
 \begin{align}
