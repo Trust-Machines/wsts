@@ -103,6 +103,12 @@ impl PublicNonce {
     }
 }
 
+impl Display for PublicNonce {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        write!(f, "{} {}", &self.D, &self.E)
+    }
+}
+
 // TODO: Remove public key from here
 // The SA should get that as usual
 #[derive(Clone, Debug, Deserialize, Serialize)]
