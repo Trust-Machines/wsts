@@ -38,7 +38,8 @@ pub struct Party {
     pub f: Polynomial<Scalar>,
     n: usize,
     private_key: Scalar,
-    group_key: Point,
+    /// The aggregate group public key
+    pub group_key: Point,
     nonce: Nonce,
 }
 
@@ -129,6 +130,7 @@ impl Party {
         }
 
         self.private_key = Scalar::zero();
+        self.group_key = Point::zero();
 
         let bad_ids: Vec<usize> = shares.keys().cloned().filter(|i| !A[*i].verify()).collect();
         if !bad_ids.is_empty() {
