@@ -17,6 +17,7 @@ pub enum Error {
 
 /// A SchnorrProof in BIP-340 format
 #[allow(non_snake_case)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct SchnorrProof {
     /// The schnorr public commitment (FROST Signature R)
     pub r: field::Element,
@@ -52,6 +53,31 @@ impl SchnorrProof {
         let Rp = self.s * G - c * Y;
 
         Rp.x() == self.r
+    }
+
+    /// Serialize this proof into a 64-byte buffer
+    pub fn to_bytes(&self) -> [u8; 64] {
+        let mut bytes = [0u8; 64];
+
+        bytes[0..32].copy_from_slice(&self.r.to_bytes());
+        bytes[32..64].copy_from_slice(&self.s.to_bytes());
+
+        bytes
+    }
+}
+
+impl From<[u8; 64]> for SchnorrProof {
+    fn from(bytes: [u8; 64]) -> Self {
+        let mut r_bytes = [0u8; 32];
+        let mut s_bytes = [0u8; 32];
+
+        r_bytes.copy_from_slice(&bytes[0..32]);
+        s_bytes.copy_from_slice(&bytes[32..64]);
+
+        Self {
+            r: field::Element::from(r_bytes),
+            s: Scalar::from(s_bytes),
+        }
     }
 }
 
@@ -206,5 +232,12 @@ mod test {
         let proof = SchnorrProof::new(&sig).unwrap();
 
         assert!(proof.verify(&sig_agg.key.x(), msg));
+
+        // now ser/de the proof
+        let proof_bytes = proof.to_bytes();
+        let proof_deser = SchnorrProof::from(proof_bytes);
+
+        assert_eq!(proof, proof_deser);
+        assert!(proof_deser.verify(&sig_agg.key.x(), msg));
     }
 }
