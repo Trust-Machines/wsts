@@ -24,17 +24,30 @@ pub fn binding(id: &Scalar, B: &[PublicNonce], msg: &[u8]) -> Scalar {
 #[allow(non_snake_case)]
 /// Compute the schnorr challenge from the public key, aggregated commitments, and the signed message
 pub fn challenge(publicKey: &Point, R: &Point, msg: &[u8]) -> Scalar {
+    println!("R challenge MSG32    {}", hex::encode(msg));
     // we should be hashing a hash of the msg, not the msg itself
     let prefix = "BIP0340/challenge";
     let mut hasher = Sha256::new();
+    let mut prefix_hasher = Sha256::new();
     let mut msg_hasher = Sha256::new();
+
+    prefix_hasher.update(prefix.as_bytes());
+    let prefix_hash = prefix_hasher.finalize();
 
     msg_hasher.update(msg);
 
     let msg_hash = msg_hasher.finalize();
 
+    println!("R challenge R.x()    {}", hex::encode(R.x().to_bytes()));
+    println!(
+        "R challenge PUBKEY32 {}",
+        hex::encode(publicKey.x().to_bytes())
+    );
+    println!("R challenge MSG_HASH {}", hex::encode(&msg_hash));
+
     // for bip340 add prefix, swap the order of Y/R, and only hash the x coords
-    hasher.update(prefix.as_bytes());
+    hasher.update(prefix_hash);
+    hasher.update(prefix_hash);
     hasher.update(R.x().to_bytes());
     hasher.update(publicKey.x().to_bytes());
     hasher.update(msg_hash);

@@ -50,6 +50,7 @@ impl SchnorrProof {
             Err(_) => return false,
         };
         let c = compute::challenge(&Y, &R, msg);
+        println!("R verify CHALLENGE {}", hex::encode(c.to_bytes()));
         let Rp = self.s * G - c * Y;
 
         Rp.x() == self.r
