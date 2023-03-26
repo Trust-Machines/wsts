@@ -396,6 +396,7 @@ WTF constructs a Schnorr proof in the same way as FROST, with the same commitmen
 
 As we know from Lagrange interpolation, $\sum_{j_k \in S_k}^{} s_{j_k} \cdot \lambda_{j_k}$ is the group polynomial evaluated at $0$, which is the group private key $x$.
 
+
 \newpage
 \onecolumn
 \section{
@@ -428,6 +429,30 @@ In the table, $N_s$ will refer to the number of signers, which is $N$ in FROST a
     4 & 100 & 66 & 10000ms & 400ms & 1700ms & 10ms & 35ms & 12ms \\ 
   \end{tabular}
 \end{center}
+
+
+\newpage
+\onecolumn
+\section{
+  Robustness
+}
+
+As discussed in Related Work, there are some aggregated threshold schemes which are robust, in that they can complete even in the presence of byzantine actors, as long as there exists a threshold set which completes the protocol honestly.  These were rejected for a variety of reasons, as discussed.
+
+However, it is possible to develop a meta protocol on top of a non-robust scheme which provides robustness.  It simply requires running a non-robust scheme repeatedly, removing the bad actors as they are exposed.  Eventually the meta protocol will converge to success, if a threshold set of honest actors exists, or to failure if it does not.  Here we will explore two such meta protocols: FIRE and ROAST.
+
+\subsection{
+  FIRE
+}
+
+In addition to WTF, here we also present FROST Interactive Robustness Extension (FIRE).  This is a straightforward extension of FROST into a meta protocol which provides robustness.  
+
+
+\subsection{
+  ROAST
+}
+
+ROAST\cite{roast} is a wrapper around FROST and other threshold signature schemes which provides robustness and asynchronicity.  
 
 
 \newpage
@@ -471,6 +496,11 @@ The author would like to thank Alie Slade for initial work on the WTF algorithm.
   Joey Yandle
   \emph{WTF Reference Implementation}
   \texttt{https://github.com/Trust-Machines/frost}
+
+\bibitem{roast}
+  Tim Ruffing, Viktoria Ronge, Elliott Jin, Jonas Schneider-Bensch, Dominique Schroder
+  \emph{ROAST: Robust Asynchronous Schnorr Threshold Signatures} 
+  \texttt{https://eprint.iacr.org/2022/550.pdf}
 
 \end{thebibliography}
 
