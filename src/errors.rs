@@ -1,7 +1,7 @@
 use p256k1::{point::Error as PointError, scalar::Scalar};
 use thiserror::Error;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 /// Errors which can happen during distributed key generation
 pub enum DkgError {
     #[error("missing shares from {0:?}")]
@@ -27,7 +27,7 @@ impl From<PointError> for DkgError {
     }
 }
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 /// Errors which can happen during signature aggregation
 pub enum AggregatorError {
     #[error("bad poly commitment length (expected {0} got {1}")]
@@ -39,6 +39,9 @@ pub enum AggregatorError {
     #[error("bad nonce length (expected {0} got {1}")]
     /// The nonce length was the wrong size
     BadNonceLen(usize, usize),
+    #[error("bad party keys from {0:?}")]
+    /// The party public keys which failed
+    BadPartyKeys(Vec<usize>),
     #[error("bad party sigs from {0:?}")]
     /// The party signatures which failed to verify
     BadPartySigs(Vec<usize>),

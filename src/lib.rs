@@ -23,5 +23,6 @@ pub mod v2;
 pub mod vss;
 
 pub use p256k1::{
-    field, point::Error as PointError, point::Point, point::G, point::N, scalar::Scalar,
+    ecdsa, field, point::Error as PointError, point::Point, point::G, point::N,
+    scalar::Error as ScalarError, scalar::Scalar,
 };

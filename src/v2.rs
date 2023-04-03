@@ -8,20 +8,16 @@ use polynomial::Polynomial;
 use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
-use crate::common::{Nonce, PolyCommitment, PublicNonce, Signature};
+use crate::common::{Nonce, PolyCommitment, PublicNonce, Signature, SignatureShare};
 use crate::compute;
 use crate::errors::{AggregatorError, DkgError};
 use crate::schnorr::ID;
 use crate::vss::VSS;
 
-/// A map of public keys indexed by key ID
-pub type PubKeyMap = HashMap<usize, Point>;
 /// A map of private keys indexed by key ID
 pub type PrivKeyMap = HashMap<usize, Scalar>;
 /// A signing set of key IDs indexed by party ID
 pub type SelectedSigners = HashMap<usize, HashSet<usize>>;
-/// The SignatureShare type for v2
-pub type SignatureShare = crate::common::SignatureShare<PubKeyMap>;
 
 #[derive(Serialize, Deserialize)]
 /// The saved state required to construct a party
@@ -34,6 +30,8 @@ pub struct PartyState {
     pub num_keys: usize,
     /// The total number of parties
     pub num_parties: usize,
+    /// The threshold for signing
+    pub threshold: usize,
     /// The party's private polynomial
     pub polynomial: Polynomial<Scalar>,
     /// The private keys for this party, indexed by ID
@@ -51,9 +49,9 @@ pub struct Party {
     /// The key IDs for this party
     pub key_ids: Vec<usize>,
     /// The public keys for this party, indexed by ID
-    pub public_keys: PubKeyMap,
     num_keys: usize,
     num_parties: usize,
+    threshold: usize,
     f: Polynomial<Scalar>,
     private_keys: PrivKeyMap,
     group_key: Point,
@@ -76,9 +74,9 @@ impl Party {
             key_ids: key_ids.to_vec(),
             num_keys,
             num_parties,
+            threshold,
             f: VSS::random_poly(threshold - 1, rng),
             private_keys: PrivKeyMap::new(),
-            public_keys: PubKeyMap::new(),
             group_key: Point::zero(),
             nonce: Nonce::zero(),
         }
@@ -91,13 +89,9 @@ impl Party {
             key_ids: state.key_ids.clone(),
             num_keys: state.num_keys,
             num_parties: state.num_parties,
+            threshold: state.threshold,
             f: state.polynomial.clone(),
             private_keys: state.private_keys.clone(),
-            public_keys: state
-                .private_keys
-                .iter()
-                .map(|(i, k)| (*i, k * G))
-                .collect::<HashMap<usize, Point>>(),
             group_key: state.group_key,
             nonce: Nonce::zero(),
         }
@@ -110,6 +104,7 @@ impl Party {
             key_ids: self.key_ids.clone(),
             num_keys: self.num_keys,
             num_parties: self.num_parties,
+            threshold: self.threshold,
             polynomial: self.f.clone(),
             private_keys: self.private_keys.clone(),
             group_key: self.group_key,
@@ -147,9 +142,9 @@ impl Party {
     /// Compute this party's share of the group secret key
     pub fn compute_secret(
         &mut self,
-        shares: HashMap<usize, Vec<(usize, Scalar)>>,
+        shares: &HashMap<usize, HashMap<usize, Scalar>>,
         A: &[PolyCommitment],
-    ) -> Result<&PubKeyMap, DkgError> {
+    ) -> Result<(), DkgError> {
         let mut missing_shares = Vec::new();
         for key_id in &self.key_ids {
             if shares.get(key_id).is_none() {
@@ -201,11 +196,9 @@ impl Party {
                 self.private_keys
                     .insert(*key_id, self.private_keys[key_id] + s);
             }
-            self.public_keys
-                .insert(*key_id, self.private_keys[key_id] * G);
         }
 
-        Ok(&self.public_keys)
+        Ok(())
     }
 
     /// Compute a Scalar from this party's ID
@@ -233,7 +226,7 @@ impl Party {
         SignatureShare {
             id: self.party_id,
             z_i: z,
-            public_key: self.public_keys.clone(),
+            key_ids: self.key_ids.clone(),
         }
     }
 }
@@ -245,8 +238,8 @@ pub struct SignatureAggregator {
     pub num_keys: usize,
     /// The threshold of signing keys needed to construct a valid signature
     pub threshold: usize,
-    /// The aggregate group public key
-    pub group_key: Point, // the group's combined public key
+    /// The aggregate group polynomial; poly[0] is the group public key
+    pub poly: Vec<Point>,
 }
 
 impl SignatureAggregator {
@@ -267,16 +260,19 @@ impl SignatureAggregator {
             return Err(AggregatorError::BadPolyCommitments(bad_poly_commitments));
         }
 
-        let mut group_key = Point::zero(); // TODO: Compute pub key from A
-        for A_i in &A {
-            group_key += &A_i.A[0];
+        let mut poly = Vec::with_capacity(threshold);
+
+        for i in 0..threshold {
+            poly.push(Point::zero());
+            for p in &A {
+                poly[i] += &p.A[i];
+            }
         }
-        //println!("SA groupKey {}", group_key);
 
         Ok(Self {
             num_keys,
             threshold,
-            group_key,
+            poly,
         })
     }
 
@@ -296,35 +292,125 @@ impl SignatureAggregator {
         let party_ids: Vec<usize> = sig_shares.iter().map(|ss| ss.id).collect();
         let (Ris, R) = compute::intermediate(msg, &party_ids, nonces);
         let mut z = Scalar::zero();
-        let c = compute::challenge(&self.group_key, &R, msg);
+        let c = compute::challenge(&self.poly[0], &R, msg);
+        let mut bad_party_keys = Vec::new();
         let mut bad_party_sigs = Vec::new();
 
         for i in 0..sig_shares.len() {
             let z_i = sig_shares[i].z_i;
-            if z_i * G
-                != (Ris[i]
-                    + sig_shares[i].public_key.iter().fold(
-                        Point::zero(),
-                        |p, (key_id, public_key)| {
-                            p + compute::lambda(*key_id, key_ids) * c * public_key
-                        },
-                    ))
-            {
+            let mut cx = Point::zero();
+
+            for key_id in &sig_shares[i].key_ids {
+                let kid = compute::id(*key_id);
+                let public_key = match compute::poly(&kid, &self.poly) {
+                    Ok(p) => p,
+                    Err(_) => {
+                        bad_party_keys.push(sig_shares[i].id);
+                        Point::zero()
+                    }
+                };
+
+                cx += compute::lambda(*key_id, key_ids) * c * public_key;
+            }
+
+            if z_i * G != (Ris[i] + cx) {
                 bad_party_sigs.push(sig_shares[i].id);
             }
+
             z += z_i;
         }
 
         if bad_party_sigs.is_empty() {
             let sig = Signature { R, z };
-            if sig.verify(&self.group_key, msg) {
+            if sig.verify(&self.poly[0], msg) {
                 Ok(sig)
             } else {
                 Err(AggregatorError::BadGroupSig)
             }
+        } else if !bad_party_keys.is_empty() {
+            Err(AggregatorError::BadPartyKeys(bad_party_keys))
         } else {
             Err(AggregatorError::BadPartySigs(bad_party_sigs))
         }
+    }
+}
+
+/// Typedef so we can use the same tokens for v1 and v2
+pub type SignerState = PartyState;
+/// Typedef so we can use the same tokens for v1 and v2
+pub type Signer = Party;
+
+impl crate::traits::Signer for Party {
+    fn get_id(&self) -> usize {
+        self.party_id
+    }
+
+    fn get_key_ids(&self) -> Vec<usize> {
+        self.key_ids.clone()
+    }
+
+    fn get_poly_commitments<RNG: RngCore + CryptoRng>(&self, rng: &mut RNG) -> Vec<PolyCommitment> {
+        vec![self.get_poly_commitment(rng)]
+    }
+
+    fn reset_polys<RNG: RngCore + CryptoRng>(&mut self, rng: &mut RNG) {
+        self.f = VSS::random_poly(self.threshold - 1, rng);
+    }
+
+    fn get_shares(&self) -> HashMap<usize, HashMap<usize, Scalar>> {
+        let mut shares = HashMap::new();
+
+        shares.insert(self.party_id, self.get_shares());
+
+        shares
+    }
+
+    fn compute_secrets(
+        &mut self,
+        private_shares: &HashMap<usize, HashMap<usize, Scalar>>,
+        polys: &[PolyCommitment],
+    ) -> Result<(), HashMap<usize, DkgError>> {
+        // go through the shares, looking for this party's
+        let mut key_shares = HashMap::new();
+        for key_id in self.get_key_ids() {
+            let mut shares = HashMap::new();
+            for (signer_id, signer_shares) in private_shares.iter() {
+                shares.insert(*signer_id, signer_shares[&key_id]);
+            }
+            key_shares.insert(key_id, shares);
+        }
+
+        match self.compute_secret(&key_shares, polys) {
+            Ok(()) => Ok(()),
+            Err(dkg_error) => {
+                let mut dkg_errors = HashMap::new();
+                dkg_errors.insert(self.party_id, dkg_error);
+                Err(dkg_errors)
+            }
+        }
+    }
+
+    fn gen_nonces<RNG: RngCore + CryptoRng>(&mut self, rng: &mut RNG) -> Vec<PublicNonce> {
+        vec![self.gen_nonce(rng)]
+    }
+
+    fn compute_intermediate(
+        msg: &[u8],
+        signer_ids: &[usize],
+        _key_ids: &[usize],
+        nonces: &[PublicNonce],
+    ) -> (Vec<Point>, Point) {
+        compute::intermediate(msg, signer_ids, nonces)
+    }
+
+    fn sign(
+        &self,
+        msg: &[u8],
+        signer_ids: &[usize],
+        key_ids: &[usize],
+        nonces: &[PublicNonce],
+    ) -> Vec<SignatureShare> {
+        vec![self.sign(msg, signer_ids, key_ids, nonces)]
     }
 }
 
@@ -344,11 +430,10 @@ pub mod test_helpers {
         signers: &mut [v2::Party],
         rng: &mut RNG,
     ) -> Result<Vec<PolyCommitment>, HashMap<usize, DkgError>> {
-        let A: Vec<PolyCommitment> = signers.iter().map(|s| s.get_poly_commitment(rng)).collect();
+        let polys: Vec<PolyCommitment> =
+            signers.iter().map(|s| s.get_poly_commitment(rng)).collect();
 
         // each party broadcasts their commitments
-        // these hashmaps will need to be serialized in tuples w/ the value encrypted
-        // Vec<(party_id, HashMap<key_id, Share>)>
         let mut broadcast_shares = Vec::new();
         for party in signers.iter() {
             broadcast_shares.push((party.party_id, party.get_shares()));
@@ -358,24 +443,24 @@ pub mod test_helpers {
         // maybe this should collect into a hashmap first?
         let mut secret_errors = HashMap::new();
         for party in signers.iter_mut() {
-            let mut h = HashMap::new();
+            let mut party_shares = HashMap::new();
             for key_id in party.key_ids.clone() {
-                let mut g = Vec::new();
+                let mut key_shares = HashMap::new();
 
                 for (id, shares) in &broadcast_shares {
-                    g.push((*id, shares[&key_id]));
+                    key_shares.insert(*id, shares[&key_id]);
                 }
 
-                h.insert(key_id, g);
+                party_shares.insert(key_id, key_shares);
             }
 
-            if let Err(secret_error) = party.compute_secret(h, &A) {
+            if let Err(secret_error) = party.compute_secret(&party_shares, &polys) {
                 secret_errors.insert(party.party_id, secret_error);
             }
         }
 
         if secret_errors.is_empty() {
-            Ok(A)
+            Ok(polys)
         } else {
             Err(secret_errors)
         }
@@ -425,7 +510,7 @@ mod tests {
     fn aggregator_sign() {
         let mut rng = OsRng::default();
         let msg = "It was many and many a year ago".as_bytes();
-        let N: usize = 10;
+        let Nk: usize = 10;
         let T: usize = 7;
         let party_key_ids: Vec<Vec<usize>> = [
             [0, 1, 2].to_vec(),
@@ -434,10 +519,11 @@ mod tests {
             [8, 9].to_vec(),
         ]
         .to_vec();
+        let Np = party_key_ids.len();
         let mut signers: Vec<v2::Party> = party_key_ids
             .iter()
             .enumerate()
-            .map(|(pid, pkids)| v2::Party::new(pid, pkids, party_key_ids.len(), N, T, &mut rng))
+            .map(|(pid, pkids)| v2::Party::new(pid, pkids, Np, Nk, T, &mut rng))
             .collect();
 
         let A = match v2::test_helpers::dkg(&mut signers, &mut rng) {
@@ -451,7 +537,7 @@ mod tests {
         {
             let mut signers = [signers[0].clone(), signers[1].clone(), signers[3].clone()].to_vec();
             let mut sig_agg =
-                v2::SignatureAggregator::new(N, T, A.clone()).expect("aggregator ctor failed");
+                v2::SignatureAggregator::new(Nk, T, A.clone()).expect("aggregator ctor failed");
 
             let (nonces, sig_shares, key_ids) =
                 v2::test_helpers::sign(&msg, &mut signers, &mut rng);

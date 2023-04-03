@@ -109,17 +109,15 @@ impl Display for PublicNonce {
     }
 }
 
-// TODO: Remove public key from here
-// The SA should get that as usual
 #[derive(Clone, Debug, Deserialize, Serialize)]
 /// A share of the party signature with related values
-pub struct SignatureShare<T> {
+pub struct SignatureShare {
     /// The ID of the party
     pub id: usize,
     /// The party signature
     pub z_i: Scalar,
-    /// The party's public key
-    pub public_key: T,
+    /// The key IDs of the party
+    pub key_ids: Vec<usize>,
 }
 
 #[allow(non_snake_case)]
