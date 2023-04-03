@@ -20,7 +20,7 @@ num-traits = "0.2"
 polynomial = { version = "0.2.5", features = ["serde"] }
 primitive-types = "0.12"
 rand_core = "0.6"
-p256k1 = { git = "https://github.com/Trust-Machines/p256k1", branch = "master" }
+p256k1 = "4"
 serde = { version = "1.0", features = ["derive"] }
 sha2 = "0.10"
 thiserror = "1.0"
