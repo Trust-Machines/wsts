@@ -445,15 +445,40 @@ However, it is possible to develop a meta protocol on top of a non-robust scheme
   FIRE
 }
 
-In addition to WTF, here we also present FROST Interactive Robustness Extension (FIRE).  This is a straightforward extension of FROST into a meta protocol which provides robustness.  
+In addition to WTF, here we also present FROST Interactive Robustness Extension (FIRE).  This is a straightforward extension of FROST into a meta protocol which provides robustness.  It works with both FROST and WTF, with minor differences in the protocol.
+
+\subsubsection{
+  FIRE/FROST
+}
+
+A FIRE/FROST signing round takes place after a DKG round has established a group key.  Each round is labeled with an integer ID $i$, and consists of a series of sessions $j$, where $j$ starts at $0$ for every round.
+
+So when round $i$ begins, we request nonces for session $j = 0$, where the set of active parties $A$ contains all $N$ parties who took part in DKG.  Once we get $k = T$ nonces for $i,j$, we request signature shares from those $k$ parties (which forms $S_j$).  If all sign correctly, and we obtain a valid signature, round $i$ is complete.
+
+If some parties do not sign properly, they are removed from $A$, then we begin session $j+1$.  All members of $A$ who have by now returned nonces for session $j$ are then requested to give nonces for session $j+1$.  The same process happens as before; when we get $k = T$ nonces we form $S_{j+1}$ and again request signature shares.
+
+As before, if the aggregate signature is valid, round $i$ is complete.  Otherwise, we begin a new session $j+2$, and continue in the same vein.  Since each session will either complete or remove some parties from $A$, this algorithm will eventually terminate.  When $|A| < T$, signing round $i$ has failed.
+
+\subsubsection{
+  FIRE/WTF
+}
+
+A FIRE/WTF round runs similarly to a FIRE/FROST round, with the only difference being that we must count the number of keys controlled by each party who responds with a nonce in every session.  Only when the sum of keys controlled by the given nonces equals or exceeds $T$ do we form $S_j$ and begin the signing portion of the session.  
 
 
 \subsection{
   ROAST
 }
 
-ROAST\cite{roast} is a wrapper around FROST and other threshold signature schemes which provides robustness and asynchronicity.  
+ROAST\cite{roast} is a wrapper around FROST and other threshold signature schemes which provides robustness and asynchronicity.  It operates in a very similar manner to FIRE, but the asynchonicity fixes one glaring byzantine flaw in FIRE.
 
+This flaw is that once a party has given a nonce, there is no way to force that party to provide a signature.  And given network constraints, we cannot know whether a party in $S_j$ is refusing to sign, or if the signature was lost in the tubes.  So we must set a timeout, which allows a set of byzantine actors to slow the protocol significantly.  For a given timeout $t$, $N$ keys, and threshold $T$, a set of byzantine actors can force the amount of time for round $i$ to $t \cdot (N - T)$.  This is of course suboptimal.
+
+ROAST fixes this by allowing session $j+1$ to run in parallel with session $j$.  The parties which give valid signatures in session $j$ are added to the set of parties $B_j$ who gave a nonce for session $j$ but were not selected for $S_j$.  Once $|B_j| \geq T$, then we begin session $j+1$ immediately, while still awaiting signatures from the parties in $S_j$ who have not responded yet.
+
+The rest of the protocol is the same.  We no longer worry about tracking $A$, since bad or slow signers will not be placed in $B_{j+1}$.  And without timeouts, there is no way for byzantine actors to slow the protocol.  We will converge to either a successful aggregate signature, or fail when for some session $j$, $|B_j| < T$.
+
+As with FIRE, we can use either FROST or WTF as the signature aggregation protocol, with the only difference being how we count the nonces when determining if we have a set of possible signers.
 
 \newpage
 \onecolumn
