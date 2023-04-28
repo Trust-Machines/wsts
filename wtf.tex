@@ -453,9 +453,11 @@ In addition to WTF, here we also present FROST Interactive Robustness Extension 
 
 A FIRE/FROST signing round takes place after a DKG round has established a group key.  Each round is labeled with an integer ID $i$, and consists of a series of sessions $j$, where $j$ starts at $0$ for every round.
 
-So when round $i$ begins, we request nonces for session $j = 0$, where the set of active parties $A$ contains all $N$ parties who took part in DKG.  Once we get $k = T$ nonces for $i,j$, we request signature shares from those $k$ parties (which forms $S_j$).  If all sign correctly, and we obtain a valid signature, round $i$ is complete.
+Let $A$ be the set of active parties.  When a signing round begins, $A$ will contain all parties who successfully completed DKG.  We will insert and remove parties from $A$ as the protocol runs, which will allow us to excise byzantine actors.
 
-If some parties do not sign properly, they are removed from $A$, then we begin session $j+1$.  All members of $A$ who have by now returned nonces for session $j$ are then requested to give nonces for session $j+1$.  The same process happens as before; when we get $k = T$ nonces we form $S_{j+1}$ and again request signature shares.
+So when round $i$ begins, we request nonces for session $j = 0$ from $A$.  Once we get $k = T$ nonces for $i,j$, the corresponding parties will be selected for the signing set $S_j$.  We then request signature shares from all parties in $S_j$.  If all sign correctly, and we obtain a valid signature, round $i$ is complete.  We must set a timeout for the signing portion of the session, or else byzantine actors can slow the protocol indefinitely.
+
+Parties do not return signatures, or return invalid signatures, are removed from $A$.  Parties who did not return a nonce for round $J$ are also removed.  We then we begin session $j+1$.  All members of $A$ are then requested to give nonces for session $j+1$.  The same process happens as before; when we get $k = T$ nonces we form $S_{j+1}$ and again request signature shares.
 
 As before, if the aggregate signature is valid, round $i$ is complete.  Otherwise, we begin a new session $j+2$, and continue in the same vein.  Since each session will either complete or remove some parties from $A$, this algorithm will eventually terminate.  When $|A| < T$, signing round $i$ has failed.
 
@@ -470,13 +472,19 @@ A FIRE/WTF round runs similarly to a FIRE/FROST round, with the only difference 
   ROAST
 }
 
-ROAST\cite{roast} is a wrapper around FROST and other threshold signature schemes which provides robustness and asynchronicity.  It operates in a very similar manner to FIRE, but the asynchonicity fixes one glaring byzantine flaw in FIRE.
+ROAST\cite{roast} is a wrapper around FROST and other threshold signature schemes which provides robustness and asynchronicity.  It operates in a very similar manner to FIRE, but the asynchonicity fixes a byzantine flaw in FIRE.
 
 This flaw is that once a party has given a nonce, there is no way to force that party to provide a signature.  And given network constraints, we cannot know whether a party in $S_j$ is refusing to sign, or if the signature was lost in the tubes.  So we must set a timeout, which allows a set of byzantine actors to slow the protocol significantly.  For a given timeout $t$, $N$ keys, and threshold $T$, a set of byzantine actors can force the amount of time for round $i$ to $t \cdot (N - T)$.  This is of course suboptimal.
 
-ROAST fixes this by allowing session $j+1$ to run in parallel with session $j$.  The parties which give valid signatures in session $j$ are added to the set of parties $B_j$ who gave a nonce for session $j$ but were not selected for $S_j$.  Once $|B_j| \geq T$, then we begin session $j+1$ immediately, while still awaiting signatures from the parties in $S_j$ who have not responded yet.
+ROAST fixes this by allowing session $j+1$ to run in parallel with session $j$.  To do so, it is necessary to curate the set $A$ more actively, and also introduce a set $B$ of known bad parties.  Once a party becomes a member of set $B$, all messages from that party will be ignored, and if the governance model includes sanctions on bad actors, those in $B$ will be nominated for such.
 
-The rest of the protocol is the same.  We no longer worry about tracking $A$, since bad or slow signers will not be placed in $B_{j+1}$.  And without timeouts, there is no way for byzantine actors to slow the protocol.  We will converge to either a successful aggregate signature, or fail when for some session $j$, $|B_j| < T$.
+So as with FIRE, signing round $i$ begins session $j = 0$ by asking all parties in $A$ for nonces.  Crucially, these members are removed from set $A$, which becomes the null set.  As parties return nonces, they are placed back into $A$.  When $|A| = T$, we create set $S_j$, which is the signing set for session $j$.  Again, parties who are selected for $S_j$ are removed from $A$.  But while session $j$ continues, anyone returning nonces will still be placed back in set $A$, though their nonces will be ignored.
+
+Once a party $p$ returns a signature share, it must be checked for validity.  If it is valid, then $p$ is placed back into $A$, otherwise $p$ is placed into $B$.  Once $|A| = T$, then we begin session $j+1$, regardless of whether session $j$ has completed.  Crucially, when $N - |B| < T$, then signing round $i$ has failed, since it is impossible to create a valid group signature.  As before, if all parties in $S_j$ return a valid signature share, and the aggregate signature is also valid, then signing round $i$ has completed.
+
+When session $j+1$ begins, all parties who are now in $A$ are asked for nonces, then removed from $A$.  As before, parties who return a nonce for session $j+1$ are placed back into $A$.  Parties who return a nonce for a session other than the current $j+1$ are placed into $B$, and ignored for the remainder of round $i$.  
+
+The rest of the protocol is the same.  Without timeouts, there is no way for byzantine actors to slow the protocol.  We will converge to either a successful aggregate signature, or fail when $N - |B| < T$.
 
 As with FIRE, we can use either FROST or WTF as the signature aggregation protocol, with the only difference being how we count the nonces when determining if we have a set of possible signers.
 
