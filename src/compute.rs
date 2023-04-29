@@ -10,7 +10,9 @@ use crate::util::hash_to_scalar;
 /// Compute a binding value from the party ID, public nonces, and signed message
 pub fn binding(id: &Scalar, B: &[PublicNonce], msg: &[u8]) -> Scalar {
     let mut hasher = Sha256::new();
+    let prefix = "WTFROST/binding";
 
+    hasher.update(prefix.as_bytes());
     hasher.update(id.to_bytes());
     for b in B {
         hasher.update(b.D.compress().as_bytes());
