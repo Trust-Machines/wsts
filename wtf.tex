@@ -457,7 +457,7 @@ Let $A$ be the set of active parties.  When a signing round begins, $A$ will con
 
 So when round $i$ begins, we request nonces for session $j = 0$ from $A$.  Once we get $k = T$ nonces for $i,j$, the corresponding parties will be selected for the signing set $S_j$.  We then request signature shares from all parties in $S_j$.  If all sign correctly, and we obtain a valid signature, round $i$ is complete.  We must set a timeout for the signing portion of the session, or else byzantine actors can slow the protocol indefinitely.
 
-Parties do not return signatures, or return invalid signatures, are removed from $A$.  Parties who did not return a nonce for round $J$ are also removed.  We then we begin session $j+1$.  All members of $A$ are then requested to give nonces for session $j+1$.  The same process happens as before; when we get $k = T$ nonces we form $S_{j+1}$ and again request signature shares.
+Parties who do not return signatures, or return invalid signatures, are removed from $A$.  Parties who did not return a nonce for round $j$ are also removed.  We then we begin session $j+1$.  All members of $A$ are then requested to give nonces for session $j+1$.  The same process happens as before; when we get $k = T$ nonces we form $S_{j+1}$ and again request signature shares.
 
 As before, if the aggregate signature is valid, round $i$ is complete.  Otherwise, we begin a new session $j+2$, and continue in the same vein.  Since each session will either complete or remove some parties from $A$, this algorithm will eventually terminate.  When $|A| < T$, signing round $i$ has failed.
 
