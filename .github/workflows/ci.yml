@@ -80,8 +80,8 @@ jobs:
       - name: upload pdf
         uses: actions/upload-artifact@v3
         with:
-          name: wtf.pdf
-          path: wtf.pdf
+          name: wsts.pdf
+          path: wsts.pdf
       - name: upload website
         uses: actions/upload-artifact@v3
         with:

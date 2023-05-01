@@ -1,5 +1,5 @@
 \documentclass{article}
-\title{Weighted Threshold FROST}
+\title{Weighted Schnorr Threshold Signatures}
 \date{2023-01-19}
 \author{Joey Yandle}
 \usepackage{amsmath}
@@ -51,7 +51,7 @@
 \leftskip5em
 \parskip1em
 \rightskip\leftskip
-\noindent\textbf{Abstract.} We present Weighted Threshold FROST (WTF), which optimizes the base FROST implementation to reduce bandwidth when FROST parties control multiple keys.
+\noindent\textbf{Abstract.} We present Weighted Schnorr Threshold Signatures (WSTS), which optimizes the base FROST implementation to reduce bandwidth when FROST parties control multiple keys.
 
 \par
 \noindent\textbf{Keywords:} Weighted Aggregate Threshold Signatures; Zero-Knowledge Proofs; FROST
@@ -66,13 +66,13 @@ FROST \emph{(Flexible Round-Optimized Schnorr Threshold)} \cite{frost} is a syst
 
 The design of FROST assumes that each $party$ controls exactly one key, i.e. the $threshold$ is not weighted.  The naive approach to turning FROST into a weighted threshold scheme involves allowing each $signer$ to control a subset of the $parties$ proportional to its weight.  But this results in inefficiencies in the number of messages required for the protocol, total bandwidth, and computational complexity.
 
-Here we present optimizations on top of vanilla FROST which reduce these inefficiencies when used as a weighted threshold scheme.  We call this scheme WTF \emph{(Weighted Threshold FROST)}.
+Here we present optimizations on top of vanilla FROST which reduce these inefficiencies when used as a weighted threshold scheme.  We call this scheme WSTS \emph{(Weighted Schnorr Threshold Signatures)}.
 
 \subsection{
   Notation
 }
 
-While WTF can be implemented in any group, we will use curve point terminology exclusively.  This will hopefully make it more accessible to engineers wishing to implement it.
+While WSTS can be implemented in any group, we will use curve point terminology exclusively.  This will hopefully make it more accessible to engineers wishing to implement it.
 
 Let $G$ be a generator in an elliptic curve group $\mathbb{G}$.  Let $f$ be a polynomial of a scalar variable with scalar coefficients, and $P$ be a scalar polynomial with curve point coefficients.  Both $f$ and $P$ can be evaluated at a scalar, though the latter will use scalar/point multiplication rather than scalar/scalar.
 
@@ -283,21 +283,21 @@ There are many aggregate threshold signature schemes, some quite similar to FROS
 
 An excellent example of a robust protocol is Provably Secure Distributed Schnorr Signatures (PSDSS) \cite{psdss}.  The construction features robustness in both the DKG and signing rounds.  At both stages, the protocol will succeed as long as at least $T$ parties complete it honestly.
 
-We did not choose PSDSS as the basis for WTF for two reasons.  First, rather than gather nonces from signing parties in each signing round, it runs an additional DKG to create an ephemeral round key.  Since DKG is an expensive protocol in the case of a large number of voting slots, it was suboptimal for our use case.  Also, WTF-style bandwidth reductions did not appear to be viable for PSDSS.
+We did not choose PSDSS as the basis for WSTS for two reasons.  First, rather than gather nonces from signing parties in each signing round, it runs an additional DKG to create an ephemeral round key.  Since DKG is an expensive protocol in the case of a large number of voting slots, it was suboptimal for our use case.  Also, WSTS-style bandwidth reductions did not appear to be viable for PSDSS.
 
 There are also many native weighted threshold signing schemes, but ultimately all were rejected.  Most of them relied on RSA with a trusted setup, and so were considered prima facie unsuitable.
 
 There was one compelling candidate though: An Efficient and Secure Weighted Threshold Signcryption Scheme \cite{eswtss}.  It uses standard elliptic curves combined with a dynamic knapsack sytem, and the Chinese Remainder theorem to set the voting weights.  We rejected it due to its complexity and lack of track record in production systems.  But it remains an ongoing object of research.
 
 \section{
-  WTF: Weighted Threshold FROST
+  WSTS: Weighted Schnorr Threshold Signatures
 }
 
 Our contribution is a set of optimizations on top of vanilla FROST to streamline the protocol in a heavily weighted threshold scenario (e.g. $150$ signers controlling a total of $4000$ keys). In FROST, each party controls a single key, which acts as a single vote.  A naive implementation of a weighted threshold scheme on top of FROST involves giving each signer control of multiple parties, proportional to that signer's weight.  This is functional, but suboptimal.
 
-WTF optimizes this by having each signer control a single party, but that party now controls multiple shares of the group key.  Crucially, each party still uses only a single polynomial per DKG round and a single nonce per signing round.  This also allows for a single signature per party, rather than per key.  This leads to substantial savings during both DKG and signing.
+WSTS optimizes this by having each signer control a single party, but that party now controls multiple shares of the group key.  Crucially, each party still uses only a single polynomial per DKG round and a single nonce per signing round.  This also allows for a single signature per party, rather than per key.  This leads to substantial savings during both DKG and signing.
 
-Whereas FROST contains two primary parameters ($T$ and $N$), WTF splits the $N$ parameter into two: the number of parties $N_p$, and the number of keys $N_k$.  $T$ is now a threshold of the keys, not the parties.  Each party must still send a DKG private share for each key, but DKG public and signature shares are now per party.
+Whereas FROST contains two primary parameters ($T$ and $N$), WSTS splits the $N$ parameter into two: the number of parties $N_p$, and the number of keys $N_k$.  $T$ is now a threshold of the keys, not the parties.  Each party must still send a DKG private share for each key, but DKG public and signature shares are now per party.
 
 Each party is given not only a party ID $i_p \in [1, N_p]$ as in FROST, but also a set of key IDs $i_k \in [1, N_k]$.  We denote the latter set as $K_{i_p}$.
 
@@ -386,10 +386,10 @@ To verify the group signature, construct the value $R'$ from the group public ke
 If $R = R'$, the proof is valid.
 
 \subsubsection{
-  WTF as a Schnorr Proof
+  WSTS as a Schnorr Proof
 }
 
-WTF constructs a Schnorr proof in the same way as FROST, with the same commitment value and challenge.  The response, the signature $z$, likewise expands to $v + cx$:
+WSTS constructs a Schnorr proof in the same way as FROST, with the same commitment value and challenge.  The response, the signature $z$, likewise expands to $v + cx$:
 \begin{align}
   z = \sum_{i_p \in S_p}^{} z_{i_p} = \sum_{i_p \in S_p}^{} d_{i_p} + \rho_{i_p} \cdot e_{i_p} + \sum_{j_k \in K_{i_p}}^{} s_{j_k} \cdot c \cdot \lambda_{j_k} = \sum_{i_p \in S_p}^{} (d_{i_p} + \rho_{i_p} \cdot e_{i_p}) + c \cdot \sum_{j_k \in S_k}^{} (s_{j_k} \cdot \lambda_{j_k})\nonumber
 \end{align}
@@ -403,14 +403,14 @@ As we know from Lagrange interpolation, $\sum_{j_k \in S_k}^{} s_{j_k} \cdot \la
   Performance
 }
 
-The WTF Rust reference implementation \cite{tmfrost} contains vanilla FROST in the v1 module, and WTF in the v2 module.  This crate contains criterion benchmarks for both v1 and v2.
+The WSTS Rust reference implementation \cite{tmfrost} contains vanilla FROST in the v1 module, and WSTS in the v2 module.  This crate contains criterion benchmarks for both v1 and v2.
 
 The results are quite staggering.  When testing DKG with $4$ signers and $20$ keys, v2 outperforms v1 by an order of magnitude: $53 ms$ per DKG round for v1 compared to $8.3 ms$ for v2.  Similar speedups were noted for party signing and group signing.
 
-In the table, $N_s$ will refer to the number of signers, which is $N$ in FROST and $N_p$ in WTF.  $N_k$ is the number of keys, and $T$ is the threshold.
+In the table, $N_s$ will refer to the number of signers, which is $N$ in FROST and $N_p$ in WSTS.  $N_k$ is the number of keys, and $T$ is the threshold.
 
 \begin{center}
-  \captionof{table}{FROST vs WTF (runtime)}
+  \captionof{table}{FROST vs WSTS (runtime)}
   \begin{tabular}{ c|c|c|c|c|c|c|c|c } 
     \multicolumn{3}{c|}{} & \multicolumn{2}{|c|}{DKG}& \multicolumn{2}{|c|}{Party Sign} & \multicolumn{2}{|c}{Group Sign} \\
     \hline
@@ -445,7 +445,7 @@ However, it is possible to develop a meta protocol on top of a non-robust scheme
   FIRE
 }
 
-In addition to WTF, here we also present FROST Interactive Robustness Extension (FIRE).  This is a straightforward extension of FROST into a meta protocol which provides robustness.  It works with both FROST and WTF, with minor differences in the protocol.
+In addition to WSTS, here we also present FROST Interactive Robustness Extension (FIRE).  This is a straightforward extension of FROST into a meta protocol which provides robustness.  It works with both FROST and WSTS, with minor differences in the protocol.
 
 \subsubsection{
   FIRE/FROST
@@ -462,10 +462,10 @@ Parties who do not return signatures, or return invalid signatures, are removed 
 As before, if the aggregate signature is valid, round $i$ is complete.  Otherwise, we begin a new session $j+2$, and continue in the same vein.  Since each session will either complete or remove some parties from $A$, this algorithm will eventually terminate.  When $|A| < T$, signing round $i$ has failed.
 
 \subsubsection{
-  FIRE/WTF
+  FIRE/WSTS
 }
 
-A FIRE/WTF round runs similarly to a FIRE/FROST round, with the only difference being that we must count the number of keys controlled by each party who responds with a nonce in every session.  Only when the sum of keys controlled by the given nonces equals or exceeds $T$ do we form $S_j$ and begin the signing portion of the session.  
+A FIRE/WSTS round runs similarly to a FIRE/FROST round, with the only difference being that we must count the number of keys controlled by each party who responds with a nonce in every session.  Only when the sum of keys controlled by the given nonces equals or exceeds $T$ do we form $S_j$ and begin the signing portion of the session.  
 
 
 \subsection{
@@ -486,7 +486,7 @@ As signature shares and nonces are received, the coordinator does two things.  I
 
 As the sessions continue for each signing round, it is clear that if there exists a threshold set of honest and responsive signers, the protocol will complete succesfully.  Every session will either succeed or add malicious actors to $M$.  If $|M| > (N-T)$, then the signing round has failed.  But without timeouts, a sufficient set of byzantine actors can keep the protocol not only from succeeding, but ever completing.
 
-As with FIRE, we can use either FROST or WTF as the signature aggregation protocol, with the only difference being how we count the nonces when determining if we have a threshold set of possible signers.
+As with FIRE, we can use either FROST or WSTS as the signature aggregation protocol, with the only difference being how we count the nonces when determining if we have a threshold set of possible signers.
 
 \newpage
 \onecolumn
@@ -494,7 +494,7 @@ As with FIRE, we can use either FROST or WTF as the signature aggregation protoc
   Acknowledgements
 }
 
-The author would like to thank Alie Slade for initial work on the WTF algorithm.
+The author would like to thank Alie Slade for initial work on the WSTS algorithm.
 
 \begin{thebibliography}{7}
 
@@ -527,8 +527,8 @@ The author would like to thank Alie Slade for initial work on the WTF algorithm.
 
 \bibitem{tmfrost}
   Joey Yandle
-  \emph{WTF Reference Implementation}
-  \texttt{https://github.com/Trust-Machines/frost}
+  \emph{WSTS Reference Implementation}
+  \texttt{https://github.com/Trust-Machines/wsts}
 
 \bibitem{roast}
   Tim Ruffing, Viktoria Ronge, Elliott Jin, Jonas Schneider-Bensch, Dominique Schroder
