@@ -25,16 +25,5 @@ This crate uses the Bitcoin ```secp256k1``` curve.  But since the C ```libsecp25
 
 ## Documentation
 
-- [wtfrost crate docs on pages.dev](https://wtfrost.pages.dev/wtfrost/)
-- [wtfrost crate docs in GitHub](https://trust-machines.github.io/frost/wtfrost)
-- [WTF Paper](https://tmurl.net/wtf)
-
-### How to download the WTF paper using CLI
-- List recent CI runs and grab the latest run ID
-  ```shell
-  gh run list -R Trust-Machines/frost
-  ```
-- Download the wtf.pdf artifact
-  ```shell
-  gh run download 4246650808 -R Trust-Machines/frost -n wtf.pdf
-  ```
+- [wsts crate docs in GitHub](https://trust-machines.github.io/frost/wtfrost)
+- [WSTS Paper](https://tmurl.net/wtf)
