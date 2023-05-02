@@ -1,12 +1,12 @@
 [package]
-name = "wtfrost"
-version = "4.0.1"
+name = "wsts"
+version = "1.0.0"
 edition = "2021"
 authors = ["Joey Yandle <xoloki@gmail.com>"]
 license = "Apache-2.0"
-description = "Weighted Threshold implementation of FROST, a Schnorr aggregated threshold signature scheme"
+description = "Weighted Schnorr Threshold Signatures, based on FROST"
 readme = "README.md"
-repository = "https://github.com/Trust-Machines/frost/"
+repository = "https://github.com/Trust-Machines/wsts/"
 keywords = ["cryptography", "crypto", "frost"]
 categories = ["cryptography"]
 
@@ -41,5 +41,5 @@ path = "src/lib.rs"    # The source file of the target.
 crate-type = ["lib"]   # The crate types to generate.
 
 [[bin]]
-name = "wtfrost"
+name = "wsts"
 path = "src/main.rs"

@@ -17,7 +17,7 @@ Finally, ```WSTS``` is designed to build aggregate threshold signatures which ar
 ## Variants
 This crate provides a simple implementation of ```WSTS``` in the ```v1``` module, which is an extension of ```FROST``` where each ```signer``` controls a set of ```parties```, each of which controls a single ```key```.
 
-This crate also contains a version of ```WSTS``` optimized for the weighted threshold scenario in the ```v2``` module.  Like vanilla ```FROST```, ```v2``` keeps a single polynomial and nonce for each ```Party```, but allows each ```Party``` to control multiple keys.  This allows for order-of-magnitude reductions in data size and number of messages for the distributed key generation (```DKG```) and signing parts of the protocol.
+This crate also contains a more complex version of ```WSTS``` optimized for the weighted threshold scenario in the ```v2``` module.  Like vanilla ```FROST```, ```v2``` keeps a single polynomial and nonce for each ```Party```, but allows each ```Party``` to control multiple keys.  This allows for order-of-magnitude reductions in data size and number of messages for the distributed key generation (```DKG```) and signing parts of the protocol.
 
 ## p256k1
 This crate uses the Bitcoin ```secp256k1``` curve.  But since the C ```libsecp256k1``` library only provides high level interfaces for operations used by Bitcoin, it was necessary to directly expose the scalars and curve points to allow arbitrary mathematical operations outside of sign/verify.  So we provide a wrapper crate around ```libsecp256k1``` which wraps the internal interfaces to scalars and points.  We call this crate [```p256k1```](https://crates.io/crates/p256k1), to denote that it is not only the same curve as ```secp256k1```, but also exposes the curve directly.
@@ -25,5 +25,5 @@ This crate uses the Bitcoin ```secp256k1``` curve.  But since the C ```libsecp25
 
 ## Documentation
 
-- [wsts crate docs in GitHub](https://trust-machines.github.io/frost/wtfrost)
+- [wsts crate docs in GitHub](https://trust-machines.github.io/wsts/wsts)
 - [WSTS Paper](https://tmurl.net/wtf)
