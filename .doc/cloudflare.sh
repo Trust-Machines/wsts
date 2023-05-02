@@ -4,6 +4,7 @@ cp ./.doc/index.html ./target/doc/
 
 # apt-get install texlive
 # apt-get install texlive-latex-extra
-# pdflatex ./wtf.tex
+# pdflatex ./wsts.tex
+# pdflatex ./wsts.tex
 
-# cp ./wtf.pdf ./target/doc/
+# cp ./wsts.pdf ./target/doc/
