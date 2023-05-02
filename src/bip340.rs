@@ -195,7 +195,8 @@ mod test {
         .to_vec();
         let mut signers: Vec<v1::Signer> = signer_ids
             .iter()
-            .map(|ids| v1::Signer::new(ids, N, T, &mut rng))
+            .enumerate()
+            .map(|(id, ids)| v1::Signer::new(id.try_into().unwrap(), ids, N, T, &mut rng))
             .collect();
 
         let A = match test_helpers::dkg(&mut signers, &mut rng) {

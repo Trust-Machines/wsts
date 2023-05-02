@@ -15,7 +15,8 @@ pub fn bench_dkg(c: &mut Criterion) {
     let signer_ids = gen_signer_ids(N, K);
     let mut signers: Vec<v1::Signer> = signer_ids
         .iter()
-        .map(|ids| v1::Signer::new(ids, N, T, &mut rng))
+        .enumerate()
+        .map(|(id, ids)| v1::Signer::new(id.try_into().unwrap(), ids, N, T, &mut rng))
         .collect();
 
     let s = format!("v1 dkg N={} T={} K={}", N, T, K);
@@ -29,7 +30,8 @@ pub fn bench_party_sign(c: &mut Criterion) {
     let signer_ids = gen_signer_ids(N, K);
     let mut signers: Vec<v1::Signer> = signer_ids
         .iter()
-        .map(|ids| v1::Signer::new(ids, N, T, &mut rng))
+        .enumerate()
+        .map(|(id, ids)| v1::Signer::new(id.try_into().unwrap(), ids, N, T, &mut rng))
         .collect();
 
     let _A = match dkg(&mut signers, &mut rng) {
@@ -52,7 +54,8 @@ pub fn bench_aggregator_sign(c: &mut Criterion) {
     let signer_ids = gen_signer_ids(N, K);
     let mut signers: Vec<v1::Signer> = signer_ids
         .iter()
-        .map(|ids| v1::Signer::new(ids, N, T, &mut rng))
+        .enumerate()
+        .map(|(id, ids)| v1::Signer::new(id.try_into().unwrap(), ids, N, T, &mut rng))
         .collect();
 
     let A = match dkg(&mut signers, &mut rng) {

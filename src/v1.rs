@@ -280,6 +280,8 @@ impl SignatureAggregator {
 #[derive(Debug, Deserialize, Serialize)]
 /// The saved state required to construct a Signer
 pub struct SignerState {
+    /// The associated ID
+    id: u32,
     /// The total number of keys
     n: u32,
     /// The aggregate group public key
@@ -291,6 +293,8 @@ pub struct SignerState {
 #[derive(Clone, Debug, Eq, PartialEq)]
 /// A set of encapsulated FROST parties
 pub struct Signer {
+    /// The associated signer ID
+    id: u32,
     /// The total number of keys
     n: u32,
     /// The aggregate group public key
@@ -301,9 +305,19 @@ pub struct Signer {
 
 impl Signer {
     /// Construct a random Signer with the passed IDs and parameters
-    pub fn new<RNG: RngCore + CryptoRng>(ids: &[u32], n: u32, t: u32, rng: &mut RNG) -> Self {
-        let parties = ids.iter().map(|id| Party::new(*id, n, t, rng)).collect();
+    pub fn new<RNG: RngCore + CryptoRng>(
+        id: u32,
+        key_ids: &[u32],
+        n: u32,
+        t: u32,
+        rng: &mut RNG,
+    ) -> Self {
+        let parties = key_ids
+            .iter()
+            .map(|id| Party::new(*id, n, t, rng))
+            .collect();
         Signer {
+            id,
             n,
             group_key: Point::zero(),
             parties,
@@ -319,6 +333,7 @@ impl Signer {
             .collect();
 
         Self {
+            id: state.id,
             n: state.n,
             group_key: state.group_key,
             parties,
@@ -334,6 +349,7 @@ impl Signer {
         }
 
         SignerState {
+            id: self.id,
             n: self.n,
             group_key: self.group_key,
             parties,
@@ -343,7 +359,7 @@ impl Signer {
 
 impl crate::traits::Signer for Signer {
     fn get_id(&self) -> u32 {
-        0
+        self.id
     }
 
     fn get_key_ids(&self) -> Vec<u32> {
@@ -504,23 +520,25 @@ mod tests {
     #[test]
     fn signer_new() {
         let mut rng = OsRng::default();
-        let ids = [1, 2, 3];
+        let id = 1;
+        let key_ids = [1, 2, 3];
         let n: u32 = 10;
         let t: u32 = 7;
 
-        let signer = v1::Signer::new(&ids, n, t, &mut rng);
+        let signer = v1::Signer::new(id, &key_ids, n, t, &mut rng);
 
-        assert_eq!(signer.parties.len(), ids.len());
+        assert_eq!(signer.parties.len(), key_ids.len());
     }
 
     #[test]
     fn signer_gen_nonces() {
         let mut rng = OsRng::default();
-        let ids = [1, 2, 3];
+        let id = 1;
+        let key_ids = [1, 2, 3];
         let n: u32 = 10;
         let t: u32 = 7;
 
-        let mut signer = v1::Signer::new(&ids, n, t, &mut rng);
+        let mut signer = v1::Signer::new(id, &key_ids, n, t, &mut rng);
 
         for party in &signer.parties {
             assert!(party.nonce.is_zero());
@@ -528,7 +546,7 @@ mod tests {
 
         let nonces = signer.gen_nonces(&mut rng);
 
-        assert_eq!(nonces.len(), ids.len());
+        assert_eq!(nonces.len(), key_ids.len());
 
         for party in &signer.parties {
             assert!(!party.nonce.is_zero());
@@ -538,11 +556,12 @@ mod tests {
     #[test]
     fn signer_save_load() {
         let mut rng = OsRng::default();
-        let ids = [1, 2, 3];
+        let id = 1;
+        let key_ids = [1, 2, 3];
         let n: u32 = 10;
         let t: u32 = 7;
 
-        let signer = v1::Signer::new(&ids, n, t, &mut rng);
+        let signer = v1::Signer::new(id, &key_ids, n, t, &mut rng);
 
         let state = signer.save();
         let loaded = v1::Signer::load(&state);
@@ -566,7 +585,8 @@ mod tests {
         .to_vec();
         let mut signers: Vec<v1::Signer> = signer_ids
             .iter()
-            .map(|ids| v1::Signer::new(ids, N, T, &mut rng))
+            .enumerate()
+            .map(|(id, ids)| v1::Signer::new(id.try_into().unwrap(), ids, N, T, &mut rng))
             .collect();
 
         let A = match v1::test_helpers::dkg(&mut signers, &mut rng) {

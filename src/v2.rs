@@ -493,11 +493,11 @@ mod tests {
     #[test]
     fn party_save_load() {
         let mut rng = OsRng::default();
-        let ids = [1, 2, 3];
+        let key_ids = [1, 2, 3];
         let n: u32 = 10;
         let t: u32 = 7;
 
-        let signer = v2::Party::new(0, &ids, 1, n, t, &mut rng);
+        let signer = v2::Party::new(0, &key_ids, 1, n, t, &mut rng);
 
         let state = signer.save();
         let loaded = v2::Party::load(&state);
