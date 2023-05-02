@@ -45,7 +45,7 @@ pub fn challenge(publicKey: &Point, R: &Point, msg: &[u8]) -> Scalar {
 }
 
 /// Compute the Lagrange interpolation value
-pub fn lambda(i: usize, key_ids: &[usize]) -> Scalar {
+pub fn lambda(i: u32, key_ids: &[u32]) -> Scalar {
     let mut lambda = Scalar::one();
     let i_scalar = id(i);
     for j in key_ids {
@@ -60,11 +60,7 @@ pub fn lambda(i: usize, key_ids: &[usize]) -> Scalar {
 // Is this the best way to return these values?
 #[allow(non_snake_case)]
 /// Compute the intermediate values used in both the parties and the aggregator
-pub fn intermediate(
-    msg: &[u8],
-    party_ids: &[usize],
-    nonces: &[PublicNonce],
-) -> (Vec<Point>, Point) {
+pub fn intermediate(msg: &[u8], party_ids: &[u32], nonces: &[PublicNonce]) -> (Vec<Point>, Point) {
     let rhos: Vec<Scalar> = party_ids
         .iter()
         .map(|&i| binding(&id(i), nonces, msg))
@@ -78,8 +74,8 @@ pub fn intermediate(
 }
 
 /// Compute a one-based Scalar from a zero-based integer
-pub fn id(i: usize) -> Scalar {
-    Scalar::from((i + 1) as u32)
+pub fn id(i: u32) -> Scalar {
+    Scalar::from(i + 1)
 }
 
 /// Evaluate the public polynomial `f` at scalar `x` using multi-exponentiation

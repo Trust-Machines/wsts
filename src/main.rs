@@ -6,18 +6,18 @@ use wtfrost::{common::test_helpers::gen_signer_ids, v1, v2};
 #[allow(non_snake_case)]
 fn main() {
     let args: Vec<String> = env::args().collect();
-    let N: usize = if args.len() > 1 {
-        args[1].parse::<usize>().unwrap()
+    let N: u32 = if args.len() > 1 {
+        args[1].parse::<u32>().unwrap()
     } else {
         20
     };
-    let T: usize = if args.len() > 2 {
-        args[2].parse::<usize>().unwrap()
+    let T: u32 = if args.len() > 2 {
+        args[2].parse::<u32>().unwrap()
     } else {
         (N * 2) / 3
     };
-    let K: usize = if args.len() > 3 {
-        args[3].parse::<usize>().unwrap()
+    let K: u32 = if args.len() > 3 {
+        args[3].parse::<u32>().unwrap()
     } else {
         4
     };
@@ -38,7 +38,7 @@ fn main() {
         let dkg_start = time::Instant::now();
         let A = v1::test_helpers::dkg(&mut signers, &mut rng).expect("v1 dkg failed");
         let dkg_time = dkg_start.elapsed();
-        let mut signers: Vec<v1::Signer> = (0..(K * 3 / 4)).map(|i| signers[i].clone()).collect();
+        let mut signers = signers[..(K * 3 / 4).try_into().unwrap()].to_vec();
 
         let mut aggregator = v1::SignatureAggregator::new(N, T, A).expect("aggregator ctor failed");
 
@@ -67,13 +67,13 @@ fn main() {
         let mut signers: Vec<v2::Party> = signer_ids
             .iter()
             .enumerate()
-            .map(|(pid, pkids)| v2::Party::new(pid, pkids, K, N, T, &mut rng))
+            .map(|(pid, pkids)| v2::Party::new(pid.try_into().unwrap(), pkids, K, N, T, &mut rng))
             .collect();
 
         let dkg_start = time::Instant::now();
         let A = v2::test_helpers::dkg(&mut signers, &mut rng).expect("v2 dkg failed");
         let dkg_time = dkg_start.elapsed();
-        let mut signers: Vec<v2::Party> = (0..(K * 3 / 4)).map(|i| signers[i].clone()).collect();
+        let mut signers = signers[..(K * 3 / 4).try_into().unwrap()].to_vec();
 
         let mut aggregator = v2::SignatureAggregator::new(N, T, A).expect("aggregator ctor failed");
 

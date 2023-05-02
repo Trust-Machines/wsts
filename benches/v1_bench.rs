@@ -5,9 +5,9 @@ use wtfrost::v1::test_helpers::{dkg, sign};
 use criterion::{criterion_group, criterion_main, Criterion};
 use rand_core::OsRng;
 
-const N: usize = 20;
-const T: usize = 13;
-const K: usize = 4;
+const N: u32 = 20;
+const T: u32 = 13;
+const K: u32 = 4;
 
 #[allow(non_snake_case)]
 pub fn bench_dkg(c: &mut Criterion) {
@@ -39,7 +39,7 @@ pub fn bench_party_sign(c: &mut Criterion) {
         }
     };
 
-    let mut signers: Vec<v1::Signer> = (0..(K * 3 / 4)).map(|i| signers[i].clone()).collect();
+    let mut signers = signers[..(K * 3 / 4).try_into().unwrap()].to_vec();
 
     let s = format!("v1 party sign N={} T={} K={}", N, T, K);
     c.bench_function(&s, |b| b.iter(|| sign(&msg, &mut signers, &mut rng)));
@@ -62,7 +62,7 @@ pub fn bench_aggregator_sign(c: &mut Criterion) {
         }
     };
 
-    let mut signers: Vec<v1::Signer> = (0..(K * 3 / 4)).map(|i| signers[i].clone()).collect();
+    let mut signers = signers[..(K * 3 / 4).try_into().unwrap()].to_vec();
 
     let mut aggregator =
         v1::SignatureAggregator::new(N, T, A.clone()).expect("aggregator ctor failed");

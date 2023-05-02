@@ -97,7 +97,7 @@ pub mod test_helpers {
     pub fn dkg<RNG: RngCore + CryptoRng, Signer: traits::Signer>(
         signers: &mut [Signer],
         rng: &mut RNG,
-    ) -> Result<Vec<PolyCommitment>, HashMap<usize, DkgError>> {
+    ) -> Result<Vec<PolyCommitment>, HashMap<u32, DkgError>> {
         let mut A: Vec<PolyCommitment> = signers
             .iter()
             .flat_map(|s| s.get_poly_commitments(rng))
@@ -148,8 +148,8 @@ pub mod test_helpers {
         signers: &mut [Signer],
         rng: &mut RNG,
     ) -> (Vec<PublicNonce>, Vec<SignatureShare>) {
-        let signer_ids: Vec<usize> = signers.iter().map(|s| s.get_id()).collect();
-        let key_ids: Vec<usize> = signers.iter().flat_map(|s| s.get_key_ids()).collect();
+        let signer_ids: Vec<u32> = signers.iter().map(|s| s.get_id()).collect();
+        let key_ids: Vec<u32> = signers.iter().flat_map(|s| s.get_key_ids()).collect();
         let mut nonces: Vec<PublicNonce> =
             signers.iter_mut().flat_map(|s| s.gen_nonces(rng)).collect();
 
@@ -184,9 +184,9 @@ mod test {
 
         // First create and verify a frost signature
         let msg = "It was many and many a year ago".as_bytes();
-        let N: usize = 10;
-        let T: usize = 7;
-        let signer_ids: Vec<Vec<usize>> = [
+        let N: u32 = 10;
+        let T: u32 = 7;
+        let signer_ids: Vec<Vec<u32>> = [
             [0, 1, 2].to_vec(),
             [3, 4].to_vec(),
             [5, 6, 7].to_vec(),
@@ -235,10 +235,10 @@ mod test {
 
         // First create and verify a frost signature
         let msg = "It was many and many a year ago".as_bytes();
-        let Nk: usize = 10;
-        let Np: usize = 4;
-        let T: usize = 7;
-        let signer_ids: Vec<Vec<usize>> = [
+        let Nk: u32 = 10;
+        let Np: u32 = 4;
+        let T: u32 = 7;
+        let signer_ids: Vec<Vec<u32>> = [
             [0, 1, 2].to_vec(),
             [3, 4].to_vec(),
             [5, 6, 7].to_vec(),
@@ -248,7 +248,7 @@ mod test {
         let mut signers: Vec<v2::Signer> = signer_ids
             .iter()
             .enumerate()
-            .map(|(id, ids)| v2::Signer::new(id, ids, Np, Nk, T, &mut rng))
+            .map(|(id, ids)| v2::Signer::new(id.try_into().unwrap(), ids, Np, Nk, T, &mut rng))
             .collect();
 
         let A = match test_helpers::dkg(&mut signers, &mut rng) {
@@ -259,10 +259,7 @@ mod test {
         };
 
         let mut S = [signers[0].clone(), signers[1].clone(), signers[3].clone()].to_vec();
-        let key_ids = S
-            .iter()
-            .flat_map(|s| s.get_key_ids())
-            .collect::<Vec<usize>>();
+        let key_ids = S.iter().flat_map(|s| s.get_key_ids()).collect::<Vec<u32>>();
         let mut sig_agg =
             v2::SignatureAggregator::new(Nk, T, A.clone()).expect("aggregator ctor failed");
 

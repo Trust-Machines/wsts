@@ -113,11 +113,11 @@ impl Display for PublicNonce {
 /// A share of the party signature with related values
 pub struct SignatureShare {
     /// The ID of the party
-    pub id: usize,
+    pub id: u32,
     /// The party signature
     pub z_i: Scalar,
     /// The key IDs of the party
-    pub key_ids: Vec<usize>,
+    pub key_ids: Vec<u32>,
 }
 
 #[allow(non_snake_case)]
@@ -143,7 +143,7 @@ impl Signature {
 /// Helper functions for tests
 pub mod test_helpers {
     /// Generate a set of `k` vectors which divide `n` IDs evenly
-    pub fn gen_signer_ids(n: usize, k: usize) -> Vec<Vec<usize>> {
+    pub fn gen_signer_ids(n: u32, k: u32) -> Vec<Vec<u32>> {
         let mut ids = Vec::new();
         let m = n / k;
 

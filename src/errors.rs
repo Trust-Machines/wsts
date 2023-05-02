@@ -6,16 +6,16 @@ use thiserror::Error;
 pub enum DkgError {
     #[error("missing shares from {0:?}")]
     /// The shares which were missing
-    MissingShares(Vec<usize>),
+    MissingShares(Vec<u32>),
     #[error("bad IDs {0:?}")]
     /// The IDs which failed to verify
-    BadIds(Vec<usize>),
+    BadIds(Vec<u32>),
     #[error("not enough shares {0:?}")]
     /// Not enough shares to complete DKG
-    NotEnoughShares(Vec<usize>),
+    NotEnoughShares(Vec<u32>),
     #[error("bad shares {0:?}")]
     /// The shares which failed to verify
-    BadShares(Vec<usize>),
+    BadShares(Vec<u32>),
     #[error("point error {0:?}")]
     /// An error during point operations
     Point(PointError),
@@ -41,10 +41,10 @@ pub enum AggregatorError {
     BadNonceLen(usize, usize),
     #[error("bad party keys from {0:?}")]
     /// The party public keys which failed
-    BadPartyKeys(Vec<usize>),
+    BadPartyKeys(Vec<u32>),
     #[error("bad party sigs from {0:?}")]
     /// The party signatures which failed to verify
-    BadPartySigs(Vec<usize>),
+    BadPartySigs(Vec<u32>),
     #[error("bad group sig")]
     /// The aggregate group signature failed to verify
     BadGroupSig,
