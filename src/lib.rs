@@ -15,9 +15,9 @@ pub mod schnorr;
 pub mod traits;
 /// Utilities for hashing scalars
 pub mod util;
-/// Version 1 of WTFROST, which encapsulates a number of parties using vanilla FROST
+/// Version 1 of WSTS, which encapsulates a number of parties using vanilla FROST
 pub mod v1;
-/// Version 2 of WTFROST, which optimizes the protocol for speed and bandwidth
+/// Version 2 of WSTS, which optimizes the protocol for speed and bandwidth
 pub mod v2;
 /// Shamir secret sharing, using in distributed key generation
 pub mod vss;
