@@ -1,4 +1,4 @@
-#WSTS
+# WSTS
 
 [![ci](https://github.com/Trust-Machines/wsts/actions/workflows/ci.yml/badge.svg)](https://github.com/Trust-Machines/wsts/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/wtfrost.svg)](https://crates.io/crates/wsts)
