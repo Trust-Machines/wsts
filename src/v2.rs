@@ -42,7 +42,7 @@ pub struct PartyState {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[allow(non_snake_case)]
-/// A WTF party, which encapsulates a single polynomial, nonce, and one private key per key ID
+/// A WSTS party, which encapsulates a single polynomial, nonce, and one private key per key ID
 pub struct Party {
     /// The party ID
     pub party_id: u32,

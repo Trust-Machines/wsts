@@ -13,14 +13,14 @@ categories = ["cryptography"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-base58 = "0.2"
+bs58 = "0.4"
 hashbrown = { version = "0.13", features = ["serde"] }
 hex = "0.4.3"
 num-traits = "0.2"
 polynomial = { version = "0.2.5", features = ["serde"] }
 primitive-types = "0.12"
 rand_core = "0.6"
-p256k1 = "4"
+p256k1 = "5"
 serde = { version = "1.0", features = ["derive"] }
 sha2 = "0.10"
 thiserror = "1.0"
