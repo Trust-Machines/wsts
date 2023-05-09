@@ -447,13 +447,9 @@ However, it is possible to develop a meta protocol on top of a non-robust scheme
 
 In addition to WSTS, here we also present FROST Interactive Robustness Extension (FIRE).  This is a straightforward extension of FROST into a meta protocol which provides robustness.  It works with both FROST and WSTS, with minor differences in the protocol.
 
-\subsubsection{
-  FIRE/FROST
-}
+A FIRE signing round takes place after a DKG round has established a group key.  Each round is labeled with an integer ID $i$, and consists of a series of sessions $j$, where $j$ starts at $0$ for every round.
 
-A FIRE/FROST signing round takes place after a DKG round has established a group key.  Each round is labeled with an integer ID $i$, and consists of a series of sessions $j$, where $j$ starts at $0$ for every round.
-
-Let $A$ be the set of active parties.  When a signing round begins, $A$ will contain all parties who successfully completed DKG.  We will insert and remove parties from $A$ as the protocol runs, which will allow us to excise byzantine actors.
+Let $A$ be the set of active parties.  When a signing round begins, $A$ will contain all parties who successfully completed DKG.  We will remove parties from $A$ as the protocol runs, which will allow us to excise byzantine actors.
 
 So when round $i$ begins, we request nonces for session $j = 0$ from $A$.  Once we get $k = T$ nonces for $i,j$, the corresponding parties will be selected for the signing set $S_j$.  We then request signature shares from all parties in $S_j$.  If all sign correctly, and we obtain a valid signature, round $i$ is complete.  We must set a timeout for the signing portion of the session, or else byzantine actors can slow the protocol indefinitely.
 
@@ -461,18 +457,14 @@ Parties who do not return signatures, or return invalid signatures, are removed 
 
 As before, if the aggregate signature is valid, round $i$ is complete.  Otherwise, we begin a new session $j+2$, and continue in the same vein.  Since each session will either complete or remove some parties from $A$, this algorithm will eventually terminate.  When $|A| < T$, signing round $i$ has failed.
 
-\subsubsection{
-  FIRE/WSTS
-}
-
-A FIRE/WSTS round runs similarly to a FIRE/FROST round, with the only difference being that we must count the number of keys controlled by each party who responds with a nonce in every session.  Only when the sum of keys controlled by the given nonces equals or exceeds $T$ do we form $S_j$ and begin the signing portion of the session.  
+When running a FIRE round with WSTS vs FROST, the only difference is that we must count the number of keys controlled by each party who responds with a nonce in every session.  Only when the sum of keys controlled by the given nonces equals or exceeds $T$ do we form $S_j$ and begin the signing portion of the session.  
 
 
 \subsection{
   ROAST
 }
 
-ROAST\cite{roast} is a wrapper around FROST and other threshold signature schemes which provides robustness and asynchronicity.  It operates in a very similar manner to FIRE, but the asynchonicity allows for faster completion if there exists a set of honest and responsive signers.  However, since it operates without timeouts, if sufficient byzantine actors exist then the protocol will never complete to either success or failure.
+ROAST\cite{roast} is a wrapper around FROST and other threshold signature schemes which provides robustness and asynchronicity.  It operates in a very similar manner to FIRE, but the asynchonicity allows for faster completion if there exists a set of honest and responsive signers.
 
 ROAST differs from FIRE by allowing session $j+1$ to run in parallel with session $j$.  To do so, it is necessary to keep track of two sets: $R$ is the set of responsive signers, and $M$ of known malicious signers.  Once a party becomes a member of set $M$, all messages from that party will be ignored, and if the governance model includes sanctions on bad actors, those in $M$ will be nominated for such.
 
@@ -484,7 +476,7 @@ Crucially, when the coordinator sends $(\rho_j, R)$ to signers, those signers in
 
 As signature shares and nonces are received, the coordinator does two things.  It first checks to see if it has received a full set of valid signature shares; if this happens, and the group signature is valid, then round $i$ is complete.  At the same time, the size of $R$ is examined.  When $|R| = T$, session $j+1$ begins.  Crucially, this happens in parallel to session $j$.
 
-As the sessions continue for each signing round, it is clear that if there exists a threshold set of honest and responsive signers, the protocol will complete succesfully.  Every session will either succeed or add malicious actors to $M$.  If $|M| > (N-T)$, then the signing round has failed.  But without timeouts, a sufficient set of byzantine actors can keep the protocol not only from succeeding, but ever completing.
+As the sessions continue for each signing round, it is clear that if there exists a threshold set of honest and responsive signers, the protocol will complete succesfully.  Every session will either succeed or add malicious actors to $M$.  If $|M| > (N-T)$, then the signing round has failed.  Likewise, we will never have more than $N-T$ sessions for any round.  Though the paper does not describe the use of timeouts, without them we will never be able to declare that a round is over, since a byzantine set of actors can simply stall any session where one of the set is a participant.  But since the session timeouts run in parallel, the speedup even in the byzantine failure case is significant.
 
 As with FIRE, we can use either FROST or WSTS as the signature aggregation protocol, with the only difference being how we count the nonces when determining if we have a threshold set of possible signers.
 
