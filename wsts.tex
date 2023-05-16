@@ -51,7 +51,7 @@
 \leftskip5em
 \parskip1em
 \rightskip\leftskip
-\noindent\textbf{Abstract.} We present Weighted Schnorr Threshold Signatures (WSTS), which optimizes the base FROST implementation to reduce bandwidth when FROST parties control multiple keys.
+\noindent\textbf{Abstract.} We present Weighted Schnorr Threshold Signatures (WSTS aka WileyProofs), which optimizes the base FROST implementation to reduce bandwidth when FROST parties control multiple keys.
 
 \par
 \noindent\textbf{Keywords:} Weighted Aggregate Threshold Signatures; Zero-Knowledge Proofs; FROST
@@ -66,7 +66,7 @@ FROST \emph{(Flexible Round-Optimized Schnorr Threshold)} \cite{frost} is a syst
 
 The design of FROST assumes that each $party$ controls exactly one key, i.e. the $threshold$ is not weighted.  The naive approach to turning FROST into a weighted threshold scheme involves allowing each $signer$ to control a subset of the $parties$ proportional to its weight.  But this results in inefficiencies in the number of messages required for the protocol, total bandwidth, and computational complexity.
 
-Here we present optimizations on top of vanilla FROST which reduce these inefficiencies when used as a weighted threshold scheme.  We call this scheme WSTS \emph{(Weighted Schnorr Threshold Signatures)}.
+Here we present optimizations on top of vanilla FROST which reduce these inefficiencies when used as a weighted threshold scheme.  We call this scheme WSTS \emph{(Weighted Schnorr Threshold Signatures)}, aka WileyProofs, in honor not only of the author's grandfather, but also the greatest engineer of all time: Wiley E. Coyote.
 
 \subsection{
   Notation
