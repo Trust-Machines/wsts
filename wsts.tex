@@ -352,7 +352,7 @@ Once they have $R$ and message $m$ they can construct the challenge $c$:
   c = H(Y, R, m)
 \end{align}
 
-Finally, each party $i_p$ can construct its signature share $z_i$:
+Finally, each party $i_p$ can construct its signature share $z_{i_p}$:
 \begin{align}
   z_{i_p} = d_{i_p} + \rho_{i_p} \cdot e_{i_p} + \sum_{j_k \in K_{i_p}}^{} s_{j_k} \cdot c \cdot \lambda_{j_k}
 \end{align}
