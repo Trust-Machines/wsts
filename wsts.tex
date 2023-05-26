@@ -314,7 +314,7 @@ Once a party receives its DKG public and private shares, it first must verify th
   \forall j_p \in [1,N_p], i_k \in K_{i_p}; f_{j_p}(i_k) \cdot G = P_{j_p}(i_k)
 \end{align}
 
-Once the private shares are verified, each party $i_p$ computes its shares $s_{i_k}$ of the group secret key by summing the private polynomial evaluations from all parties for each key $i_k$. The parties then use each $s_{i_k}$ to construct the corresponding public key $Y_{i_k}$:
+Once the private shares are verified, each party $i_p$ computes its shares $s_{i_k}$ of the group secret key by summing the private polynomial evaluations from all parties for each key $i_k$, giving the group polynomial $f$ evaluated at $i_k$, i.e. one interpolation point. The parties then use each $s_{i_k}$ to construct the corresponding public key $Y_{i_k}$:
 \begin{align}
   s_{i_k} = \sum_{j_p = 1}^{N_p} f_{j_p}(i_k) ;\; Y_{i_k} = s_{i_k} \cdot G
 \end{align}
