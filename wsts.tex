@@ -330,11 +330,11 @@ At this point DKG is complete, and each party $i_p$ knows all of its $(s_{i_k}, 
   Gathering Party Signatures
 }
 
-As before, in order for polynomial interpolation to work, it is necessary to choose the signing parties $S_p \ni \forall s_p \in S_p, s_p \in [1, N_p]$, and the corresponding $S_k$ which consists of the union of all $i_k \in K_{i_p}\; \forall i_p \in S_p$, before any party can sign, with $|S_k| >= T$.  Each party $i_p \in S_p$ then constructs a private nonce $(d_{i_p},e_{i_p})$ and corresponding public nonce $(D_{i_p},E_{i_p})$, then sends $(D_{i_p},E_{i_p})$ to all other parties with keys in $S_k$.
+As before, in order for polynomial interpolation to work, it is necessary to choose the signing parties $S_p \ni \forall s_p \in S_p, s_p \in [1, N_p]$, and the corresponding $S_k$ which consists of the union of all $i_k \in K_{i_p}\; \forall i_p \in S_p$, before any party can sign, with $|S_k| >= T$.  Each party $i_p \in S_p$ then constructs a private nonce $(d_{i_p},e_{i_p})$ and corresponding public nonce $(D_{i_p},E_{i_p})$, then sends $(i_p, D_{i_p},E_{i_p})$ to all other parties with keys in $S_k$, forming set $B$ as before.
 
-Once nonces have been received, each party $i_p \in S_p$ computes the binding values $\rho_{j_p}$:
+Once nonces have been received, each party $i_p \in S_p$ computes the binding values $\rho_{j_p}$ using $B$ and $m$:
 \begin{align}
-  \forall j_p \in S_p;\;\rho_{j_p} = H(j_p, D_{j_p}, E_{j_p})
+  \forall j_p \in S_p;\;\rho_{j_p} = H(j_p, m, B)
 \end{align}
 
 Next, $\forall i_k \in K_{i_p}$,  they compute the interpolation values $\lambda_{i_k}$:
