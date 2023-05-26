@@ -178,7 +178,7 @@ Thus there are three discrete elements required: distributed key generation, gat
 
 Like many DKG schemes, FROST employs the technique of polynomial interpolation.  But whereas traditional DKG protocols use a trusted dealer, FROST is a trustless protocol.  To accomplish this, each party acts as a trusted dealer to every other party, and runs a traditional DKG protocol.  The parties then combine their keys trustlessly, and the result is a fully trustless distributed key, of which each party controls an equal share.
 
-Remember that in polynomial interpolation, you need $k+1$ points to interpolate a degree $k$ polynomial.  FROST specifies a threshold $T$, which is the number of signers necessary to sign a message.  Thus we will need a polynomial of degree $T-1$ so that any group of $T$ signers will be able to interpolate the key, and thereby sign.
+Remember that in polynomial interpolation, you need $k+1$ points to interpolate a degree $k$ polynomial.  FROST specifies a threshold $T$, which is the number of signers necessary to sign a message.  Thus we will need a group polynomial of degree $T-1$ so that any group of $T$ signers will be able to interpolate the key, and thereby sign.  This group polynomial $f$ will be the sum of the party polynomials $f_i$; the group private key $x$ will be $f(0)$, and the group public key $Y$ will be $P(0)$, where $P = f \cdot G$.
 
 First, each party is given a sequential ID $i \in [1, N]$, which will be used both to identify it and as an element in the underlying math.  Next, each party $i$ constructs a random private scalar polynomial $f_i$ of degree $T-1$, where the coefficients are also scalars.  A public DKG share is constructed from $f_i$ by multiplying each coefficient by a generator $G$.  The ID $i$ and public polynomial $P_i$ are then shared to all other parties.
 
@@ -205,11 +205,11 @@ At this point DKG is complete, and each party $i$ knows $(s_i, Y_i)$ and the gro
   Gathering Party Signatures
 }
 
-In order for polynomial interpolation to work, it is necessary to choose the signing set $S$ before any party can sign, with $|S| >= T$.  Each party $i \in S$ then constructs a private nonce $(d_i,e_i)$ and corresponding public nonce $(D_i,E_i)$, then sends $(D_i,E_i)$ to all other parties in $S$.
+To sign a message $m$, it is necessary to choose the signing set $S$ before any party can sign, with $|S| >= T$; this allows polynomial interpolation to work.  Each party $i \in S$ then constructs a private nonce $(d_i,e_i)$ and corresponding public nonce $(D_i,E_i)$, then sends $(i, D_i, E_i)$ to all other parties in $S$; this forms the set $B$.
 
-Once nonces have been received, each party $i \in S$ computes the binding values $\rho_j$:
+Once nonces have been received, each party $i \in S$ computes the binding values $\rho_j$ using $B$ and $m$:
 \begin{align}
-  \forall j \in S;\;\rho_j = H(j, D_j, E_j)
+  \forall j \in S;\;\rho_j = H(j, m, B)
 \end{align}
 
 Next they compute the interpolation value $\lambda_i$:
@@ -314,7 +314,7 @@ Once a party receives its DKG public and private shares, it first must verify th
   \forall j_p \in [1,N_p], i_k \in K_{i_p}; f_{j_p}(i_k) \cdot G = P_{j_p}(i_k)
 \end{align}
 
-Once the private shares are verified, each party $i_p$ computes its shares $s_{i_k}$ of the group secret key by summing the private polynomial evaluations from all parties for each key $i_k$. The parties then use each $s_{i_k}$ to construct the corresponding public key $Y_{i_k}$:
+Once the private shares are verified, each party $i_p$ computes its shares $s_{i_k}$ of the group secret key by summing the private polynomial evaluations from all parties for each key $i_k$, giving the group polynomial $f$ evaluated at $i_k$, i.e. one interpolation point. The parties then use each $s_{i_k}$ to construct the corresponding public key $Y_{i_k}$:
 \begin{align}
   s_{i_k} = \sum_{j_p = 1}^{N_p} f_{j_p}(i_k) ;\; Y_{i_k} = s_{i_k} \cdot G
 \end{align}
@@ -330,11 +330,11 @@ At this point DKG is complete, and each party $i_p$ knows all of its $(s_{i_k}, 
   Gathering Party Signatures
 }
 
-As before, in order for polynomial interpolation to work, it is necessary to choose the signing parties $S_p \ni \forall s_p \in S_p, s_p \in [1, N_p]$, and the corresponding $S_k$ which consists of the union of all $i_k \in K_{i_p}\; \forall i_p \in S_p$, before any party can sign, with $|S_k| >= T$.  Each party $i_p \in S_p$ then constructs a private nonce $(d_{i_p},e_{i_p})$ and corresponding public nonce $(D_{i_p},E_{i_p})$, then sends $(D_{i_p},E_{i_p})$ to all other parties with keys in $S_k$.
+As before, in order for polynomial interpolation to work, it is necessary to choose the signing parties $S_p \ni \forall s_p \in S_p, s_p \in [1, N_p]$, and the corresponding $S_k$ which consists of the union of all $i_k \in K_{i_p}\; \forall i_p \in S_p$, before any party can sign, with $|S_k| >= T$.  Each party $i_p \in S_p$ then constructs a private nonce $(d_{i_p},e_{i_p})$ and corresponding public nonce $(D_{i_p},E_{i_p})$, then sends $(i_p, D_{i_p},E_{i_p})$ to all other parties with keys in $S_k$, forming set $B$ as before.
 
-Once nonces have been received, each party $i_p \in S_p$ computes the binding values $\rho_{j_p}$:
+Once nonces have been received, each party $i_p \in S_p$ computes the binding values $\rho_{j_p}$ using $B$ and $m$:
 \begin{align}
-  \forall j_p \in S_p;\;\rho_{j_p} = H(j_p, D_{j_p}, E_{j_p})
+  \forall j_p \in S_p;\;\rho_{j_p} = H(j_p, m, B)
 \end{align}
 
 Next, $\forall i_k \in K_{i_p}$,  they compute the interpolation values $\lambda_{i_k}$:
@@ -524,6 +524,22 @@ The author would like to thank Alie Slade for initial work on the WSTS algorithm
   \texttt{https://eprint.iacr.org/2022/550.pdf}
 
 \end{thebibliography}
+
+\appendix
+\newpage
+\onecolumn
+
+\section{
+  Security
+}
+
+\subsection{
+  Correctness
+}
+
+In Sections 4.4.1 and 2.7.5, we show how WSTS and FROST reduce to a Schnorr proof.  This is sufficient to show correctness.  
+
+
 
 \end{document}
 
