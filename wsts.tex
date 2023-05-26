@@ -205,11 +205,11 @@ At this point DKG is complete, and each party $i$ knows $(s_i, Y_i)$ and the gro
   Gathering Party Signatures
 }
 
-In order for polynomial interpolation to work, it is necessary to choose the signing set $S$ before any party can sign, with $|S| >= T$.  Each party $i \in S$ then constructs a private nonce $(d_i,e_i)$ and corresponding public nonce $(D_i,E_i)$, then sends $(D_i,E_i)$ to all other parties in $S$.
+To sign a message $m$, it is necessary to choose the signing set $S$ before any party can sign, with $|S| >= T$; this allows polynomial interpolation to work.  Each party $i \in S$ then constructs a private nonce $(d_i,e_i)$ and corresponding public nonce $(D_i,E_i)$, then sends $(i, D_i, E_i)$ to all other parties in $S$; this forms the set $B$.
 
-Once nonces have been received, each party $i \in S$ computes the binding values $\rho_j$:
+Once nonces have been received, each party $i \in S$ computes the binding values $\rho_j$ using $B$ and $m$:
 \begin{align}
-  \forall j \in S;\;\rho_j = H(j, D_j, E_j)
+  \forall j \in S;\;\rho_j = H(j, m, B)
 \end{align}
 
 Next they compute the interpolation value $\lambda_i$:
@@ -524,6 +524,22 @@ The author would like to thank Alie Slade for initial work on the WSTS algorithm
   \texttt{https://eprint.iacr.org/2022/550.pdf}
 
 \end{thebibliography}
+
+\appendix
+\newpage
+\onecolumn
+
+\section{
+  Security
+}
+
+\subsection{
+  Correctness
+}
+
+In Sections 4.4.1 and 2.7.5, we show how WSTS and FROST reduce to a Schnorr proof.  This is sufficient to show correctness.  
+
+
 
 \end{document}
 
