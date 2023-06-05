@@ -4,3 +4,4 @@ Cargo.lock
 *.aux
 *.log
 .DS_Store
+tarpaulin-report.html
