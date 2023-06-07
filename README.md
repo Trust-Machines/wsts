@@ -22,7 +22,6 @@ This crate also contains a more complex version of ```WSTS``` optimized for the 
 ## p256k1
 This crate uses the Bitcoin ```secp256k1``` curve.  But since the C ```libsecp256k1``` library only provides high level interfaces for operations used by Bitcoin, it was necessary to directly expose the scalars and curve points to allow arbitrary mathematical operations outside of sign/verify.  So we provide a wrapper crate around ```libsecp256k1``` which wraps the internal interfaces to scalars and points.  We call this crate [```p256k1```](https://crates.io/crates/p256k1), to denote that it is not only the same curve as ```secp256k1```, but also exposes the curve directly.
 
-
 ## Documentation
 
 - [wsts crate docs in GitHub](https://trust-machines.github.io/wsts/wsts)
