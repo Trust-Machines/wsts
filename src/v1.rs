@@ -1,5 +1,5 @@
 use hashbrown::HashMap;
-use num_traits::Zero;
+use num_traits::{One, Zero};
 use p256k1::{
     point::{Point, G},
     scalar::Scalar,
@@ -137,17 +137,44 @@ impl Party {
         if !bad_ids.is_empty() {
             return Err(DkgError::BadIds(bad_ids));
         }
+/*
+        // let's optimize for the case where all shares are good, and test them as a batch
 
-        let mut bad_shares = Vec::new();
+        // compute the powers of x (self.id())
+        let T = A[0].A.len();
+        let N = shares.len();
+        let x = self.id();
+        let mut powers = Vec::with_capacity(T);
+        let mut pow = Scalar::one();
+        for _ in 0..A[0].A.len() {
+            powers.push(pow);
+            pow *= &x;
+        }
+
+        // build a vector of scalars and points from public poly evaluations and expected values
+        let mut scalars = Vec::with_capacity(T*N + N);
+        let mut points = Vec::with_capacity(T*N + N);
         for (i, s) in shares.iter() {
+            scalars.append(&mut powers.clone());
+
             let Ai = &A[usize::try_from(*i).unwrap()];
-            if s * G != compute::poly(&self.id(), &Ai.A)? {
-                bad_shares.push(*i);
+            points.append(&mut Ai.A.clone());
+
+            scalars.push(-s);
+            points.push(G);
+        }
+
+        // if the batch verify fails then check them one by one and find the bad ones
+        if Point::multimult(scalars, points)? != Point::zero() {*/
+            let mut bad_shares = Vec::new();
+            for (i, s) in shares.iter() {
+                let Ai = &A[usize::try_from(*i).unwrap()];
+                if s * G != compute::poly(&self.id(), &Ai.A)? {
+                    bad_shares.push(*i);
+                }
             }
-        }
-        if !bad_shares.is_empty() {
-            return Err(DkgError::BadShares(bad_shares));
-        }
+        if !bad_shares.is_empty() { return Err(DkgError::BadShares(bad_shares)); }
+        //}
 
         for (i, s) in shares.iter() {
             let Ai = &A[usize::try_from(*i).unwrap()];
