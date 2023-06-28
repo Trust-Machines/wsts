@@ -1,5 +1,5 @@
 use hashbrown::HashMap;
-use num_traits::{One, Zero};
+use num_traits::Zero;
 use p256k1::{
     point::{Point, G},
     scalar::Scalar,
@@ -8,7 +8,9 @@ use polynomial::Polynomial;
 use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
-use crate::common::{Nonce, PolyCommitment, PublicNonce, Signature, SignatureShare};
+use crate::common::{
+    CheckPrivateShares, Nonce, PolyCommitment, PublicNonce, Signature, SignatureShare,
+};
 use crate::compute;
 use crate::errors::{AggregatorError, DkgError};
 use crate::schnorr::ID;
@@ -139,32 +141,12 @@ impl Party {
         }
         // let's optimize for the case where all shares are good, and test them as a batch
 
-        // compute the powers of x (self.id())
-        let T = A[0].A.len();
-        let N = shares.len();
-        let x = self.id();
-        let mut powers = Vec::with_capacity(T);
-        let mut pow = Scalar::one();
-        for _ in 0..A[0].A.len() {
-            powers.push(pow);
-            pow *= &x;
-        }
-
-        // build a vector of scalars and points from public poly evaluations and expected values
-        let mut scalars = Vec::with_capacity(T * N + N);
-        let mut points = Vec::with_capacity(T * N + N);
-        for (i, s) in shares.iter() {
-            scalars.append(&mut powers.clone());
-
-            let Ai = &A[usize::try_from(*i).unwrap()];
-            points.append(&mut Ai.A.clone());
-
-            scalars.push(-s);
-            points.push(G);
-        }
+        // building a vector of scalars and points from public poly evaluations and expected values takes too much memory
+        // instead make an object which implements p256k1 MultiMult trait, using the existing powers of x and shares
+        let mut check_shares = CheckPrivateShares::new(self.id(), &shares, A);
 
         // if the batch verify fails then check them one by one and find the bad ones
-        if Point::multimult(scalars, points)? != Point::zero() {
+        if Point::multimult_trait(&mut check_shares)? != Point::zero() {
             let mut bad_shares = Vec::new();
             for (i, s) in shares.iter() {
                 let Ai = &A[usize::try_from(*i).unwrap()];
@@ -172,9 +154,7 @@ impl Party {
                     bad_shares.push(*i);
                 }
             }
-            if !bad_shares.is_empty() {
-                return Err(DkgError::BadShares(bad_shares));
-            }
+            return Err(DkgError::BadShares(bad_shares));
         }
 
         for (i, s) in shares.iter() {
@@ -443,7 +423,7 @@ impl crate::traits::Signer for Signer {
         let mut dkg_errors = HashMap::new();
         for party in &mut self.parties {
             // go through the shares, looking for this party's
-            let mut key_shares = HashMap::new();
+            let mut key_shares = HashMap::with_capacity(polys.len());
             for (signer_id, signer_shares) in private_shares.iter() {
                 key_shares.insert(*signer_id, signer_shares[&party.id]);
             }
