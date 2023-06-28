@@ -180,6 +180,26 @@ impl Party {
             key_ids: vec![self.id],
         }
     }
+
+    /// Sign `msg` with this party's share of the group private key, using the set of `sigers` and corresponding `nonces` with a precomputed `aggregate_nonce`
+    pub fn sign_precomputed(
+        &self,
+        msg: &[u8],
+        signers: &[u32],
+        nonces: &[PublicNonce],
+        aggregate_nonce: &Point,
+    ) -> SignatureShare {
+        let mut z = &self.nonce.d + &self.nonce.e * compute::binding(&self.id(), nonces, msg);
+        z += compute::challenge(&self.group_key, aggregate_nonce, msg)
+            * &self.private_key
+            * compute::lambda(self.id, signers);
+
+        SignatureShare {
+            id: self.id,
+            z_i: z,
+            key_ids: vec![self.id],
+        }
+    }
 }
 
 #[allow(non_snake_case)]
@@ -431,9 +451,10 @@ impl crate::traits::Signer for Signer {
         key_ids: &[u32],
         nonces: &[PublicNonce],
     ) -> Vec<SignatureShare> {
+        let aggregate_nonce = compute::aggregate_nonce(msg, key_ids, nonces).unwrap();
         self.parties
             .iter()
-            .map(|p| p.sign(msg, key_ids, nonces))
+            .map(|p| p.sign_precomputed(msg, key_ids, nonces, &aggregate_nonce))
             .collect()
     }
 }

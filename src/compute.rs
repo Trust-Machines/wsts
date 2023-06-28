@@ -1,6 +1,6 @@
 use core::iter::zip;
 use num_traits::{One, Zero};
-use p256k1::{point::Error as PointError, point::Point, scalar::Scalar};
+use p256k1::{point::Compressed, point::Error as PointError, point::Point, scalar::Scalar};
 use sha2::{Digest, Sha256};
 
 use crate::common::PublicNonce;
@@ -17,6 +17,23 @@ pub fn binding(id: &Scalar, B: &[PublicNonce], msg: &[u8]) -> Scalar {
     for b in B {
         hasher.update(b.D.compress().as_bytes());
         hasher.update(b.E.compress().as_bytes());
+    }
+    hasher.update(msg);
+
+    hash_to_scalar(&mut hasher)
+}
+
+#[allow(non_snake_case)]
+/// Compute a binding value from the party ID, public nonces, and signed message
+pub fn binding_compressed(id: &Scalar, B: &[(Compressed, Compressed)], msg: &[u8]) -> Scalar {
+    let mut hasher = Sha256::new();
+    let prefix = "WSTS/binding";
+
+    hasher.update(prefix.as_bytes());
+    hasher.update(id.to_bytes());
+    for (D, E) in B {
+        hasher.update(D.as_bytes());
+        hasher.update(E.as_bytes());
     }
     hasher.update(msg);
 
@@ -71,6 +88,31 @@ pub fn intermediate(msg: &[u8], party_ids: &[u32], nonces: &[PublicNonce]) -> (V
 
     let R = R_vec.iter().fold(Point::zero(), |R, &R_i| R + R_i);
     (R_vec, R)
+}
+
+#[allow(non_snake_case)]
+/// Compute the aggregate nonce
+pub fn aggregate_nonce(
+    msg: &[u8],
+    party_ids: &[u32],
+    nonces: &[PublicNonce],
+) -> Result<Point, PointError> {
+    let compressed_nonces: Vec<(Compressed, Compressed)> = nonces
+        .iter()
+        .map(|nonce| (nonce.D.compress(), nonce.E.compress()))
+        .collect();
+    let scalars: Vec<Scalar> = party_ids
+        .iter()
+        .flat_map(|&i| {
+            [
+                Scalar::from(1),
+                binding_compressed(&id(i), &compressed_nonces, msg),
+            ]
+        })
+        .collect();
+    let points: Vec<Point> = nonces.iter().flat_map(|nonce| [nonce.D, nonce.E]).collect();
+
+    Point::multimult(scalars, points)
 }
 
 /// Compute a one-based Scalar from a zero-based integer
