@@ -143,24 +143,24 @@ impl Party {
 
         // building a vector of scalars and points from public poly evaluations and expected values takes too much memory
         // instead make an object which implements p256k1 MultiMult trait, using the existing powers of x and shares
-        let mut check_shares = CheckPrivateShares::new(self.id(), &shares, A);
+        let mut check_shares = CheckPrivateShares::new(self.id(), shares, A);
 
         // if the batch verify fails then check them one by one and find the bad ones
         if Point::multimult_trait(&mut check_shares)? != Point::zero() {
             let mut bad_shares = Vec::new();
-            for (i, s) in shares.iter() {
+            for (i, s) in check_shares.neg_shares.iter() {
                 let Ai = &A[usize::try_from(*i).unwrap()];
-                if s * G != compute::poly(&self.id(), &Ai.A)? {
+                if (-s) * G != compute::poly(&self.id(), &Ai.A)? {
                     bad_shares.push(*i);
                 }
             }
             return Err(DkgError::BadShares(bad_shares));
         }
 
-        for (i, s) in shares.iter() {
+        for (i, s) in check_shares.neg_shares.iter() {
             let Ai = &A[usize::try_from(*i).unwrap()];
 
-            self.private_key += s;
+            self.private_key = &self.private_key - s;
             self.group_key += Ai.A[0];
         }
         self.public_key = self.private_key * G;
@@ -423,11 +423,12 @@ impl crate::traits::Signer for Signer {
         let mut dkg_errors = HashMap::new();
         for party in &mut self.parties {
             // go through the shares, looking for this party's
-            let mut key_shares = HashMap::with_capacity(polys.len());
+            // negate the shares so we can pass the hashmap to CheckPrivateShares
+            let mut neg_key_shares = HashMap::with_capacity(polys.len());
             for (signer_id, signer_shares) in private_shares.iter() {
-                key_shares.insert(*signer_id, signer_shares[&party.id]);
+                neg_key_shares.insert(*signer_id, -signer_shares[&party.id]);
             }
-            if let Err(e) = party.compute_secret(key_shares, polys) {
+            if let Err(e) = party.compute_secret(neg_key_shares, polys) {
                 dkg_errors.insert(party.id, e);
             }
         }
@@ -489,28 +490,18 @@ pub mod test_helpers {
             .collect();
 
         // each party broadcasts their commitments
-        // these hashmaps will need to be serialized in tuples w/ the value encrypted
-        let mut private_shares = Vec::new();
+        let mut private_shares = HashMap::new();
         for signer in signers.iter() {
-            for party in &signer.parties {
-                private_shares.push((party.id, party.get_shares()));
+            for (signer_id, signer_shares) in signer.get_shares() {
+                private_shares.insert(signer_id, signer_shares);
             }
         }
 
         // each party collects its shares from the privates
-        // maybe this should collect into a hashmap first?
         let mut secret_errors = HashMap::new();
         for signer in signers.iter_mut() {
-            for party in signer.parties.iter_mut() {
-                let mut h = HashMap::new();
-
-                for (id, share) in &private_shares {
-                    h.insert(*id, share[&party.id]);
-                }
-
-                if let Err(secret_error) = party.compute_secret(h, &A) {
-                    secret_errors.insert(party.id, secret_error);
-                }
+            if let Err(signer_secret_errors) = signer.compute_secrets(&private_shares, &A) {
+                secret_errors.extend(signer_secret_errors.into_iter());
             }
         }
 

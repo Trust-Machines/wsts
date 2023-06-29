@@ -181,8 +181,8 @@ pub struct CheckPrivateShares<'a> {
 
 impl<'a> CheckPrivateShares<'a> {
     /// Construct a new CheckPrivateShares object
-    pub fn new(id: Scalar, shares: &HashMap<u32, Scalar>, polys: &'a [PolyCommitment]) -> Self {
-        let n: u32 = shares.len().try_into().unwrap();
+    pub fn new(id: Scalar, neg_shares: HashMap<u32, Scalar>, polys: &'a [PolyCommitment]) -> Self {
+        let n: u32 = neg_shares.len().try_into().unwrap();
         let t: u32 = polys[0].A.len().try_into().unwrap();
         let x = id;
         let mut powers = Vec::with_capacity(polys[0].A.len());
@@ -191,11 +191,6 @@ impl<'a> CheckPrivateShares<'a> {
         for _ in 0..t {
             powers.push(pow);
             pow *= &x;
-        }
-
-        let mut neg_shares = HashMap::with_capacity(polys.len());
-        for (i, s) in shares.iter() {
-            neg_shares.insert(*i, -s);
         }
 
         Self {
