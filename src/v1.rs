@@ -488,29 +488,17 @@ pub mod test_helpers {
             .flat_map(|s| s.get_poly_commitments(rng))
             .collect();
 
-        // each party broadcasts their commitments
-        // these hashmaps will need to be serialized in tuples w/ the value encrypted
-        let mut private_shares = Vec::new();
+        let mut private_shares = HashMap::new();
         for signer in signers.iter() {
-            for party in &signer.parties {
-                private_shares.push((party.id, party.get_shares()));
+            for (signer_id, signer_shares) in signer.get_shares() {
+                private_shares.insert(signer_id, signer_shares);
             }
         }
 
-        // each party collects its shares from the privates
-        // maybe this should collect into a hashmap first?
         let mut secret_errors = HashMap::new();
         for signer in signers.iter_mut() {
-            for party in signer.parties.iter_mut() {
-                let mut h = HashMap::new();
-
-                for (id, share) in &private_shares {
-                    h.insert(*id, share[&party.id]);
-                }
-
-                if let Err(secret_error) = party.compute_secret(h, &A) {
-                    secret_errors.insert(party.id, secret_error);
-                }
+            if let Err(signer_secret_errors) = signer.compute_secrets(&private_shares, &A) {
+                secret_errors.extend(signer_secret_errors.into_iter());
             }
         }
 
