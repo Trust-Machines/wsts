@@ -227,7 +227,7 @@ impl SignatureAggregator {
     pub fn new(N: u32, T: u32, A: Vec<PolyCommitment>) -> Result<Self, AggregatorError> {
         let len = N.try_into().unwrap();
         if A.len() != len {
-            return Err(AggregatorError::BadPolyCommitmentLen(A.len(), len));
+            return Err(AggregatorError::BadPolyCommitmentLen(len, A.len()));
         }
 
         let mut bad_poly_commitments = Vec::new();
