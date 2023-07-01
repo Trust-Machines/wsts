@@ -2,10 +2,12 @@ use core::{
     fmt::{Debug, Display, Formatter, Result as FmtResult},
     ops::Add,
 };
-use num_traits::Zero;
+use hashbrown::HashMap;
+use num_traits::{One, Zero};
 use p256k1::{
     point::{Point, G},
     scalar::Scalar,
+    traits::MultiMult,
 };
 use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
@@ -156,5 +158,83 @@ pub mod test_helpers {
         }
 
         ids
+    }
+}
+
+/// An implementation of p256k1's MultiMult trait that allows fast checking of DKG private shares
+/// We convert a set of checked polynomial evaluations into a single giant multimult
+/// These evaluations take the form of s * G == \Sum{k=0}{T+1}(a_k * x^k) where the a vals are the coeffs of the polys
+/// There is 1 share per poly, N polys, and each poly is degree T-1 (so T coeffs)
+/// First we evaluate each poly, then we subtract each s * G
+pub struct CheckPrivateShares<'a> {
+    /// number of keys
+    n: u32,
+    /// threshold, where the degree of each poly is (t-1)
+    t: u32,
+    /// Powers of x, where x is the receiving key ID
+    powers: Vec<Scalar>,
+    /// Negated DKG private shares for the receiving key ID, indexed by sending key ID
+    pub neg_shares: HashMap<u32, Scalar>,
+    /// Polynomial commitments for each key ID
+    polys: &'a [PolyCommitment],
+}
+
+impl<'a> CheckPrivateShares<'a> {
+    /// Construct a new CheckPrivateShares object
+    pub fn new(id: Scalar, shares: &HashMap<u32, Scalar>, polys: &'a [PolyCommitment]) -> Self {
+        let n: u32 = shares.len().try_into().unwrap();
+        let t: u32 = polys[0].A.len().try_into().unwrap();
+        let x = id;
+        let mut powers = Vec::with_capacity(polys[0].A.len());
+        let mut pow = Scalar::one();
+
+        for _ in 0..t {
+            powers.push(pow);
+            pow *= &x;
+        }
+
+        let mut neg_shares = HashMap::with_capacity(polys.len());
+        for (i, s) in shares.iter() {
+            neg_shares.insert(*i, -s);
+        }
+
+        Self {
+            n,
+            t,
+            powers,
+            neg_shares,
+            polys,
+        }
+    }
+}
+
+impl<'a> MultiMult for CheckPrivateShares<'a> {
+    /// The first n*t scalars will be powers, the last n will be the negation of shares
+    fn get_scalar(&self, i: usize) -> &Scalar {
+        let h: u32 = i.try_into().unwrap();
+        let u: usize = self.t.try_into().unwrap();
+        if h < self.n * self.t {
+            &self.powers[i % u]
+        } else {
+            &self.neg_shares[&(h - (self.t * self.n))]
+        }
+    }
+
+    /// The first n*t points will be poly coeffs, the last n will be G
+    fn get_point(&self, i: usize) -> &Point {
+        let h: u32 = i.try_into().unwrap();
+        let u: usize = self.t.try_into().unwrap();
+        if h < self.n * self.t {
+            let j = i / u;
+            let k = i % u;
+
+            &self.polys[j].A[k]
+        } else {
+            &G
+        }
+    }
+
+    fn get_size(&self) -> usize {
+        ((self.t + 1) * self.n).try_into().unwrap()
     }
 }

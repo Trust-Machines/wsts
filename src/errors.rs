@@ -30,7 +30,7 @@ impl From<PointError> for DkgError {
 #[derive(Error, Debug, Clone)]
 /// Errors which can happen during signature aggregation
 pub enum AggregatorError {
-    #[error("bad poly commitment length (expected {0} got {1}")]
+    #[error("bad poly commitment length (expected {0} got {1})")]
     /// The polynomial commitment was the wrong size
     BadPolyCommitmentLen(usize, usize),
     #[error("bad poly commitments {0:?}")]
