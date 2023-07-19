@@ -22,7 +22,7 @@ fn main() {
         4
     };
 
-    let mut rng = OsRng::default();
+    let mut rng = OsRng;
     let msg = "It was many and many a year ago".as_bytes();
 
     println!("With N={N} T={T} K={K}:");
