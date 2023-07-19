@@ -315,11 +315,11 @@ impl SignatureAggregator {
             z += z_i;
         }
 
-        z += tweak;
+        z += c * tweak;
 
         if bad_party_sigs.is_empty() {
             let sig = Signature { R, z };
-            if sig.verify(&(&self.poly[0] + tweak * G), msg) {
+            if sig.verify(&(&self.poly[0] + c * tweak * G), msg) {
                 Ok(sig)
             } else {
                 Err(AggregatorError::BadGroupSig)
