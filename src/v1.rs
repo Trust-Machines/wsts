@@ -8,13 +8,13 @@ use polynomial::Polynomial;
 use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
-use crate::common::{
-    CheckPrivateShares, Nonce, PolyCommitment, PublicNonce, Signature, SignatureShare,
+use crate::{
+    common::{CheckPrivateShares, Nonce, PolyCommitment, PublicNonce, Signature, SignatureShare},
+    compute,
+    errors::{AggregatorError, DkgError},
+    schnorr::ID,
+    vss::VSS,
 };
-use crate::compute;
-use crate::errors::{AggregatorError, DkgError};
-use crate::schnorr::ID;
-use crate::vss::VSS;
 
 #[derive(Debug, Deserialize, Serialize)]
 /// The saved state required to construct a party
@@ -260,6 +260,30 @@ impl SignatureAggregator {
         nonces: &[PublicNonce],
         sig_shares: &[SignatureShare],
     ) -> Result<Signature, AggregatorError> {
+        self.sign_with_tweak(msg, nonces, sig_shares, &Scalar::zero())
+    }
+
+    /// Check and aggregate the party signatures using a merke root to make a tweak
+    pub fn sign_merkle_root(
+        &mut self,
+        msg: &[u8],
+        nonces: &[PublicNonce],
+        sig_shares: &[SignatureShare],
+        merkle_root: &[u8],
+    ) -> Result<Signature, AggregatorError> {
+        let tweak = compute::tweak(&self.poly[0], merkle_root);
+        self.sign_with_tweak(msg, nonces, sig_shares, &tweak)
+    }
+
+    #[allow(non_snake_case)]
+    /// Check and aggregate the party signatures using a tweak
+    pub fn sign_with_tweak(
+        &mut self,
+        msg: &[u8],
+        nonces: &[PublicNonce],
+        sig_shares: &[SignatureShare],
+        tweak: &Scalar,
+    ) -> Result<Signature, AggregatorError> {
         if nonces.len() != sig_shares.len() {
             return Err(AggregatorError::BadNonceLen(nonces.len(), sig_shares.len()));
         }
@@ -290,9 +314,12 @@ impl SignatureAggregator {
 
             z += z_i;
         }
+
+        z += tweak;
+
         if bad_party_sigs.is_empty() {
             let sig = Signature { R, z };
-            if sig.verify(&self.poly[0], msg) {
+            if sig.verify(&(&self.poly[0] + tweak * G), msg) {
                 Ok(sig)
             } else {
                 Err(AggregatorError::BadGroupSig)
