@@ -140,9 +140,9 @@ pub fn tagged_hash(tag: &str) -> Sha256 {
 
 /// Create a BIP340 compliant taproot tweak from a public key and merkle root
 pub fn tweak(public_key: &Point, merkle_root: &[u8]) -> Scalar {
-    let mut hasher = tagged_hash("BIP341/TapTweak");
+    let mut hasher = tagged_hash("TapTweak");
 
-    hasher.update(public_key.compress().as_bytes());
+    hasher.update(public_key.x().to_bytes());
     hasher.update(merkle_root);
 
     hash_to_scalar(&mut hasher)
