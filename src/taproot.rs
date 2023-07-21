@@ -150,13 +150,12 @@ pub mod test_helpers {
         }
     }
 
-    /// Run a signing round for the passed `msg`
     #[allow(non_snake_case)]
-    pub fn sign<RNG: RngCore + CryptoRng, Signer: traits::Signer>(
+    fn sign_params<RNG: RngCore + CryptoRng, Signer: traits::Signer>(
         msg: &[u8],
         signers: &mut [Signer],
         rng: &mut RNG,
-    ) -> (Vec<PublicNonce>, Vec<SignatureShare>) {
+    ) -> (Vec<u32>, Vec<u32>, Vec<PublicNonce>) {
         let signer_ids: Vec<u32> = signers.iter().map(|s| s.get_id()).collect();
         let key_ids: Vec<u32> = signers.iter().flat_map(|s| s.get_key_ids()).collect();
         let mut nonces: Vec<PublicNonce> =
@@ -170,6 +169,17 @@ pub mod test_helpers {
             nonces = signers.iter_mut().flat_map(|s| s.gen_nonces(rng)).collect();
         }
 
+        (signer_ids, key_ids, nonces)
+    }
+
+    /// Run a signing round for the passed `msg`
+    #[allow(non_snake_case)]
+    pub fn sign<RNG: RngCore + CryptoRng, Signer: traits::Signer>(
+        msg: &[u8],
+        signers: &mut [Signer],
+        rng: &mut RNG,
+    ) -> (Vec<PublicNonce>, Vec<SignatureShare>) {
+        let (signer_ids, key_ids, nonces) = sign_params(msg, signers, rng);
         let shares = signers
             .iter()
             .flat_map(|s| s.sign(msg, &signer_ids, &key_ids, &nonces))
@@ -186,19 +196,7 @@ pub mod test_helpers {
         rng: &mut RNG,
         tweaked_public_key: &Point,
     ) -> (Vec<PublicNonce>, Vec<SignatureShare>) {
-        let signer_ids: Vec<u32> = signers.iter().map(|s| s.get_id()).collect();
-        let key_ids: Vec<u32> = signers.iter().flat_map(|s| s.get_key_ids()).collect();
-        let mut nonces: Vec<PublicNonce> =
-            signers.iter_mut().flat_map(|s| s.gen_nonces(rng)).collect();
-
-        loop {
-            let (_, R) = Signer::compute_intermediate(msg, &signer_ids, &key_ids, &nonces);
-            if R.has_even_y() {
-                break;
-            }
-            nonces = signers.iter_mut().flat_map(|s| s.gen_nonces(rng)).collect();
-        }
-
+        let (signer_ids, key_ids, nonces) = sign_params(msg, signers, rng);
         let shares = signers
             .iter()
             .flat_map(|s| s.sign_tweaked(msg, &signer_ids, &key_ids, &nonces, tweaked_public_key))
