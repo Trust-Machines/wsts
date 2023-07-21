@@ -109,14 +109,13 @@ pub mod test_helpers {
         loop {
             let group_key = A.iter().fold(Point::new(), |s, a| s + a.A[0]);
             if group_key.has_even_y() {
-                if merkle_root.is_none() {
-                    break;
-                } else {
-                    let root = merkle_root.unwrap();
+                if let Some(root) = merkle_root {
                     let tweaked = compute::tweaked_public_key(&group_key, &root);
                     if tweaked.has_even_y() {
                         break;
                     }
+                } else {
+                    break;
                 }
             }
 
