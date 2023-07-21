@@ -8,13 +8,13 @@ use polynomial::Polynomial;
 use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
-use crate::common::{
-    CheckPrivateShares, Nonce, PolyCommitment, PublicNonce, Signature, SignatureShare,
+use crate::{
+    common::{CheckPrivateShares, Nonce, PolyCommitment, PublicNonce, Signature, SignatureShare},
+    compute,
+    errors::{AggregatorError, DkgError},
+    schnorr::ID,
+    vss::VSS,
 };
-use crate::compute;
-use crate::errors::{AggregatorError, DkgError};
-use crate::schnorr::ID;
-use crate::vss::VSS;
 
 #[derive(Debug, Deserialize, Serialize)]
 /// The saved state required to construct a party
@@ -208,6 +208,27 @@ impl Party {
             key_ids: vec![self.id],
         }
     }
+
+    /// Sign `msg` with this party's share of the group private key, using the set of `sigers` and corresponding `nonces` with a precomputed `aggregate_nonce` and a tweaked public key
+    pub fn sign_precomputed_tweaked(
+        &self,
+        msg: &[u8],
+        signers: &[u32],
+        nonces: &[PublicNonce],
+        aggregate_nonce: &Point,
+        tweaked_public_key: &Point,
+    ) -> SignatureShare {
+        let mut z = &self.nonce.d + &self.nonce.e * compute::binding(&self.id(), nonces, msg);
+        z += compute::challenge(tweaked_public_key, aggregate_nonce, msg)
+            * &self.private_key
+            * compute::lambda(self.id, signers);
+
+        SignatureShare {
+            id: self.id,
+            z_i: z,
+            key_ids: vec![self.id],
+        }
+    }
 }
 
 #[allow(non_snake_case)]
@@ -260,6 +281,30 @@ impl SignatureAggregator {
         nonces: &[PublicNonce],
         sig_shares: &[SignatureShare],
     ) -> Result<Signature, AggregatorError> {
+        self.sign_with_tweak(msg, nonces, sig_shares, &Scalar::zero())
+    }
+
+    /// Check and aggregate the party signatures using a merke root to make a tweak
+    pub fn sign_merkle_root(
+        &mut self,
+        msg: &[u8],
+        nonces: &[PublicNonce],
+        sig_shares: &[SignatureShare],
+        merkle_root: &[u8],
+    ) -> Result<Signature, AggregatorError> {
+        let tweak = compute::tweak(&self.poly[0], merkle_root);
+        self.sign_with_tweak(msg, nonces, sig_shares, &tweak)
+    }
+
+    #[allow(non_snake_case)]
+    /// Check and aggregate the party signatures using a tweak
+    pub fn sign_with_tweak(
+        &mut self,
+        msg: &[u8],
+        nonces: &[PublicNonce],
+        sig_shares: &[SignatureShare],
+        tweak: &Scalar,
+    ) -> Result<Signature, AggregatorError> {
         if nonces.len() != sig_shares.len() {
             return Err(AggregatorError::BadNonceLen(nonces.len(), sig_shares.len()));
         }
@@ -267,9 +312,11 @@ impl SignatureAggregator {
         let signers: Vec<u32> = sig_shares.iter().map(|ss| ss.id).collect();
         let (R_vec, R) = compute::intermediate(msg, &signers, nonces);
         let mut z = Scalar::zero();
-        let c = compute::challenge(&self.poly[0], &R, msg);
         let mut bad_party_keys = Vec::new();
         let mut bad_party_sigs = Vec::new();
+        let aggregate_public_key = self.poly[0];
+        let tweaked_public_key = aggregate_public_key + tweak * G;
+        let c = compute::challenge(&tweaked_public_key, &R, msg);
 
         for i in 0..sig_shares.len() {
             let id = compute::id(sig_shares[i].id);
@@ -290,9 +337,12 @@ impl SignatureAggregator {
 
             z += z_i;
         }
+
+        z += c * tweak;
+
         if bad_party_sigs.is_empty() {
             let sig = Signature { R, z };
-            if sig.verify(&self.poly[0], msg) {
+            if sig.verify(&tweaked_public_key, msg) {
                 Ok(sig)
             } else {
                 Err(AggregatorError::BadGroupSig)
@@ -463,6 +513,29 @@ impl crate::traits::Signer for Signer {
         self.parties
             .iter()
             .map(|p| p.sign_precomputed(msg, key_ids, nonces, &aggregate_nonce))
+            .collect()
+    }
+
+    fn sign_tweaked(
+        &self,
+        msg: &[u8],
+        _signer_ids: &[u32],
+        key_ids: &[u32],
+        nonces: &[PublicNonce],
+        tweaked_public_key: &Point,
+    ) -> Vec<SignatureShare> {
+        let aggregate_nonce = compute::aggregate_nonce(msg, key_ids, nonces).unwrap();
+        self.parties
+            .iter()
+            .map(|p| {
+                p.sign_precomputed_tweaked(
+                    msg,
+                    key_ids,
+                    nonces,
+                    &aggregate_nonce,
+                    tweaked_public_key,
+                )
+            })
             .collect()
     }
 }

@@ -1,6 +1,8 @@
 use core::iter::zip;
 use num_traits::{One, Zero};
-use p256k1::{point::Compressed, point::Error as PointError, point::Point, scalar::Scalar};
+use p256k1::{
+    point::Compressed, point::Error as PointError, point::Point, point::G, scalar::Scalar,
+};
 use sha2::{Digest, Sha256};
 
 use crate::common::PublicNonce;
@@ -43,17 +45,9 @@ pub fn binding_compressed(id: &Scalar, B: &[(Compressed, Compressed)], msg: &[u8
 #[allow(non_snake_case)]
 /// Compute the schnorr challenge from the public key, aggregated commitments, and the signed message
 pub fn challenge(publicKey: &Point, R: &Point, msg: &[u8]) -> Scalar {
-    // we should be hashing a hash of the msg, not the msg itself
-    let prefix = "BIP0340/challenge";
-    let mut hasher = Sha256::new();
-    let mut prefix_hasher = Sha256::new();
+    let tag = "BIP0340/challenge";
+    let mut hasher = tagged_hash(tag);
 
-    prefix_hasher.update(prefix.as_bytes());
-    let prefix_hash = prefix_hasher.finalize();
-
-    // for bip340 add prefix, swap the order of Y/R, and only hash the x coords
-    hasher.update(prefix_hash);
-    hasher.update(prefix_hash);
     hasher.update(R.x().to_bytes());
     hasher.update(publicKey.x().to_bytes());
     hasher.update(msg);
@@ -130,4 +124,42 @@ pub fn poly(x: &Scalar, f: &Vec<Point>) -> Result<Point, PointError> {
     }
 
     Point::multimult(s, f.clone())
+}
+
+/// Create a BIP340 compliant tagged hash by double hashing the tag
+pub fn tagged_hash(tag: &str) -> Sha256 {
+    let mut hasher = Sha256::new();
+    let mut tag_hasher = Sha256::new();
+
+    tag_hasher.update(tag.as_bytes());
+    let tag_hash = tag_hasher.finalize();
+
+    hasher.update(tag_hash);
+    hasher.update(tag_hash);
+
+    hasher
+}
+
+/// Create a BIP341 compliant taproot tweak from a public key and merkle root
+pub fn tweak(public_key: &Point, merkle_root: &[u8]) -> Scalar {
+    let mut hasher = tagged_hash("TapTweak");
+
+    hasher.update(public_key.x().to_bytes());
+    hasher.update(merkle_root);
+
+    hash_to_scalar(&mut hasher)
+}
+
+/// Create a BIP341 compliant taproot tweak from a public key and merkle root
+pub fn tweaked_public_key(public_key: &Point, merkle_root: &[u8]) -> Point {
+    public_key + tweak(public_key, merkle_root) * G
+}
+
+/// Create a taproot style merkle root from the serialized script data
+pub fn merkle_root(data: &[u8]) -> [u8; 32] {
+    let mut hasher = tagged_hash("TapLeaf");
+
+    hasher.update(data);
+
+    hasher.finalize().into()
 }

@@ -206,8 +206,8 @@ impl Party {
         compute::id(self.party_id)
     }
 
-    #[allow(non_snake_case)]
     /// Sign `msg` with this party's shares of the group private key, using the set of `party_ids`, `key_ids` and corresponding `nonces`
+    #[allow(non_snake_case)]
     pub fn sign(
         &self,
         msg: &[u8],
@@ -218,6 +218,33 @@ impl Party {
         let (_R_vec, R) = compute::intermediate(msg, party_ids, nonces);
         let c = compute::challenge(&self.group_key, &R, msg);
 
+        self.sign_challenge(msg, key_ids, nonces, &c)
+    }
+
+    /// Sign `msg` with this party's shares of the group private key, using the set of `party_ids`, `key_ids` and corresponding `nonces` with a tweaked public key
+    #[allow(non_snake_case)]
+    pub fn sign_tweaked(
+        &self,
+        msg: &[u8],
+        party_ids: &[u32],
+        key_ids: &[u32],
+        nonces: &[PublicNonce],
+        tweaked_public_key: &Point,
+    ) -> SignatureShare {
+        let (_R_vec, R) = compute::intermediate(msg, party_ids, nonces);
+        let c = compute::challenge(tweaked_public_key, &R, msg);
+
+        self.sign_challenge(msg, key_ids, nonces, &c)
+    }
+
+    #[allow(non_snake_case)]
+    fn sign_challenge(
+        &self,
+        msg: &[u8],
+        key_ids: &[u32],
+        nonces: &[PublicNonce],
+        c: &Scalar,
+    ) -> SignatureShare {
         let mut z = &self.nonce.d + &self.nonce.e * compute::binding(&self.id(), nonces, msg);
         for key_id in self.key_ids.iter() {
             z += c * &self.private_keys[key_id] * compute::lambda(*key_id, key_ids);
@@ -276,14 +303,41 @@ impl SignatureAggregator {
         })
     }
 
-    #[allow(non_snake_case)]
     /// Check and aggregate the party signatures
+    #[allow(non_snake_case)]
     pub fn sign(
         &mut self,
         msg: &[u8],
         nonces: &[PublicNonce],
         sig_shares: &[SignatureShare],
         key_ids: &[u32],
+    ) -> Result<Signature, AggregatorError> {
+        self.sign_with_tweak(msg, nonces, sig_shares, key_ids, &Scalar::zero())
+    }
+
+    /// Check and aggregate the party signatures
+    #[allow(non_snake_case)]
+    pub fn sign_merkle_root(
+        &mut self,
+        msg: &[u8],
+        nonces: &[PublicNonce],
+        sig_shares: &[SignatureShare],
+        key_ids: &[u32],
+        merkle_root: &[u8],
+    ) -> Result<Signature, AggregatorError> {
+        let tweak = compute::tweak(&self.poly[0], merkle_root);
+        self.sign_with_tweak(msg, nonces, sig_shares, key_ids, &tweak)
+    }
+
+    /// Check and aggregate the party signatures
+    #[allow(non_snake_case)]
+    pub fn sign_with_tweak(
+        &mut self,
+        msg: &[u8],
+        nonces: &[PublicNonce],
+        sig_shares: &[SignatureShare],
+        key_ids: &[u32],
+        tweak: &Scalar,
     ) -> Result<Signature, AggregatorError> {
         if nonces.len() != sig_shares.len() {
             return Err(AggregatorError::BadNonceLen(nonces.len(), sig_shares.len()));
@@ -292,9 +346,11 @@ impl SignatureAggregator {
         let party_ids: Vec<u32> = sig_shares.iter().map(|ss| ss.id).collect();
         let (Ris, R) = compute::intermediate(msg, &party_ids, nonces);
         let mut z = Scalar::zero();
-        let c = compute::challenge(&self.poly[0], &R, msg);
         let mut bad_party_keys = Vec::new();
         let mut bad_party_sigs = Vec::new();
+        let aggregate_public_key = self.poly[0];
+        let tweaked_public_key = aggregate_public_key + tweak * G;
+        let c = compute::challenge(&tweaked_public_key, &R, msg);
 
         for i in 0..sig_shares.len() {
             let z_i = sig_shares[i].z_i;
@@ -320,9 +376,11 @@ impl SignatureAggregator {
             z += z_i;
         }
 
+        z += c * tweak;
+
         if bad_party_sigs.is_empty() {
             let sig = Signature { R, z };
-            if sig.verify(&self.poly[0], msg) {
+            if sig.verify(&tweaked_public_key, msg) {
                 Ok(sig)
             } else {
                 Err(AggregatorError::BadGroupSig)
@@ -411,6 +469,17 @@ impl crate::traits::Signer for Party {
         nonces: &[PublicNonce],
     ) -> Vec<SignatureShare> {
         vec![self.sign(msg, signer_ids, key_ids, nonces)]
+    }
+
+    fn sign_tweaked(
+        &self,
+        msg: &[u8],
+        signer_ids: &[u32],
+        key_ids: &[u32],
+        nonces: &[PublicNonce],
+        tweaked_public_key: &Point,
+    ) -> Vec<SignatureShare> {
+        vec![self.sign_tweaked(msg, signer_ids, key_ids, nonces, tweaked_public_key)]
     }
 }
 
