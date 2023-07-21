@@ -206,8 +206,8 @@ impl Party {
         compute::id(self.party_id)
     }
 
-    #[allow(non_snake_case)]
     /// Sign `msg` with this party's shares of the group private key, using the set of `party_ids`, `key_ids` and corresponding `nonces`
+    #[allow(non_snake_case)]
     pub fn sign(
         &self,
         msg: &[u8],
@@ -218,6 +218,33 @@ impl Party {
         let (_R_vec, R) = compute::intermediate(msg, party_ids, nonces);
         let c = compute::challenge(&self.group_key, &R, msg);
 
+        self.sign_challenge(msg, key_ids, nonces, &c)
+    }
+
+    /// Sign `msg` with this party's shares of the group private key, using the set of `party_ids`, `key_ids` and corresponding `nonces` with a tweaked public key
+    #[allow(non_snake_case)]
+    pub fn sign_tweaked(
+        &self,
+        msg: &[u8],
+        party_ids: &[u32],
+        key_ids: &[u32],
+        nonces: &[PublicNonce],
+        tweaked_public_key: &Point,
+    ) -> SignatureShare {
+        let (_R_vec, R) = compute::intermediate(msg, party_ids, nonces);
+        let c = compute::challenge(tweaked_public_key, &R, msg);
+
+        self.sign_challenge(msg, key_ids, nonces, &c)
+    }
+
+    #[allow(non_snake_case)]
+    fn sign_challenge(
+        &self,
+        msg: &[u8],
+        key_ids: &[u32],
+        nonces: &[PublicNonce],
+        c: &Scalar,
+    ) -> SignatureShare {
         let mut z = &self.nonce.d + &self.nonce.e * compute::binding(&self.id(), nonces, msg);
         for key_id in self.key_ids.iter() {
             z += c * &self.private_keys[key_id] * compute::lambda(*key_id, key_ids);
@@ -419,9 +446,9 @@ impl crate::traits::Signer for Party {
         signer_ids: &[u32],
         key_ids: &[u32],
         nonces: &[PublicNonce],
-        _tweaked_public_key: &Point,
+        tweaked_public_key: &Point,
     ) -> Vec<SignatureShare> {
-        vec![self.sign(msg, signer_ids, key_ids, nonces)]
+        vec![self.sign_tweaked(msg, signer_ids, key_ids, nonces, tweaked_public_key)]
     }
 }
 
