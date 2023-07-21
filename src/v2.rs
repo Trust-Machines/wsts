@@ -303,14 +303,41 @@ impl SignatureAggregator {
         })
     }
 
-    #[allow(non_snake_case)]
     /// Check and aggregate the party signatures
+    #[allow(non_snake_case)]
     pub fn sign(
         &mut self,
         msg: &[u8],
         nonces: &[PublicNonce],
         sig_shares: &[SignatureShare],
         key_ids: &[u32],
+    ) -> Result<Signature, AggregatorError> {
+        self.sign_with_tweak(msg, nonces, sig_shares, key_ids, &Scalar::zero())
+    }
+
+    /// Check and aggregate the party signatures
+    #[allow(non_snake_case)]
+    pub fn sign_merkle_root(
+        &mut self,
+        msg: &[u8],
+        nonces: &[PublicNonce],
+        sig_shares: &[SignatureShare],
+        key_ids: &[u32],
+        merkle_root: &[u8],
+    ) -> Result<Signature, AggregatorError> {
+        let tweak = compute::tweak(&self.poly[0], merkle_root);
+        self.sign_with_tweak(msg, nonces, sig_shares, key_ids, &tweak)
+    }
+
+    /// Check and aggregate the party signatures
+    #[allow(non_snake_case)]
+    pub fn sign_with_tweak(
+        &mut self,
+        msg: &[u8],
+        nonces: &[PublicNonce],
+        sig_shares: &[SignatureShare],
+        key_ids: &[u32],
+        tweak: &Scalar,
     ) -> Result<Signature, AggregatorError> {
         if nonces.len() != sig_shares.len() {
             return Err(AggregatorError::BadNonceLen(nonces.len(), sig_shares.len()));
@@ -319,9 +346,11 @@ impl SignatureAggregator {
         let party_ids: Vec<u32> = sig_shares.iter().map(|ss| ss.id).collect();
         let (Ris, R) = compute::intermediate(msg, &party_ids, nonces);
         let mut z = Scalar::zero();
-        let c = compute::challenge(&self.poly[0], &R, msg);
         let mut bad_party_keys = Vec::new();
         let mut bad_party_sigs = Vec::new();
+        let aggregate_public_key = self.poly[0];
+        let tweaked_public_key = aggregate_public_key + tweak * G;
+        let c = compute::challenge(&tweaked_public_key, &R, msg);
 
         for i in 0..sig_shares.len() {
             let z_i = sig_shares[i].z_i;
@@ -347,9 +376,11 @@ impl SignatureAggregator {
             z += z_i;
         }
 
+        z += c * tweak;
+
         if bad_party_sigs.is_empty() {
             let sig = Signature { R, z };
-            if sig.verify(&self.poly[0], msg) {
+            if sig.verify(&tweaked_public_key, msg) {
                 Ok(sig)
             } else {
                 Err(AggregatorError::BadGroupSig)
