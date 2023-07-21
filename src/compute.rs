@@ -140,7 +140,7 @@ pub fn tagged_hash(tag: &str) -> Sha256 {
     hasher
 }
 
-/// Create a BIP340 compliant taproot tweak from a public key and merkle root
+/// Create a BIP341 compliant taproot tweak from a public key and merkle root
 pub fn tweak(public_key: &Point, merkle_root: &[u8]) -> Scalar {
     let mut hasher = tagged_hash("TapTweak");
 
@@ -150,12 +150,12 @@ pub fn tweak(public_key: &Point, merkle_root: &[u8]) -> Scalar {
     hash_to_scalar(&mut hasher)
 }
 
-/// Create a BIP340 compliant taproot tweak from a public key and merkle root
+/// Create a BIP341 compliant taproot tweak from a public key and merkle root
 pub fn tweaked_public_key(public_key: &Point, merkle_root: &[u8]) -> Point {
     public_key + tweak(public_key, merkle_root) * G
 }
 
-/// Create a taproot style merkle root from the passed data
+/// Create a taproot style merkle root from the serialized script data
 pub fn merkle_root(data: &[u8]) -> [u8; 32] {
     let mut hasher = tagged_hash("TapLeaf");
 
