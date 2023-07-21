@@ -219,7 +219,7 @@ impl Party {
         tweaked_public_key: &Point,
     ) -> SignatureShare {
         let mut z = &self.nonce.d + &self.nonce.e * compute::binding(&self.id(), nonces, msg);
-        z += compute::challenge(&tweaked_public_key, aggregate_nonce, msg)
+        z += compute::challenge(tweaked_public_key, aggregate_nonce, msg)
             * &self.private_key
             * compute::lambda(self.id, signers);
 
