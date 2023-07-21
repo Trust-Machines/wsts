@@ -1,8 +1,6 @@
 #![deny(missing_docs)]
 #![doc = include_str!("../README.md")]
 
-/// Functions for doing BIP-340 schnorr proofs
-pub mod bip340;
 /// Types which are common to both v1 and v2
 pub mod common;
 /// Functions to perform various computations needed for v1 and v2
@@ -11,6 +9,8 @@ pub mod compute;
 pub mod errors;
 /// Schnorr utility types
 pub mod schnorr;
+/// Functions for doing BIP-340 schnorr proofs and other taproot actions
+pub mod taproot;
 /// Traits which are used for v1 and v2
 pub mod traits;
 /// Utilities for hashing scalars

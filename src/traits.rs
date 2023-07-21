@@ -50,4 +50,14 @@ pub trait Signer {
         key_ids: &[u32],
         nonces: &[PublicNonce],
     ) -> Vec<SignatureShare>;
+
+    /// Sign `msg` using all this signer's keys and a tweaked public key
+    fn sign_tweaked(
+        &self,
+        msg: &[u8],
+        signer_ids: &[u32],
+        key_ids: &[u32],
+        nonces: &[PublicNonce],
+        tweaked_public_key: &Point,
+    ) -> Vec<SignatureShare>;
 }

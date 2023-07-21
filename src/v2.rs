@@ -412,6 +412,17 @@ impl crate::traits::Signer for Party {
     ) -> Vec<SignatureShare> {
         vec![self.sign(msg, signer_ids, key_ids, nonces)]
     }
+
+    fn sign_tweaked(
+        &self,
+        msg: &[u8],
+        signer_ids: &[u32],
+        key_ids: &[u32],
+        nonces: &[PublicNonce],
+        _tweaked_public_key: &Point,
+    ) -> Vec<SignatureShare> {
+        vec![self.sign(msg, signer_ids, key_ids, nonces)]
+    }
 }
 
 /// Helper functions for tests

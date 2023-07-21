@@ -1,6 +1,8 @@
 use core::iter::zip;
 use num_traits::{One, Zero};
-use p256k1::{point::Compressed, point::Error as PointError, point::Point, scalar::Scalar};
+use p256k1::{
+    point::Compressed, point::Error as PointError, point::Point, point::G, scalar::Scalar,
+};
 use sha2::{Digest, Sha256};
 
 use crate::common::PublicNonce;
@@ -146,4 +148,23 @@ pub fn tweak(public_key: &Point, merkle_root: &[u8]) -> Scalar {
     hasher.update(merkle_root);
 
     hash_to_scalar(&mut hasher)
+}
+
+/// Create a BIP340 compliant taproot tweak from a public key and merkle root
+pub fn tweaked_public_key(public_key: &Point, merkle_root: &[u8]) -> Point {
+    let mut hasher = tagged_hash("TapTweak");
+
+    hasher.update(public_key.x().to_bytes());
+    hasher.update(merkle_root);
+
+    public_key + hash_to_scalar(&mut hasher) * G
+}
+
+/// Create a taproot style merkle root from the passed data
+pub fn merkle_root(data: &[u8]) -> [u8; 32] {
+    let mut hasher = tagged_hash("TapLeaf");
+
+    hasher.update(data);
+
+    hasher.finalize().into()
 }
