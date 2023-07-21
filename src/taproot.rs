@@ -375,4 +375,64 @@ mod test {
         assert_eq!(proof, proof_deser);
         assert!(proof_deser.verify(&tweaked_public_key.x(), msg));
     }
+
+    #[test]
+    #[allow(non_snake_case)]
+    fn test_taproot_sign_verify_v2() {
+        let mut rng = OsRng::default();
+
+        // First create and verify a frost signature
+        let msg = "It was many and many a year ago".as_bytes();
+        let script = "OP_1".as_bytes();
+        let merkle_root = compute::merkle_root(script);
+        let Nk: u32 = 10;
+        let Np: u32 = 4;
+        let T: u32 = 7;
+        let signer_ids: Vec<Vec<u32>> = [
+            [0, 1, 2].to_vec(),
+            [3, 4].to_vec(),
+            [5, 6, 7].to_vec(),
+            [8, 9].to_vec(),
+        ]
+        .to_vec();
+        let mut signers: Vec<v2::Signer> = signer_ids
+            .iter()
+            .enumerate()
+            .map(|(id, ids)| v2::Signer::new(id.try_into().unwrap(), ids, Np, Nk, T, &mut rng))
+            .collect();
+
+        let A = match test_helpers::dkg(&mut signers, &mut rng, Some(merkle_root)) {
+            Ok(A) => A,
+            Err(secret_errors) => {
+                panic!("Got secret errors from DKG: {:?}", secret_errors);
+            }
+        };
+
+        let mut S = [signers[0].clone(), signers[1].clone(), signers[3].clone()].to_vec();
+        let key_ids = S.iter().flat_map(|s| s.get_key_ids()).collect::<Vec<u32>>();
+        let mut sig_agg =
+            v2::SignatureAggregator::new(Nk, T, A.clone()).expect("aggregator ctor failed");
+        let aggregate_public_key = sig_agg.poly[0];
+        let tweaked_public_key = compute::tweaked_public_key(&aggregate_public_key, &merkle_root);
+
+        let (nonces, sig_shares) =
+            test_helpers::sign_tweaked(&msg, &mut S, &mut rng, &tweaked_public_key);
+        let sig = match sig_agg.sign_merkle_root(&msg, &nonces, &sig_shares, &key_ids, &merkle_root)
+        {
+            Err(e) => panic!("Aggregator sign failed: {:?}", e),
+            Ok(sig) => sig,
+        };
+
+        // now create a SchnorrProof from the frost signature
+        let proof = SchnorrProof::new(&sig).unwrap();
+
+        assert!(proof.verify(&tweaked_public_key.x(), msg));
+
+        // now ser/de the proof
+        let proof_bytes = proof.to_bytes();
+        let proof_deser = SchnorrProof::from(proof_bytes);
+
+        assert_eq!(proof, proof_deser);
+        assert!(proof_deser.verify(&tweaked_public_key.x(), msg));
+    }
 }
