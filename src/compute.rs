@@ -152,12 +152,7 @@ pub fn tweak(public_key: &Point, merkle_root: &[u8]) -> Scalar {
 
 /// Create a BIP340 compliant taproot tweak from a public key and merkle root
 pub fn tweaked_public_key(public_key: &Point, merkle_root: &[u8]) -> Point {
-    let mut hasher = tagged_hash("TapTweak");
-
-    hasher.update(public_key.x().to_bytes());
-    hasher.update(merkle_root);
-
-    public_key + hash_to_scalar(&mut hasher) * G
+    public_key + tweak(public_key, merkle_root) * G
 }
 
 /// Create a taproot style merkle root from the passed data
