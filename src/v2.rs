@@ -215,36 +215,21 @@ impl Party {
         key_ids: &[u32],
         nonces: &[PublicNonce],
     ) -> SignatureShare {
-        let (_R_vec, R) = compute::intermediate(msg, party_ids, nonces);
-        let c = compute::challenge(&self.group_key, &R, msg);
-
-        self.sign_challenge(msg, key_ids, nonces, &c)
+        self.sign_with_tweak(msg, party_ids, key_ids, nonces, &Scalar::from(0))
     }
 
     /// Sign `msg` with this party's shares of the group private key, using the set of `party_ids`, `key_ids` and corresponding `nonces` with a tweaked public key
     #[allow(non_snake_case)]
-    pub fn sign_tweaked(
+    pub fn sign_with_tweak(
         &self,
         msg: &[u8],
         party_ids: &[u32],
         key_ids: &[u32],
         nonces: &[PublicNonce],
-        tweaked_public_key: &Point,
+        tweak: &Scalar,
     ) -> SignatureShare {
         let (_R_vec, R) = compute::intermediate(msg, party_ids, nonces);
-        let c = compute::challenge(tweaked_public_key, &R, msg);
-
-        self.sign_challenge(msg, key_ids, nonces, &c)
-    }
-
-    #[allow(non_snake_case)]
-    fn sign_challenge(
-        &self,
-        msg: &[u8],
-        key_ids: &[u32],
-        nonces: &[PublicNonce],
-        c: &Scalar,
-    ) -> SignatureShare {
+        let c = compute::challenge(&(self.group_key + tweak * G), &R, msg);
         let mut z = &self.nonce.d + &self.nonce.e * compute::binding(&self.id(), nonces, msg);
         for key_id in self.key_ids.iter() {
             z += c * &self.private_keys[key_id] * compute::lambda(*key_id, key_ids);
@@ -317,13 +302,13 @@ impl SignatureAggregator {
 
     /// Check and aggregate the party signatures
     #[allow(non_snake_case)]
-    pub fn sign_merkle_root(
+    pub fn sign_taproot(
         &mut self,
         msg: &[u8],
         nonces: &[PublicNonce],
         sig_shares: &[SignatureShare],
         key_ids: &[u32],
-        merkle_root: &[u8],
+        merkle_root: Option<[u8; 32]>,
     ) -> Result<Signature, AggregatorError> {
         let tweak = compute::tweak(&self.poly[0], merkle_root);
         self.sign_with_tweak(msg, nonces, sig_shares, key_ids, &tweak)
@@ -471,15 +456,16 @@ impl crate::traits::Signer for Party {
         vec![self.sign(msg, signer_ids, key_ids, nonces)]
     }
 
-    fn sign_tweaked(
+    fn sign_taproot(
         &self,
         msg: &[u8],
         signer_ids: &[u32],
         key_ids: &[u32],
         nonces: &[PublicNonce],
-        tweaked_public_key: &Point,
+        merkle_root: Option<[u8; 32]>,
     ) -> Vec<SignatureShare> {
-        vec![self.sign_tweaked(msg, signer_ids, key_ids, nonces, tweaked_public_key)]
+        let tweak = compute::tweak(&self.group_key, merkle_root);
+        vec![self.sign_with_tweak(msg, signer_ids, key_ids, nonces, &tweak)]
     }
 }
 

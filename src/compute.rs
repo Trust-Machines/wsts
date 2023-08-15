@@ -141,17 +141,19 @@ pub fn tagged_hash(tag: &str) -> Sha256 {
 }
 
 /// Create a BIP341 compliant taproot tweak from a public key and merkle root
-pub fn tweak(public_key: &Point, merkle_root: &[u8]) -> Scalar {
+pub fn tweak(public_key: &Point, merkle_root: Option<[u8; 32]>) -> Scalar {
     let mut hasher = tagged_hash("TapTweak");
 
     hasher.update(public_key.x().to_bytes());
-    hasher.update(merkle_root);
+    if let Some(root) = merkle_root {
+        hasher.update(root);
+    }
 
     hash_to_scalar(&mut hasher)
 }
 
 /// Create a BIP341 compliant taproot tweak from a public key and merkle root
-pub fn tweaked_public_key(public_key: &Point, merkle_root: &[u8]) -> Point {
+pub fn tweaked_public_key(public_key: &Point, merkle_root: Option<[u8; 32]>) -> Point {
     public_key + tweak(public_key, merkle_root) * G
 }
 
