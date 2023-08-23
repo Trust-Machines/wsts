@@ -13,8 +13,8 @@ categories = ["cryptography"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bs58 = "0.4"
-hashbrown = { version = "0.13", features = ["serde"] }
+bs58 = "0.5"
+hashbrown = { version = "0.14", features = ["serde"] }
 hex = "0.4.3"
 num-traits = "0.2"
 polynomial = { version = "0.2.5", features = ["serde"] }
@@ -26,7 +26,7 @@ sha2 = "0.10"
 thiserror = "1.0"
 
 [dev-dependencies]
-criterion = "0.3"
+criterion = "0.5.1"
 
 [[bench]]
 name = "v1_bench"
