@@ -52,12 +52,12 @@ pub trait Signer {
     ) -> Vec<SignatureShare>;
 
     /// Sign `msg` using all this signer's keys and a tweaked public key
-    fn sign_tweaked(
+    fn sign_taproot(
         &self,
         msg: &[u8],
         signer_ids: &[u32],
         key_ids: &[u32],
         nonces: &[PublicNonce],
-        tweaked_public_key: &Point,
+        merkle_root: Option<[u8; 32]>,
     ) -> Vec<SignatureShare>;
 }

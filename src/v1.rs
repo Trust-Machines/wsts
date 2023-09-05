@@ -197,29 +197,20 @@ impl Party {
         nonces: &[PublicNonce],
         aggregate_nonce: &Point,
     ) -> SignatureShare {
-        let mut z = &self.nonce.d + &self.nonce.e * compute::binding(&self.id(), nonces, msg);
-        z += compute::challenge(&self.group_key, aggregate_nonce, msg)
-            * &self.private_key
-            * compute::lambda(self.id, signers);
-
-        SignatureShare {
-            id: self.id,
-            z_i: z,
-            key_ids: vec![self.id],
-        }
+        self.sign_precomputed_with_tweak(msg, signers, nonces, aggregate_nonce, &Scalar::from(0))
     }
 
-    /// Sign `msg` with this party's share of the group private key, using the set of `sigers` and corresponding `nonces` with a precomputed `aggregate_nonce` and a tweaked public key
-    pub fn sign_precomputed_tweaked(
+    /// Sign `msg` with this party's share of the group private key, using the set of `sigers` and corresponding `nonces` with a precomputed `aggregate_nonce` and a tweak to the public key
+    pub fn sign_precomputed_with_tweak(
         &self,
         msg: &[u8],
         signers: &[u32],
         nonces: &[PublicNonce],
         aggregate_nonce: &Point,
-        tweaked_public_key: &Point,
+        tweak: &Scalar,
     ) -> SignatureShare {
         let mut z = &self.nonce.d + &self.nonce.e * compute::binding(&self.id(), nonces, msg);
-        z += compute::challenge(tweaked_public_key, aggregate_nonce, msg)
+        z += compute::challenge(&(self.group_key + tweak * G), aggregate_nonce, msg)
             * &self.private_key
             * compute::lambda(self.id, signers);
 
@@ -285,12 +276,12 @@ impl SignatureAggregator {
     }
 
     /// Check and aggregate the party signatures using a merke root to make a tweak
-    pub fn sign_merkle_root(
+    pub fn sign_taproot(
         &mut self,
         msg: &[u8],
         nonces: &[PublicNonce],
         sig_shares: &[SignatureShare],
-        merkle_root: &[u8],
+        merkle_root: Option<[u8; 32]>,
     ) -> Result<Signature, AggregatorError> {
         let tweak = compute::tweak(&self.poly[0], merkle_root);
         self.sign_with_tweak(msg, nonces, sig_shares, &tweak)
@@ -516,26 +507,19 @@ impl crate::traits::Signer for Signer {
             .collect()
     }
 
-    fn sign_tweaked(
+    fn sign_taproot(
         &self,
         msg: &[u8],
         _signer_ids: &[u32],
         key_ids: &[u32],
         nonces: &[PublicNonce],
-        tweaked_public_key: &Point,
+        merkle_root: Option<[u8; 32]>,
     ) -> Vec<SignatureShare> {
         let aggregate_nonce = compute::aggregate_nonce(msg, key_ids, nonces).unwrap();
+        let tweak = compute::tweak(&self.parties[0].group_key, merkle_root);
         self.parties
             .iter()
-            .map(|p| {
-                p.sign_precomputed_tweaked(
-                    msg,
-                    key_ids,
-                    nonces,
-                    &aggregate_nonce,
-                    tweaked_public_key,
-                )
-            })
+            .map(|p| p.sign_precomputed_with_tweak(msg, key_ids, nonces, &aggregate_nonce, &tweak))
             .collect()
     }
 }
