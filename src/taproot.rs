@@ -196,12 +196,24 @@ mod test {
     #[test]
     #[allow(non_snake_case)]
     fn test_taproot_sign_verify_v1() {
+        let script = "OP_1".as_bytes();
+        let merkle_root = compute::merkle_root(script);
+
+        taproot_sign_verify_v1(Some(merkle_root));
+    }
+
+    #[test]
+    #[allow(non_snake_case)]
+    fn test_taproot_sign_verify_v1_no_merkle_root() {
+        taproot_sign_verify_v1(None);
+    }
+
+    #[allow(non_snake_case)]
+    fn taproot_sign_verify_v1(merkle_root: Option<[u8; 32]>) {
         let mut rng = OsRng::default();
 
         // First create and verify a frost signature
         let msg = "It was many and many a year ago".as_bytes();
-        let script = "OP_1".as_bytes();
-        let merkle_root = compute::merkle_root(script);
         let N: u32 = 10;
         let T: u32 = 7;
         let signer_ids: Vec<Vec<u32>> = [
@@ -217,7 +229,7 @@ mod test {
             .map(|(id, ids)| v1::Signer::new(id.try_into().unwrap(), ids, N, T, &mut rng))
             .collect();
 
-        let A = match test_helpers::dkg(&mut signers, &mut rng, Some(merkle_root)) {
+        let A = match test_helpers::dkg(&mut signers, &mut rng, merkle_root) {
             Ok(A) => A,
             Err(secret_errors) => {
                 panic!("Got secret errors from DKG: {:?}", secret_errors);
@@ -228,11 +240,9 @@ mod test {
         let mut sig_agg =
             v1::SignatureAggregator::new(N, T, A.clone()).expect("aggregator ctor failed");
         let aggregate_public_key = sig_agg.poly[0];
-        let tweaked_public_key =
-            compute::tweaked_public_key(&aggregate_public_key, Some(merkle_root));
-
-        let (nonces, sig_shares) = test_helpers::sign(&msg, &mut S, &mut rng, Some(merkle_root));
-        let sig = match sig_agg.sign_taproot(&msg, &nonces, &sig_shares, Some(merkle_root)) {
+        let tweaked_public_key = compute::tweaked_public_key(&aggregate_public_key, merkle_root);
+        let (nonces, sig_shares) = test_helpers::sign(&msg, &mut S, &mut rng, merkle_root);
+        let sig = match sig_agg.sign_taproot(&msg, &nonces, &sig_shares, merkle_root) {
             Err(e) => panic!("Aggregator sign failed: {:?}", e),
             Ok(sig) => sig,
         };
@@ -253,12 +263,24 @@ mod test {
     #[test]
     #[allow(non_snake_case)]
     fn test_taproot_sign_verify_v2() {
+        let script = "OP_1".as_bytes();
+        let merkle_root = compute::merkle_root(script);
+
+        taproot_sign_verify_v2(Some(merkle_root));
+    }
+
+    #[test]
+    #[allow(non_snake_case)]
+    fn test_taproot_sign_verify_v2_no_merkle_root() {
+        taproot_sign_verify_v2(None);
+    }
+
+    #[allow(non_snake_case)]
+    fn taproot_sign_verify_v2(merkle_root: Option<[u8; 32]>) {
         let mut rng = OsRng::default();
 
         // First create and verify a frost signature
         let msg = "It was many and many a year ago".as_bytes();
-        let script = "OP_1".as_bytes();
-        let merkle_root = compute::merkle_root(script);
         let Nk: u32 = 10;
         let Np: u32 = 4;
         let T: u32 = 7;
@@ -275,7 +297,7 @@ mod test {
             .map(|(id, ids)| v2::Signer::new(id.try_into().unwrap(), ids, Np, Nk, T, &mut rng))
             .collect();
 
-        let A = match test_helpers::dkg(&mut signers, &mut rng, Some(merkle_root)) {
+        let A = match test_helpers::dkg(&mut signers, &mut rng, merkle_root) {
             Ok(A) => A,
             Err(secret_errors) => {
                 panic!("Got secret errors from DKG: {:?}", secret_errors);
@@ -287,15 +309,13 @@ mod test {
         let mut sig_agg =
             v2::SignatureAggregator::new(Nk, T, A.clone()).expect("aggregator ctor failed");
         let aggregate_public_key = sig_agg.poly[0];
-        let tweaked_public_key =
-            compute::tweaked_public_key(&aggregate_public_key, Some(merkle_root));
+        let tweaked_public_key = compute::tweaked_public_key(&aggregate_public_key, merkle_root);
 
-        let (nonces, sig_shares) = test_helpers::sign(&msg, &mut S, &mut rng, Some(merkle_root));
-        let sig =
-            match sig_agg.sign_taproot(&msg, &nonces, &sig_shares, &key_ids, Some(merkle_root)) {
-                Err(e) => panic!("Aggregator sign failed: {:?}", e),
-                Ok(sig) => sig,
-            };
+        let (nonces, sig_shares) = test_helpers::sign(&msg, &mut S, &mut rng, merkle_root);
+        let sig = match sig_agg.sign_taproot(&msg, &nonces, &sig_shares, &key_ids, merkle_root) {
+            Err(e) => panic!("Aggregator sign failed: {:?}", e),
+            Ok(sig) => sig,
+        };
 
         // now create a SchnorrProof from the frost signature
         let proof = SchnorrProof::new(&sig).unwrap();
