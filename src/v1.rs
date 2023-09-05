@@ -189,7 +189,7 @@ impl Party {
         }
     }
 
-    /// Sign `msg` with this party's share of the group private key, using the set of `sigers` and corresponding `nonces` with a precomputed `aggregate_nonce` and an optional tweak to the public key
+    /// Sign `msg` with this party's share of the group private key, using the set of `sigers` and corresponding `nonces` with a precomputed `aggregate_nonce`
     pub fn sign_precomputed(
         &self,
         msg: &[u8],
@@ -200,7 +200,7 @@ impl Party {
         self.sign_precomputed_with_tweak(msg, signers, nonces, aggregate_nonce, &Scalar::from(0))
     }
 
-    /// Sign `msg` with this party's share of the group private key, using the set of `sigers` and corresponding `nonces` with a precomputed `aggregate_nonce` and an optional tweak to the public key
+    /// Sign `msg` with this party's share of the group private key, using the set of `sigers` and corresponding `nonces` with a precomputed `aggregate_nonce` and a tweak to the public key
     pub fn sign_precomputed_with_tweak(
         &self,
         msg: &[u8],
