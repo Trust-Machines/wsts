@@ -1,19 +1,10 @@
 use p256k1::{
     field,
-    point::{Error as PointError, Point, G},
+    point::{Point, G},
     scalar::Scalar,
 };
 
 use crate::{common::Signature, compute};
-
-/// Errors from BIP-340 operations
-#[derive(Clone, Debug)]
-pub enum Error {
-    /// Point R is odd
-    OddR,
-    /// Error doing point operations
-    Point(PointError),
-}
 
 /// A SchnorrProof in BIP-340 format
 #[allow(non_snake_case)]
@@ -27,15 +18,11 @@ pub struct SchnorrProof {
 
 impl SchnorrProof {
     /// Construct a BIP-340 schnorr proof from a FROST signature
-    pub fn new(sig: &Signature) -> Result<Self, Error> {
-        /*if !sig.R.has_even_y() {
-            Err(Error::OddR)
-        } else {*/
-        Ok(Self {
+    pub fn new(sig: &Signature) -> Self {
+        Self {
             r: sig.R.x(),
             s: sig.z,
-        })
-        //}
+        }
     }
 
     /// Verify a BIP-340 schnorr proof

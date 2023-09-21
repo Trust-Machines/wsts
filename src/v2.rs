@@ -331,7 +331,7 @@ impl SignatureAggregator {
     ) -> Result<SchnorrProof, AggregatorError> {
         let tweak = compute::tweak(&self.poly[0], merkle_root);
         let (key, sig) = self.sign_with_tweak(msg, nonces, sig_shares, key_ids, &tweak)?;
-        let proof = SchnorrProof::new(&sig)?;
+        let proof = SchnorrProof::new(&sig);
 
         if proof.verify(&key.x(), msg) {
             Ok(proof)
