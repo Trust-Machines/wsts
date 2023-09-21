@@ -1,19 +1,10 @@
 use p256k1::{
     field,
-    point::{Error as PointError, Point, G},
+    point::{Point, G},
     scalar::Scalar,
 };
 
 use crate::{common::Signature, compute};
-
-/// Errors from BIP-340 operations
-#[derive(Debug)]
-pub enum Error {
-    /// Point R is odd
-    OddR,
-    /// Error doing point operations
-    Point(PointError),
-}
 
 /// A SchnorrProof in BIP-340 format
 #[allow(non_snake_case)]
@@ -27,14 +18,10 @@ pub struct SchnorrProof {
 
 impl SchnorrProof {
     /// Construct a BIP-340 schnorr proof from a FROST signature
-    pub fn new(sig: &Signature) -> Result<Self, Error> {
-        if !sig.R.has_even_y() {
-            Err(Error::OddR)
-        } else {
-            Ok(Self {
-                r: sig.R.x(),
-                s: sig.z,
-            })
+    pub fn new(sig: &Signature) -> Self {
+        Self {
+            r: sig.R.x(),
+            s: sig.z,
         }
     }
 
@@ -52,7 +39,7 @@ impl SchnorrProof {
         let c = compute::challenge(&Y, &R, msg);
         let Rp = self.s * G - c * Y;
 
-        Rp.x() == self.r
+        Rp.has_even_y() && Rp.x() == self.r
     }
 
     /// Serialize this proof into a 64-byte buffer
@@ -85,9 +72,8 @@ impl From<[u8; 64]> for SchnorrProof {
 pub mod test_helpers {
     use crate::{
         common::{PolyCommitment, PublicNonce, SignatureShare},
-        compute,
         errors::DkgError,
-        traits, Point,
+        traits,
     };
 
     use hashbrown::HashMap;
@@ -98,32 +84,11 @@ pub mod test_helpers {
     pub fn dkg<RNG: RngCore + CryptoRng, Signer: traits::Signer>(
         signers: &mut [Signer],
         rng: &mut RNG,
-        merkle_root: Option<[u8; 32]>,
     ) -> Result<Vec<PolyCommitment>, HashMap<u32, DkgError>> {
-        let mut A: Vec<PolyCommitment> = signers
+        let A: Vec<PolyCommitment> = signers
             .iter()
             .flat_map(|s| s.get_poly_commitments(rng))
             .collect();
-
-        // keep trying until the group key has even y coord
-        loop {
-            let group_key = A.iter().fold(Point::new(), |s, a| s + a.A[0]);
-            if group_key.has_even_y() {
-                let tweaked = compute::tweaked_public_key(&group_key, merkle_root);
-                if tweaked.has_even_y() {
-                    break;
-                }
-            }
-
-            for signer in signers.iter_mut() {
-                signer.reset_polys(rng);
-            }
-
-            A = signers
-                .iter()
-                .flat_map(|s| s.get_poly_commitments(rng))
-                .collect();
-        }
 
         let mut private_shares = HashMap::new();
         for signer in signers.iter() {
@@ -148,22 +113,12 @@ pub mod test_helpers {
 
     #[allow(non_snake_case)]
     fn sign_params<RNG: RngCore + CryptoRng, Signer: traits::Signer>(
-        msg: &[u8],
         signers: &mut [Signer],
         rng: &mut RNG,
     ) -> (Vec<u32>, Vec<u32>, Vec<PublicNonce>) {
         let signer_ids: Vec<u32> = signers.iter().map(|s| s.get_id()).collect();
         let key_ids: Vec<u32> = signers.iter().flat_map(|s| s.get_key_ids()).collect();
-        let mut nonces: Vec<PublicNonce> =
-            signers.iter_mut().flat_map(|s| s.gen_nonces(rng)).collect();
-
-        loop {
-            let (_, R) = Signer::compute_intermediate(msg, &signer_ids, &key_ids, &nonces);
-            if R.has_even_y() {
-                break;
-            }
-            nonces = signers.iter_mut().flat_map(|s| s.gen_nonces(rng)).collect();
-        }
+        let nonces: Vec<PublicNonce> = signers.iter_mut().flat_map(|s| s.gen_nonces(rng)).collect();
 
         (signer_ids, key_ids, nonces)
     }
@@ -176,7 +131,7 @@ pub mod test_helpers {
         rng: &mut RNG,
         merkle_root: Option<[u8; 32]>,
     ) -> (Vec<PublicNonce>, Vec<SignatureShare>) {
-        let (signer_ids, key_ids, nonces) = sign_params(msg, signers, rng);
+        let (signer_ids, key_ids, nonces) = sign_params(signers, rng);
         let shares = signers
             .iter()
             .flat_map(|s| s.sign_taproot(msg, &signer_ids, &key_ids, &nonces, merkle_root))
@@ -229,7 +184,7 @@ mod test {
             .map(|(id, ids)| v1::Signer::new(id.try_into().unwrap(), ids, N, T, &mut rng))
             .collect();
 
-        let A = match test_helpers::dkg(&mut signers, &mut rng, merkle_root) {
+        let A = match test_helpers::dkg(&mut signers, &mut rng) {
             Ok(A) => A,
             Err(secret_errors) => {
                 panic!("Got secret errors from DKG: {:?}", secret_errors);
@@ -239,18 +194,12 @@ mod test {
         let mut S = [signers[0].clone(), signers[1].clone(), signers[3].clone()].to_vec();
         let mut sig_agg =
             v1::SignatureAggregator::new(N, T, A.clone()).expect("aggregator ctor failed");
-        let aggregate_public_key = sig_agg.poly[0];
-        let tweaked_public_key = compute::tweaked_public_key(&aggregate_public_key, merkle_root);
+        let tweaked_public_key = compute::tweaked_public_key(&sig_agg.poly[0], merkle_root);
         let (nonces, sig_shares) = test_helpers::sign(&msg, &mut S, &mut rng, merkle_root);
-        let sig = match sig_agg.sign_taproot(&msg, &nonces, &sig_shares, merkle_root) {
+        let proof = match sig_agg.sign_taproot(&msg, &nonces, &sig_shares, merkle_root) {
             Err(e) => panic!("Aggregator sign failed: {:?}", e),
-            Ok(sig) => sig,
+            Ok(proof) => proof,
         };
-
-        // now create a SchnorrProof from the frost signature
-        let proof = SchnorrProof::new(&sig).unwrap();
-
-        assert!(proof.verify(&tweaked_public_key.x(), msg));
 
         // now ser/de the proof
         let proof_bytes = proof.to_bytes();
@@ -297,7 +246,7 @@ mod test {
             .map(|(id, ids)| v2::Signer::new(id.try_into().unwrap(), ids, Np, Nk, T, &mut rng))
             .collect();
 
-        let A = match test_helpers::dkg(&mut signers, &mut rng, merkle_root) {
+        let A = match test_helpers::dkg(&mut signers, &mut rng) {
             Ok(A) => A,
             Err(secret_errors) => {
                 panic!("Got secret errors from DKG: {:?}", secret_errors);
@@ -308,19 +257,12 @@ mod test {
         let key_ids = S.iter().flat_map(|s| s.get_key_ids()).collect::<Vec<u32>>();
         let mut sig_agg =
             v2::SignatureAggregator::new(Nk, T, A.clone()).expect("aggregator ctor failed");
-        let aggregate_public_key = sig_agg.poly[0];
-        let tweaked_public_key = compute::tweaked_public_key(&aggregate_public_key, merkle_root);
-
+        let tweaked_public_key = compute::tweaked_public_key(&sig_agg.poly[0], merkle_root);
         let (nonces, sig_shares) = test_helpers::sign(&msg, &mut S, &mut rng, merkle_root);
-        let sig = match sig_agg.sign_taproot(&msg, &nonces, &sig_shares, &key_ids, merkle_root) {
+        let proof = match sig_agg.sign_taproot(&msg, &nonces, &sig_shares, &key_ids, merkle_root) {
             Err(e) => panic!("Aggregator sign failed: {:?}", e),
-            Ok(sig) => sig,
+            Ok(proof) => proof,
         };
-
-        // now create a SchnorrProof from the frost signature
-        let proof = SchnorrProof::new(&sig).unwrap();
-
-        assert!(proof.verify(&tweaked_public_key.x(), msg));
 
         // now ser/de the proof
         let proof_bytes = proof.to_bytes();

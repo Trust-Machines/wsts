@@ -1,5 +1,5 @@
 use hashbrown::{HashMap, HashSet};
-use num_traits::Zero;
+use num_traits::{One, Zero};
 use p256k1::{
     point::{Point, G},
     scalar::Scalar,
@@ -12,6 +12,7 @@ use crate::common::{Nonce, PolyCommitment, PublicNonce, Signature, SignatureShar
 use crate::compute;
 use crate::errors::{AggregatorError, DkgError};
 use crate::schnorr::ID;
+use crate::taproot::SchnorrProof;
 use crate::vss::VSS;
 
 /// A map of private keys indexed by key ID
@@ -228,12 +229,24 @@ impl Party {
         nonces: &[PublicNonce],
         tweak: &Scalar,
     ) -> SignatureShare {
+        let tweaked_public_key = self.group_key + tweak * G;
         let (_R_vec, R) = compute::intermediate(msg, party_ids, nonces);
-        let c = compute::challenge(&(self.group_key + tweak * G), &R, msg);
-        let mut z = &self.nonce.d + &self.nonce.e * compute::binding(&self.id(), nonces, msg);
-        for key_id in self.key_ids.iter() {
-            z += c * &self.private_keys[key_id] * compute::lambda(*key_id, key_ids);
+        let c = compute::challenge(&tweaked_public_key, &R, msg);
+        let mut r = &self.nonce.d + &self.nonce.e * compute::binding(&self.id(), nonces, msg);
+        if tweak != &Scalar::zero() && !R.has_even_y() {
+            r = -r;
         }
+
+        let mut cx = Scalar::zero();
+        for key_id in self.key_ids.iter() {
+            cx += c * &self.private_keys[key_id] * compute::lambda(*key_id, key_ids);
+        }
+
+        if tweak != &Scalar::zero() && !tweaked_public_key.has_even_y() {
+            cx = -cx;
+        }
+
+        let z = r + cx;
 
         SignatureShare {
             id: self.party_id,
@@ -297,7 +310,13 @@ impl SignatureAggregator {
         sig_shares: &[SignatureShare],
         key_ids: &[u32],
     ) -> Result<Signature, AggregatorError> {
-        self.sign_with_tweak(msg, nonces, sig_shares, key_ids, &Scalar::zero())
+        let (key, sig) = self.sign_with_tweak(msg, nonces, sig_shares, key_ids, &Scalar::zero())?;
+
+        if sig.verify(&key, msg) {
+            Ok(sig)
+        } else {
+            Err(AggregatorError::BadGroupSig)
+        }
     }
 
     /// Check and aggregate the party signatures
@@ -309,9 +328,16 @@ impl SignatureAggregator {
         sig_shares: &[SignatureShare],
         key_ids: &[u32],
         merkle_root: Option<[u8; 32]>,
-    ) -> Result<Signature, AggregatorError> {
+    ) -> Result<SchnorrProof, AggregatorError> {
         let tweak = compute::tweak(&self.poly[0], merkle_root);
-        self.sign_with_tweak(msg, nonces, sig_shares, key_ids, &tweak)
+        let (key, sig) = self.sign_with_tweak(msg, nonces, sig_shares, key_ids, &tweak)?;
+        let proof = SchnorrProof::new(&sig);
+
+        if proof.verify(&key.x(), msg) {
+            Ok(proof)
+        } else {
+            Err(AggregatorError::BadGroupSig)
+        }
     }
 
     /// Check and aggregate the party signatures
@@ -323,7 +349,7 @@ impl SignatureAggregator {
         sig_shares: &[SignatureShare],
         key_ids: &[u32],
         tweak: &Scalar,
-    ) -> Result<Signature, AggregatorError> {
+    ) -> Result<(Point, Signature), AggregatorError> {
         if nonces.len() != sig_shares.len() {
             return Err(AggregatorError::BadNonceLen(nonces.len(), sig_shares.len()));
         }
@@ -336,6 +362,16 @@ impl SignatureAggregator {
         let aggregate_public_key = self.poly[0];
         let tweaked_public_key = aggregate_public_key + tweak * G;
         let c = compute::challenge(&tweaked_public_key, &R, msg);
+        let mut r_sign = Scalar::one();
+        let mut cx_sign = Scalar::one();
+        if tweak != &Scalar::zero() {
+            if !R.has_even_y() {
+                r_sign = -Scalar::one();
+            }
+            if !tweaked_public_key.has_even_y() {
+                cx_sign = -Scalar::one();
+            }
+        }
 
         for i in 0..sig_shares.len() {
             let z_i = sig_shares[i].z_i;
@@ -354,22 +390,18 @@ impl SignatureAggregator {
                 cx += compute::lambda(*key_id, key_ids) * c * public_key;
             }
 
-            if z_i * G != (Ris[i] + cx) {
+            if z_i * G != (r_sign * Ris[i] + cx_sign * cx) {
                 bad_party_sigs.push(sig_shares[i].id);
             }
 
             z += z_i;
         }
 
-        z += c * tweak;
+        z += cx_sign * c * tweak;
 
         if bad_party_sigs.is_empty() {
             let sig = Signature { R, z };
-            if sig.verify(&tweaked_public_key, msg) {
-                Ok(sig)
-            } else {
-                Err(AggregatorError::BadGroupSig)
-            }
+            Ok((tweaked_public_key, sig))
         } else if !bad_party_keys.is_empty() {
             Err(AggregatorError::BadPartyKeys(bad_party_keys))
         } else {

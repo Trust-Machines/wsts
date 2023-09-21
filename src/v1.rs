@@ -1,5 +1,5 @@
 use hashbrown::HashMap;
-use num_traits::Zero;
+use num_traits::{One, Zero};
 use p256k1::{
     point::{Point, G},
     scalar::Scalar,
@@ -13,6 +13,7 @@ use crate::{
     compute,
     errors::{AggregatorError, DkgError},
     schnorr::ID,
+    taproot::SchnorrProof,
     vss::VSS,
 };
 
@@ -174,7 +175,7 @@ impl Party {
     }
 
     #[allow(non_snake_case)]
-    /// Sign `msg` with this party's share of the group private key, using the set of `sigers` and corresponding `nonces`
+    /// Sign `msg` with this party's share of the group private key, using the set of `signers` and corresponding `nonces`
     pub fn sign(&self, msg: &[u8], signers: &[u32], nonces: &[PublicNonce]) -> SignatureShare {
         let (_R_vec, R) = compute::intermediate(msg, signers, nonces);
         let mut z = &self.nonce.d + &self.nonce.e * compute::binding(&self.id(), nonces, msg);
@@ -189,7 +190,7 @@ impl Party {
         }
     }
 
-    /// Sign `msg` with this party's share of the group private key, using the set of `sigers` and corresponding `nonces` with a precomputed `aggregate_nonce`
+    /// Sign `msg` with this party's share of the group private key, using the set of `signers` and corresponding `nonces` with a precomputed `aggregate_nonce`
     pub fn sign_precomputed(
         &self,
         msg: &[u8],
@@ -200,7 +201,7 @@ impl Party {
         self.sign_precomputed_with_tweak(msg, signers, nonces, aggregate_nonce, &Scalar::from(0))
     }
 
-    /// Sign `msg` with this party's share of the group private key, using the set of `sigers` and corresponding `nonces` with a precomputed `aggregate_nonce` and a tweak to the public key
+    /// Sign `msg` with this party's share of the group private key, using the set of `signers` and corresponding `nonces` with a precomputed `aggregate_nonce` and a tweak to the public key
     pub fn sign_precomputed_with_tweak(
         &self,
         msg: &[u8],
@@ -209,10 +210,21 @@ impl Party {
         aggregate_nonce: &Point,
         tweak: &Scalar,
     ) -> SignatureShare {
-        let mut z = &self.nonce.d + &self.nonce.e * compute::binding(&self.id(), nonces, msg);
-        z += compute::challenge(&(self.group_key + tweak * G), aggregate_nonce, msg)
+        let mut r = &self.nonce.d + &self.nonce.e * compute::binding(&self.id(), nonces, msg);
+        if tweak != &Scalar::zero() && !aggregate_nonce.has_even_y() {
+            r = -r;
+        }
+
+        let tweaked_public_key = self.group_key + tweak * G;
+        let mut cx = compute::challenge(&tweaked_public_key, aggregate_nonce, msg)
             * &self.private_key
             * compute::lambda(self.id, signers);
+
+        if tweak != &Scalar::zero() && !tweaked_public_key.has_even_y() {
+            cx = -cx;
+        }
+
+        let z = r + cx;
 
         SignatureShare {
             id: self.id,
@@ -272,7 +284,13 @@ impl SignatureAggregator {
         nonces: &[PublicNonce],
         sig_shares: &[SignatureShare],
     ) -> Result<Signature, AggregatorError> {
-        self.sign_with_tweak(msg, nonces, sig_shares, &Scalar::zero())
+        let (key, sig) = self.sign_with_tweak(msg, nonces, sig_shares, &Scalar::zero())?;
+
+        if sig.verify(&key, msg) {
+            Ok(sig)
+        } else {
+            Err(AggregatorError::BadGroupSig)
+        }
     }
 
     /// Check and aggregate the party signatures using a merke root to make a tweak
@@ -282,9 +300,16 @@ impl SignatureAggregator {
         nonces: &[PublicNonce],
         sig_shares: &[SignatureShare],
         merkle_root: Option<[u8; 32]>,
-    ) -> Result<Signature, AggregatorError> {
+    ) -> Result<SchnorrProof, AggregatorError> {
         let tweak = compute::tweak(&self.poly[0], merkle_root);
-        self.sign_with_tweak(msg, nonces, sig_shares, &tweak)
+        let (key, sig) = self.sign_with_tweak(msg, nonces, sig_shares, &tweak)?;
+        let proof = SchnorrProof::new(&sig);
+
+        if proof.verify(&key.x(), msg) {
+            Ok(proof)
+        } else {
+            Err(AggregatorError::BadGroupSig)
+        }
     }
 
     #[allow(non_snake_case)]
@@ -295,7 +320,7 @@ impl SignatureAggregator {
         nonces: &[PublicNonce],
         sig_shares: &[SignatureShare],
         tweak: &Scalar,
-    ) -> Result<Signature, AggregatorError> {
+    ) -> Result<(Point, Signature), AggregatorError> {
         if nonces.len() != sig_shares.len() {
             return Err(AggregatorError::BadNonceLen(nonces.len(), sig_shares.len()));
         }
@@ -308,6 +333,16 @@ impl SignatureAggregator {
         let aggregate_public_key = self.poly[0];
         let tweaked_public_key = aggregate_public_key + tweak * G;
         let c = compute::challenge(&tweaked_public_key, &R, msg);
+        let mut r_sign = Scalar::one();
+        let mut cx_sign = Scalar::one();
+        if tweak != &Scalar::zero() {
+            if !R.has_even_y() {
+                r_sign = -Scalar::one();
+            }
+            if !tweaked_public_key.has_even_y() {
+                cx_sign = -Scalar::one();
+            }
+        }
 
         for i in 0..sig_shares.len() {
             let id = compute::id(sig_shares[i].id);
@@ -321,7 +356,9 @@ impl SignatureAggregator {
 
             let z_i = sig_shares[i].z_i;
 
-            if z_i * G != R_vec[i] + (compute::lambda(sig_shares[i].id, &signers) * c * public_key)
+            if z_i * G
+                != r_sign * R_vec[i]
+                    + cx_sign * (compute::lambda(sig_shares[i].id, &signers) * c * public_key)
             {
                 bad_party_sigs.push(sig_shares[i].id);
             }
@@ -329,15 +366,13 @@ impl SignatureAggregator {
             z += z_i;
         }
 
-        z += c * tweak;
+        if tweak != &Scalar::zero() {
+            z += cx_sign * c * tweak;
+        }
 
         if bad_party_sigs.is_empty() {
             let sig = Signature { R, z };
-            if sig.verify(&tweaked_public_key, msg) {
-                Ok(sig)
-            } else {
-                Err(AggregatorError::BadGroupSig)
-            }
+            Ok((tweaked_public_key, sig))
         } else if !bad_party_keys.is_empty() {
             Err(AggregatorError::BadPartyKeys(bad_party_keys))
         } else {
