@@ -175,7 +175,7 @@ impl Party {
     }
 
     #[allow(non_snake_case)]
-    /// Sign `msg` with this party's share of the group private key, using the set of `sigers` and corresponding `nonces`
+    /// Sign `msg` with this party's share of the group private key, using the set of `signers` and corresponding `nonces`
     pub fn sign(&self, msg: &[u8], signers: &[u32], nonces: &[PublicNonce]) -> SignatureShare {
         let (_R_vec, R) = compute::intermediate(msg, signers, nonces);
         let mut z = &self.nonce.d + &self.nonce.e * compute::binding(&self.id(), nonces, msg);
@@ -190,7 +190,7 @@ impl Party {
         }
     }
 
-    /// Sign `msg` with this party's share of the group private key, using the set of `sigers` and corresponding `nonces` with a precomputed `aggregate_nonce`
+    /// Sign `msg` with this party's share of the group private key, using the set of `signers` and corresponding `nonces` with a precomputed `aggregate_nonce`
     pub fn sign_precomputed(
         &self,
         msg: &[u8],
@@ -201,7 +201,7 @@ impl Party {
         self.sign_precomputed_with_tweak(msg, signers, nonces, aggregate_nonce, &Scalar::from(0))
     }
 
-    /// Sign `msg` with this party's share of the group private key, using the set of `sigers` and corresponding `nonces` with a precomputed `aggregate_nonce` and a tweak to the public key
+    /// Sign `msg` with this party's share of the group private key, using the set of `signers` and corresponding `nonces` with a precomputed `aggregate_nonce` and a tweak to the public key
     pub fn sign_precomputed_with_tweak(
         &self,
         msg: &[u8],
@@ -210,15 +210,21 @@ impl Party {
         aggregate_nonce: &Point,
         tweak: &Scalar,
     ) -> SignatureShare {
-        let mut z = &self.nonce.d + &self.nonce.e * compute::binding(&self.id(), nonces, msg);
-
+        let mut r = &self.nonce.d + &self.nonce.e * compute::binding(&self.id(), nonces, msg);
         if tweak != &Scalar::zero() && !aggregate_nonce.has_even_y() {
-            z = -z;
+            r = -r;
         }
 
-        z += compute::challenge(&(self.group_key + tweak * G), aggregate_nonce, msg)
+        let tweaked_public_key = self.group_key + tweak * G;
+        let mut cx = compute::challenge(&tweaked_public_key, aggregate_nonce, msg)
             * &self.private_key
             * compute::lambda(self.id, signers);
+
+        if tweak != &Scalar::zero() && !tweaked_public_key.has_even_y() {
+            cx = -cx;
+        }
+
+        let z = r + cx;
 
         SignatureShare {
             id: self.id,
@@ -328,8 +334,14 @@ impl SignatureAggregator {
         let tweaked_public_key = aggregate_public_key + tweak * G;
         let c = compute::challenge(&tweaked_public_key, &R, msg);
         let mut r_sign = Scalar::one();
-        if tweak != &Scalar::zero() && !R.has_even_y() {
-            r_sign = -Scalar::one();
+        let mut cx_sign = Scalar::one();
+        if tweak != &Scalar::zero() {
+            if !R.has_even_y() {
+                r_sign = -Scalar::one();
+            }
+            if !tweaked_public_key.has_even_y() {
+                cx_sign = -Scalar::one();
+            }
         }
 
         for i in 0..sig_shares.len() {
@@ -346,7 +358,7 @@ impl SignatureAggregator {
 
             if z_i * G
                 != r_sign * R_vec[i]
-                    + (compute::lambda(sig_shares[i].id, &signers) * c * public_key)
+                    + cx_sign * (compute::lambda(sig_shares[i].id, &signers) * c * public_key)
             {
                 bad_party_sigs.push(sig_shares[i].id);
             }
@@ -355,7 +367,7 @@ impl SignatureAggregator {
         }
 
         if tweak != &Scalar::zero() {
-            z += c * tweak;
+            z += cx_sign * c * tweak;
         }
 
         if bad_party_sigs.is_empty() {

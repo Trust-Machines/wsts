@@ -85,9 +85,8 @@ impl From<[u8; 64]> for SchnorrProof {
 pub mod test_helpers {
     use crate::{
         common::{PolyCommitment, PublicNonce, SignatureShare},
-        compute,
         errors::DkgError,
-        traits, Point,
+        traits,
     };
 
     use hashbrown::HashMap;
@@ -98,32 +97,11 @@ pub mod test_helpers {
     pub fn dkg<RNG: RngCore + CryptoRng, Signer: traits::Signer>(
         signers: &mut [Signer],
         rng: &mut RNG,
-        merkle_root: Option<[u8; 32]>,
     ) -> Result<Vec<PolyCommitment>, HashMap<u32, DkgError>> {
-        let mut A: Vec<PolyCommitment> = signers
+        let A: Vec<PolyCommitment> = signers
             .iter()
             .flat_map(|s| s.get_poly_commitments(rng))
             .collect();
-
-        // keep trying until the group key has even y coord
-        loop {
-            let group_key = A.iter().fold(Point::new(), |s, a| s + a.A[0]);
-            if group_key.has_even_y() {
-                let tweaked = compute::tweaked_public_key(&group_key, merkle_root);
-                if tweaked.has_even_y() {
-                    break;
-                }
-            }
-
-            for signer in signers.iter_mut() {
-                signer.reset_polys(rng);
-            }
-
-            A = signers
-                .iter()
-                .flat_map(|s| s.get_poly_commitments(rng))
-                .collect();
-        }
 
         let mut private_shares = HashMap::new();
         for signer in signers.iter() {
@@ -220,7 +198,7 @@ mod test {
             .map(|(id, ids)| v1::Signer::new(id.try_into().unwrap(), ids, N, T, &mut rng))
             .collect();
 
-        let A = match test_helpers::dkg(&mut signers, &mut rng, merkle_root) {
+        let A = match test_helpers::dkg(&mut signers, &mut rng) {
             Ok(A) => A,
             Err(secret_errors) => {
                 panic!("Got secret errors from DKG: {:?}", secret_errors);
@@ -285,7 +263,7 @@ mod test {
             .map(|(id, ids)| v2::Signer::new(id.try_into().unwrap(), ids, Np, Nk, T, &mut rng))
             .collect();
 
-        let A = match test_helpers::dkg(&mut signers, &mut rng, merkle_root) {
+        let A = match test_helpers::dkg(&mut signers, &mut rng) {
             Ok(A) => A,
             Err(secret_errors) => {
                 panic!("Got secret errors from DKG: {:?}", secret_errors);
