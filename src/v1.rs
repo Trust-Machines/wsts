@@ -300,13 +300,13 @@ impl SignatureAggregator {
         nonces: &[PublicNonce],
         sig_shares: &[SignatureShare],
         merkle_root: Option<[u8; 32]>,
-    ) -> Result<(Point, SchnorrProof), AggregatorError> {
+    ) -> Result<SchnorrProof, AggregatorError> {
         let tweak = compute::tweak(&self.poly[0], merkle_root);
         let (key, sig) = self.sign_with_tweak(msg, nonces, sig_shares, &tweak)?;
         let proof = SchnorrProof::new(&sig)?;
 
         if proof.verify(&key.x(), msg) {
-            Ok((key, proof))
+            Ok(proof)
         } else {
             Err(AggregatorError::BadGroupSig)
         }

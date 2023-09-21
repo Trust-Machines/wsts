@@ -208,15 +208,12 @@ mod test {
         let mut S = [signers[0].clone(), signers[1].clone(), signers[3].clone()].to_vec();
         let mut sig_agg =
             v1::SignatureAggregator::new(N, T, A.clone()).expect("aggregator ctor failed");
-
+        let tweaked_public_key = compute::tweaked_public_key(&sig_agg.poly[0], merkle_root);
         let (nonces, sig_shares) = test_helpers::sign(&msg, &mut S, &mut rng, merkle_root);
-        let (tweaked_public_key, proof) =
-            match sig_agg.sign_taproot(&msg, &nonces, &sig_shares, merkle_root) {
-                Err(e) => panic!("Aggregator sign failed: {:?}", e),
-                Ok((key, proof)) => (key, proof),
-            };
-
-        assert!(proof.verify(&tweaked_public_key.x(), msg));
+        let proof = match sig_agg.sign_taproot(&msg, &nonces, &sig_shares, merkle_root) {
+            Err(e) => panic!("Aggregator sign failed: {:?}", e),
+            Ok(proof) => proof,
+        };
 
         // now ser/de the proof
         let proof_bytes = proof.to_bytes();
@@ -274,14 +271,12 @@ mod test {
         let key_ids = S.iter().flat_map(|s| s.get_key_ids()).collect::<Vec<u32>>();
         let mut sig_agg =
             v2::SignatureAggregator::new(Nk, T, A.clone()).expect("aggregator ctor failed");
+        let tweaked_public_key = compute::tweaked_public_key(&sig_agg.poly[0], merkle_root);
         let (nonces, sig_shares) = test_helpers::sign(&msg, &mut S, &mut rng, merkle_root);
-        let (tweaked_public_key, proof) =
-            match sig_agg.sign_taproot(&msg, &nonces, &sig_shares, &key_ids, merkle_root) {
-                Err(e) => panic!("Aggregator sign failed: {:?}", e),
-                Ok((key, proof)) => (key, proof),
-            };
-
-        assert!(proof.verify(&tweaked_public_key.x(), msg));
+        let proof = match sig_agg.sign_taproot(&msg, &nonces, &sig_shares, &key_ids, merkle_root) {
+            Err(e) => panic!("Aggregator sign failed: {:?}", e),
+            Ok(proof) => proof,
+        };
 
         // now ser/de the proof
         let proof_bytes = proof.to_bytes();
