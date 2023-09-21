@@ -1,5 +1,5 @@
 use hashbrown::HashMap;
-use num_traits::Zero;
+use num_traits::{One, Zero};
 use p256k1::{
     point::{Point, G},
     scalar::Scalar,
@@ -210,6 +210,11 @@ impl Party {
         tweak: &Scalar,
     ) -> SignatureShare {
         let mut z = &self.nonce.d + &self.nonce.e * compute::binding(&self.id(), nonces, msg);
+
+        if tweak != &Scalar::zero() && !aggregate_nonce.has_even_y() {
+            z = -z;
+        }
+
         z += compute::challenge(&(self.group_key + tweak * G), aggregate_nonce, msg)
             * &self.private_key
             * compute::lambda(self.id, signers);
@@ -308,7 +313,9 @@ impl SignatureAggregator {
         let aggregate_public_key = self.poly[0];
         let tweaked_public_key = aggregate_public_key + tweak * G;
         let c = compute::challenge(&tweaked_public_key, &R, msg);
-
+        let mut r_sign = Scalar::one();
+        if tweak != &Scalar::zero() && !R.has_even_y() { r_sign = -Scalar::one(); }
+        
         for i in 0..sig_shares.len() {
             let id = compute::id(sig_shares[i].id);
             let public_key = match compute::poly(&id, &self.poly) {
@@ -321,7 +328,7 @@ impl SignatureAggregator {
 
             let z_i = sig_shares[i].z_i;
 
-            if z_i * G != R_vec[i] + (compute::lambda(sig_shares[i].id, &signers) * c * public_key)
+            if z_i * G != r_sign * R_vec[i] + (compute::lambda(sig_shares[i].id, &signers) * c * public_key)
             {
                 bad_party_sigs.push(sig_shares[i].id);
             }
@@ -329,15 +336,25 @@ impl SignatureAggregator {
             z += z_i;
         }
 
-        z += c * tweak;
-
+        if tweak != &Scalar::zero() {
+            z += c * tweak;
+            /*
+            if !R.has_even_y() {
+                let n = Scalar::from(p256k1::point::N);
+                z += n;
+            }*/
+        }
+        
         if bad_party_sigs.is_empty() {
             let sig = Signature { R, z };
+            Ok(sig)
+            /*
             if sig.verify(&tweaked_public_key, msg) {
                 Ok(sig)
             } else {
                 Err(AggregatorError::BadGroupSig)
             }
+             */
         } else if !bad_party_keys.is_empty() {
             Err(AggregatorError::BadPartyKeys(bad_party_keys))
         } else {

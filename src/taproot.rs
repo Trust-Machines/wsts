@@ -28,14 +28,14 @@ pub struct SchnorrProof {
 impl SchnorrProof {
     /// Construct a BIP-340 schnorr proof from a FROST signature
     pub fn new(sig: &Signature) -> Result<Self, Error> {
-        if !sig.R.has_even_y() {
+        /*if !sig.R.has_even_y() {
             Err(Error::OddR)
-        } else {
+        } else {*/
             Ok(Self {
                 r: sig.R.x(),
                 s: sig.z,
             })
-        }
+        //}
     }
 
     /// Verify a BIP-340 schnorr proof
@@ -52,7 +52,7 @@ impl SchnorrProof {
         let c = compute::challenge(&Y, &R, msg);
         let Rp = self.s * G - c * Y;
 
-        Rp.x() == self.r
+        Rp.has_even_y() && Rp.x() == self.r
     }
 
     /// Serialize this proof into a 64-byte buffer
@@ -148,22 +148,14 @@ pub mod test_helpers {
 
     #[allow(non_snake_case)]
     fn sign_params<RNG: RngCore + CryptoRng, Signer: traits::Signer>(
-        msg: &[u8],
+        _msg: &[u8],
         signers: &mut [Signer],
         rng: &mut RNG,
     ) -> (Vec<u32>, Vec<u32>, Vec<PublicNonce>) {
         let signer_ids: Vec<u32> = signers.iter().map(|s| s.get_id()).collect();
         let key_ids: Vec<u32> = signers.iter().flat_map(|s| s.get_key_ids()).collect();
-        let mut nonces: Vec<PublicNonce> =
+        let nonces: Vec<PublicNonce> =
             signers.iter_mut().flat_map(|s| s.gen_nonces(rng)).collect();
-
-        loop {
-            let (_, R) = Signer::compute_intermediate(msg, &signer_ids, &key_ids, &nonces);
-            if R.has_even_y() {
-                break;
-            }
-            nonces = signers.iter_mut().flat_map(|s| s.gen_nonces(rng)).collect();
-        }
 
         (signer_ids, key_ids, nonces)
     }
