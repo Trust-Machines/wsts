@@ -126,7 +126,6 @@ pub mod test_helpers {
 
     #[allow(non_snake_case)]
     fn sign_params<RNG: RngCore + CryptoRng, Signer: traits::Signer>(
-        _msg: &[u8],
         signers: &mut [Signer],
         rng: &mut RNG,
     ) -> (Vec<u32>, Vec<u32>, Vec<PublicNonce>) {
@@ -145,7 +144,7 @@ pub mod test_helpers {
         rng: &mut RNG,
         merkle_root: Option<[u8; 32]>,
     ) -> (Vec<PublicNonce>, Vec<SignatureShare>) {
-        let (signer_ids, key_ids, nonces) = sign_params(msg, signers, rng);
+        let (signer_ids, key_ids, nonces) = sign_params(signers, rng);
         let shares = signers
             .iter()
             .flat_map(|s| s.sign_taproot(msg, &signer_ids, &key_ids, &nonces, merkle_root))
