@@ -1,6 +1,8 @@
 use p256k1::{point::Error as PointError, scalar::Scalar};
 use thiserror::Error;
 
+use crate::taproot::Error as TaprootError;
+
 #[derive(Error, Debug, Clone)]
 /// Errors which can happen during distributed key generation
 pub enum DkgError {
@@ -48,4 +50,13 @@ pub enum AggregatorError {
     #[error("bad group sig")]
     /// The aggregate group signature failed to verify
     BadGroupSig,
+    #[error("taproot {0:?}")]
+    /// Taproot error
+    Taproot(TaprootError),
+}
+
+impl From<TaprootError> for AggregatorError {
+    fn from(e: TaprootError) -> Self {
+        AggregatorError::Taproot(e)
+    }
 }

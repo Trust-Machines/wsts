@@ -13,6 +13,7 @@ use crate::{
     compute,
     errors::{AggregatorError, DkgError},
     schnorr::ID,
+    taproot::SchnorrProof,
     vss::VSS,
 };
 
@@ -277,7 +278,13 @@ impl SignatureAggregator {
         nonces: &[PublicNonce],
         sig_shares: &[SignatureShare],
     ) -> Result<Signature, AggregatorError> {
-        self.sign_with_tweak(msg, nonces, sig_shares, &Scalar::zero())
+        let (key, sig) = self.sign_with_tweak(msg, nonces, sig_shares, &Scalar::zero())?;
+
+        if sig.verify(&key, msg) {
+            Ok(sig)
+        } else {
+            Err(AggregatorError::BadGroupSig)
+        }
     }
 
     /// Check and aggregate the party signatures using a merke root to make a tweak
@@ -287,9 +294,16 @@ impl SignatureAggregator {
         nonces: &[PublicNonce],
         sig_shares: &[SignatureShare],
         merkle_root: Option<[u8; 32]>,
-    ) -> Result<Signature, AggregatorError> {
+    ) -> Result<(Point, SchnorrProof), AggregatorError> {
         let tweak = compute::tweak(&self.poly[0], merkle_root);
-        self.sign_with_tweak(msg, nonces, sig_shares, &tweak)
+        let (key, sig) = self.sign_with_tweak(msg, nonces, sig_shares, &tweak)?;
+        let proof = SchnorrProof::new(&sig)?;
+
+        if proof.verify(&key.x(), msg) {
+            Ok((key, proof))
+        } else {
+            Err(AggregatorError::BadGroupSig)
+        }
     }
 
     #[allow(non_snake_case)]
@@ -300,7 +314,7 @@ impl SignatureAggregator {
         nonces: &[PublicNonce],
         sig_shares: &[SignatureShare],
         tweak: &Scalar,
-    ) -> Result<Signature, AggregatorError> {
+    ) -> Result<(Point, Signature), AggregatorError> {
         if nonces.len() != sig_shares.len() {
             return Err(AggregatorError::BadNonceLen(nonces.len(), sig_shares.len()));
         }
@@ -314,8 +328,10 @@ impl SignatureAggregator {
         let tweaked_public_key = aggregate_public_key + tweak * G;
         let c = compute::challenge(&tweaked_public_key, &R, msg);
         let mut r_sign = Scalar::one();
-        if tweak != &Scalar::zero() && !R.has_even_y() { r_sign = -Scalar::one(); }
-        
+        if tweak != &Scalar::zero() && !R.has_even_y() {
+            r_sign = -Scalar::one();
+        }
+
         for i in 0..sig_shares.len() {
             let id = compute::id(sig_shares[i].id);
             let public_key = match compute::poly(&id, &self.poly) {
@@ -328,7 +344,9 @@ impl SignatureAggregator {
 
             let z_i = sig_shares[i].z_i;
 
-            if z_i * G != r_sign * R_vec[i] + (compute::lambda(sig_shares[i].id, &signers) * c * public_key)
+            if z_i * G
+                != r_sign * R_vec[i]
+                    + (compute::lambda(sig_shares[i].id, &signers) * c * public_key)
             {
                 bad_party_sigs.push(sig_shares[i].id);
             }
@@ -338,23 +356,11 @@ impl SignatureAggregator {
 
         if tweak != &Scalar::zero() {
             z += c * tweak;
-            /*
-            if !R.has_even_y() {
-                let n = Scalar::from(p256k1::point::N);
-                z += n;
-            }*/
         }
-        
+
         if bad_party_sigs.is_empty() {
             let sig = Signature { R, z };
-            Ok(sig)
-            /*
-            if sig.verify(&tweaked_public_key, msg) {
-                Ok(sig)
-            } else {
-                Err(AggregatorError::BadGroupSig)
-            }
-             */
+            Ok((tweaked_public_key, sig))
         } else if !bad_party_keys.is_empty() {
             Err(AggregatorError::BadPartyKeys(bad_party_keys))
         } else {

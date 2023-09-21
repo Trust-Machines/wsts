@@ -7,7 +7,7 @@ use p256k1::{
 use crate::{common::Signature, compute};
 
 /// Errors from BIP-340 operations
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Error {
     /// Point R is odd
     OddR,
@@ -31,10 +31,10 @@ impl SchnorrProof {
         /*if !sig.R.has_even_y() {
             Err(Error::OddR)
         } else {*/
-            Ok(Self {
-                r: sig.R.x(),
-                s: sig.z,
-            })
+        Ok(Self {
+            r: sig.R.x(),
+            s: sig.z,
+        })
         //}
     }
 
@@ -154,8 +154,7 @@ pub mod test_helpers {
     ) -> (Vec<u32>, Vec<u32>, Vec<PublicNonce>) {
         let signer_ids: Vec<u32> = signers.iter().map(|s| s.get_id()).collect();
         let key_ids: Vec<u32> = signers.iter().flat_map(|s| s.get_key_ids()).collect();
-        let nonces: Vec<PublicNonce> =
-            signers.iter_mut().flat_map(|s| s.gen_nonces(rng)).collect();
+        let nonces: Vec<PublicNonce> = signers.iter_mut().flat_map(|s| s.gen_nonces(rng)).collect();
 
         (signer_ids, key_ids, nonces)
     }
@@ -231,16 +230,13 @@ mod test {
         let mut S = [signers[0].clone(), signers[1].clone(), signers[3].clone()].to_vec();
         let mut sig_agg =
             v1::SignatureAggregator::new(N, T, A.clone()).expect("aggregator ctor failed");
-        let aggregate_public_key = sig_agg.poly[0];
-        let tweaked_public_key = compute::tweaked_public_key(&aggregate_public_key, merkle_root);
-        let (nonces, sig_shares) = test_helpers::sign(&msg, &mut S, &mut rng, merkle_root);
-        let sig = match sig_agg.sign_taproot(&msg, &nonces, &sig_shares, merkle_root) {
-            Err(e) => panic!("Aggregator sign failed: {:?}", e),
-            Ok(sig) => sig,
-        };
 
-        // now create a SchnorrProof from the frost signature
-        let proof = SchnorrProof::new(&sig).unwrap();
+        let (nonces, sig_shares) = test_helpers::sign(&msg, &mut S, &mut rng, merkle_root);
+        let (tweaked_public_key, proof) =
+            match sig_agg.sign_taproot(&msg, &nonces, &sig_shares, merkle_root) {
+                Err(e) => panic!("Aggregator sign failed: {:?}", e),
+                Ok((key, proof)) => (key, proof),
+            };
 
         assert!(proof.verify(&tweaked_public_key.x(), msg));
 
@@ -300,17 +296,12 @@ mod test {
         let key_ids = S.iter().flat_map(|s| s.get_key_ids()).collect::<Vec<u32>>();
         let mut sig_agg =
             v2::SignatureAggregator::new(Nk, T, A.clone()).expect("aggregator ctor failed");
-        let aggregate_public_key = sig_agg.poly[0];
-        let tweaked_public_key = compute::tweaked_public_key(&aggregate_public_key, merkle_root);
-
         let (nonces, sig_shares) = test_helpers::sign(&msg, &mut S, &mut rng, merkle_root);
-        let sig = match sig_agg.sign_taproot(&msg, &nonces, &sig_shares, &key_ids, merkle_root) {
-            Err(e) => panic!("Aggregator sign failed: {:?}", e),
-            Ok(sig) => sig,
-        };
-
-        // now create a SchnorrProof from the frost signature
-        let proof = SchnorrProof::new(&sig).unwrap();
+        let (tweaked_public_key, proof) =
+            match sig_agg.sign_taproot(&msg, &nonces, &sig_shares, &key_ids, merkle_root) {
+                Err(e) => panic!("Aggregator sign failed: {:?}", e),
+                Ok((key, proof)) => (key, proof),
+            };
 
         assert!(proof.verify(&tweaked_public_key.x(), msg));
 
