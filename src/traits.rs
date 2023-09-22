@@ -3,11 +3,12 @@ use p256k1::{point::Point, scalar::Scalar};
 use rand_core::{CryptoRng, RngCore};
 
 use crate::{
-    common::{PolyCommitment, PublicNonce, SignatureShare},
-    errors::DkgError,
+    common::{PolyCommitment, PublicNonce, SignatureShare, Signature},
+    errors::{AggregatorError, DkgError},
+    taproot::SchnorrProof,
 };
 
-/// A trait which provides a common interface for `v1` and `v2`
+/// A trait which provides a common `Signer` interface for `v1` and `v2`
 pub trait Signer {
     /// Get the signer ID for this signer
     fn get_id(&self) -> u32;
@@ -60,4 +61,26 @@ pub trait Signer {
         nonces: &[PublicNonce],
         merkle_root: Option<[u8; 32]>,
     ) -> Vec<SignatureShare>;
+}
+
+/// A trait which provides a common `Aggregator` interface for `v1` and `v2`
+pub trait Aggregator {
+    /// Check and aggregate the signature shares into a `Signature`
+    fn sign(
+        &mut self,
+        msg: &[u8],
+        nonces: &[PublicNonce],
+        sig_shares: &[SignatureShare],
+        key_ids: &[u32],
+    ) -> Result<Signature, AggregatorError>;
+
+    /// Check and aggregate the signature shares into a `SchnorrProof`
+    fn sign_taproot(
+        &mut self,
+        msg: &[u8],
+        nonces: &[PublicNonce],
+        sig_shares: &[SignatureShare],
+        key_ids: &[u32],
+        merkle_root: Option<[u8; 32]>,
+    ) -> Result<SchnorrProof, AggregatorError>;
 }

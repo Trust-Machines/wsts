@@ -8,12 +8,15 @@ use polynomial::Polynomial;
 use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
-use crate::common::{Nonce, PolyCommitment, PublicNonce, Signature, SignatureShare};
-use crate::compute;
-use crate::errors::{AggregatorError, DkgError};
-use crate::schnorr::ID;
-use crate::taproot::SchnorrProof;
-use crate::vss::VSS;
+use crate::{
+    common::{Nonce, PolyCommitment, PublicNonce, Signature, SignatureShare},
+    compute,
+    errors::{AggregatorError, DkgError},
+    schnorr::ID,
+    taproot::SchnorrProof,
+    traits,
+    vss::VSS,
+};
 
 /// A map of private keys indexed by key ID
 pub type PrivKeyMap = HashMap<u32, Scalar>;
@@ -258,7 +261,7 @@ impl Party {
 
 #[allow(non_snake_case)]
 /// The group signature aggregator
-pub struct SignatureAggregator {
+pub struct Aggregator {
     /// The total number of keys
     pub num_keys: u32,
     /// The threshold of signing keys needed to construct a valid signature
@@ -267,9 +270,9 @@ pub struct SignatureAggregator {
     pub poly: Vec<Point>,
 }
 
-impl SignatureAggregator {
+impl Aggregator {
     #[allow(non_snake_case)]
-    /// Construct a SignatureAggregator with the passed parameters and polynomial commitments
+    /// Construct a Aggregator with the passed parameters and polynomial commitments
     pub fn new(
         num_keys: u32,
         threshold: u32,
@@ -299,45 +302,6 @@ impl SignatureAggregator {
             threshold,
             poly,
         })
-    }
-
-    /// Check and aggregate the party signatures
-    #[allow(non_snake_case)]
-    pub fn sign(
-        &mut self,
-        msg: &[u8],
-        nonces: &[PublicNonce],
-        sig_shares: &[SignatureShare],
-        key_ids: &[u32],
-    ) -> Result<Signature, AggregatorError> {
-        let (key, sig) = self.sign_with_tweak(msg, nonces, sig_shares, key_ids, &Scalar::zero())?;
-
-        if sig.verify(&key, msg) {
-            Ok(sig)
-        } else {
-            Err(AggregatorError::BadGroupSig)
-        }
-    }
-
-    /// Check and aggregate the party signatures
-    #[allow(non_snake_case)]
-    pub fn sign_taproot(
-        &mut self,
-        msg: &[u8],
-        nonces: &[PublicNonce],
-        sig_shares: &[SignatureShare],
-        key_ids: &[u32],
-        merkle_root: Option<[u8; 32]>,
-    ) -> Result<SchnorrProof, AggregatorError> {
-        let tweak = compute::tweak(&self.poly[0], merkle_root);
-        let (key, sig) = self.sign_with_tweak(msg, nonces, sig_shares, key_ids, &tweak)?;
-        let proof = SchnorrProof::new(&sig);
-
-        if proof.verify(&key.x(), msg) {
-            Ok(proof)
-        } else {
-            Err(AggregatorError::BadGroupSig)
-        }
     }
 
     /// Check and aggregate the party signatures
@@ -406,6 +370,47 @@ impl SignatureAggregator {
             Err(AggregatorError::BadPartyKeys(bad_party_keys))
         } else {
             Err(AggregatorError::BadPartySigs(bad_party_sigs))
+        }
+    }
+}
+
+impl traits::Aggregator for Aggregator {
+    /// Check and aggregate the party signatures
+    #[allow(non_snake_case)]
+    fn sign(
+        &mut self,
+        msg: &[u8],
+        nonces: &[PublicNonce],
+        sig_shares: &[SignatureShare],
+        key_ids: &[u32],
+    ) -> Result<Signature, AggregatorError> {
+        let (key, sig) = self.sign_with_tweak(msg, nonces, sig_shares, key_ids, &Scalar::zero())?;
+
+        if sig.verify(&key, msg) {
+            Ok(sig)
+        } else {
+            Err(AggregatorError::BadGroupSig)
+        }
+    }
+
+    /// Check and aggregate the party signatures
+    #[allow(non_snake_case)]
+    fn sign_taproot(
+        &mut self,
+        msg: &[u8],
+        nonces: &[PublicNonce],
+        sig_shares: &[SignatureShare],
+        key_ids: &[u32],
+        merkle_root: Option<[u8; 32]>,
+    ) -> Result<SchnorrProof, AggregatorError> {
+        let tweak = compute::tweak(&self.poly[0], merkle_root);
+        let (key, sig) = self.sign_with_tweak(msg, nonces, sig_shares, key_ids, &tweak)?;
+        let proof = SchnorrProof::new(&sig);
+
+        if proof.verify(&key.x(), msg) {
+            Ok(proof)
+        } else {
+            Err(AggregatorError::BadGroupSig)
         }
     }
 }
@@ -573,7 +578,7 @@ pub mod test_helpers {
 
 #[cfg(test)]
 mod tests {
-    use crate::v2;
+    use crate::{traits::Aggregator, v2};
 
     use rand_core::OsRng;
 
@@ -624,7 +629,7 @@ mod tests {
         {
             let mut signers = [signers[0].clone(), signers[1].clone(), signers[3].clone()].to_vec();
             let mut sig_agg =
-                v2::SignatureAggregator::new(Nk, T, A.clone()).expect("aggregator ctor failed");
+                v2::Aggregator::new(Nk, T, A.clone()).expect("aggregator ctor failed");
 
             let (nonces, sig_shares, key_ids) =
                 v2::test_helpers::sign(&msg, &mut signers, &mut rng);

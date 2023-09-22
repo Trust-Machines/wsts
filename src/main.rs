@@ -1,7 +1,11 @@
 use rand_core::OsRng;
 use std::{env, time};
 
-use wsts::{common::test_helpers::gen_signer_ids, v1, v2};
+use wsts::{
+    common::test_helpers::gen_signer_ids,
+    traits::Aggregator,
+    v1, v2,
+};
 
 #[allow(non_snake_case)]
 fn main() {
@@ -41,7 +45,7 @@ fn main() {
         let dkg_time = dkg_start.elapsed();
         let mut signers = signers[..(K * 3 / 4).try_into().unwrap()].to_vec();
 
-        let mut aggregator = v1::SignatureAggregator::new(N, T, A).expect("aggregator ctor failed");
+        let mut aggregator = v1::Aggregator::new(N, T, A).expect("aggregator ctor failed");
 
         let party_sign_start = time::Instant::now();
         let (nonces, sig_shares) = v1::test_helpers::sign(msg, &mut signers, &mut rng);
@@ -49,7 +53,7 @@ fn main() {
 
         let group_sign_start = time::Instant::now();
         let _sig = aggregator
-            .sign(msg, &nonces, &sig_shares)
+            .sign(msg, &nonces, &sig_shares, &[])
             .expect("v1 group sign failed");
         let group_sign_time = group_sign_start.elapsed();
 
@@ -76,7 +80,7 @@ fn main() {
         let dkg_time = dkg_start.elapsed();
         let mut signers = signers[..(K * 3 / 4).try_into().unwrap()].to_vec();
 
-        let mut aggregator = v2::SignatureAggregator::new(N, T, A).expect("aggregator ctor failed");
+        let mut aggregator = v2::Aggregator::new(N, T, A).expect("aggregator ctor failed");
 
         let party_sign_start = time::Instant::now();
         let (nonces, sig_shares, key_ids) = v2::test_helpers::sign(msg, &mut signers, &mut rng);
