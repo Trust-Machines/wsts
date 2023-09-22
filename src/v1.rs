@@ -713,8 +713,7 @@ mod tests {
         // signers [0,1,3] who have T keys
         {
             let mut signers = [signers[0].clone(), signers[1].clone(), signers[3].clone()].to_vec();
-            let mut sig_agg =
-                v1::Aggregator::new(N, T, A.clone()).expect("aggregator ctor failed");
+            let mut sig_agg = v1::Aggregator::new(N, T, A.clone()).expect("aggregator ctor failed");
 
             let (nonces, sig_shares) = v1::test_helpers::sign(&msg, &mut signers, &mut rng);
             if let Err(e) = sig_agg.sign(&msg, &nonces, &sig_shares, &[]) {
