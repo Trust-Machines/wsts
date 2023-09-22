@@ -41,7 +41,8 @@ fn main() {
         let dkg_time = dkg_start.elapsed();
         let mut signers = signers[..(K * 3 / 4).try_into().unwrap()].to_vec();
 
-        let mut aggregator = v1::Aggregator::new(N, T, A).expect("aggregator ctor failed");
+        let mut aggregator = v1::Aggregator::new(N, T);
+        aggregator.init(A).expect("aggregator init failed");
 
         let party_sign_start = time::Instant::now();
         let (nonces, sig_shares) = v1::test_helpers::sign(msg, &mut signers, &mut rng);
@@ -76,7 +77,8 @@ fn main() {
         let dkg_time = dkg_start.elapsed();
         let mut signers = signers[..(K * 3 / 4).try_into().unwrap()].to_vec();
 
-        let mut aggregator = v2::Aggregator::new(N, T, A).expect("aggregator ctor failed");
+        let mut aggregator = v2::Aggregator::new(N, T);
+        aggregator.init(A).expect("aggregator init failed");
 
         let party_sign_start = time::Instant::now();
         let (nonces, sig_shares, key_ids) = v2::test_helpers::sign(msg, &mut signers, &mut rng);

@@ -235,48 +235,17 @@ impl Party {
     }
 }
 
-#[allow(non_snake_case)]
 /// The group signature aggregator
 pub struct Aggregator {
-    /// The total number of keys/parties
-    pub N: u32,
+    /// The total number of keys
+    pub num_keys: u32,
     /// The threshold of signers needed to construct a valid signature
-    pub T: u32,
+    pub threshold: u32,
     /// The aggregate group polynomial; poly[0] is the group public key
     pub poly: Vec<Point>,
 }
 
 impl Aggregator {
-    #[allow(non_snake_case)]
-    /// Construct a Aggregator with the passed parameters and polynomial commitments
-    pub fn new(N: u32, T: u32, A: Vec<PolyCommitment>) -> Result<Self, AggregatorError> {
-        let len = N.try_into().unwrap();
-        if A.len() != len {
-            return Err(AggregatorError::BadPolyCommitmentLen(len, A.len()));
-        }
-
-        let mut bad_poly_commitments = Vec::new();
-        for A_i in &A {
-            if !A_i.verify() {
-                bad_poly_commitments.push(A_i.id.id);
-            }
-        }
-        if !bad_poly_commitments.is_empty() {
-            return Err(AggregatorError::BadPolyCommitments(bad_poly_commitments));
-        }
-
-        let mut poly = Vec::with_capacity(T.try_into().unwrap());
-
-        for i in 0..poly.capacity() {
-            poly.push(Point::zero());
-            for p in &A {
-                poly[i] += &p.A[i];
-            }
-        }
-
-        Ok(Self { N, T, poly })
-    }
-
     #[allow(non_snake_case)]
     /// Check and aggregate the party signatures using a tweak
     pub fn sign_with_tweak(
@@ -347,6 +316,47 @@ impl Aggregator {
 }
 
 impl traits::Aggregator for Aggregator {
+    /// Construct an Aggregator with the passed parameters
+    fn new(num_keys: u32, threshold: u32) -> Self {
+        Self {
+            num_keys,
+            threshold,
+            poly: Default::default(),
+        }
+    }
+
+    #[allow(non_snake_case)]
+    /// Initialize the Aggregator polynomial
+    fn init(&mut self, A: Vec<PolyCommitment>) -> Result<(), AggregatorError> {
+        let len = self.num_keys.try_into().unwrap();
+        if A.len() != len {
+            return Err(AggregatorError::BadPolyCommitmentLen(len, A.len()));
+        }
+
+        let mut bad_poly_commitments = Vec::new();
+        for A_i in &A {
+            if !A_i.verify() {
+                bad_poly_commitments.push(A_i.id.id);
+            }
+        }
+        if !bad_poly_commitments.is_empty() {
+            return Err(AggregatorError::BadPolyCommitments(bad_poly_commitments));
+        }
+
+        let mut poly = Vec::with_capacity(self.threshold.try_into().unwrap());
+
+        for i in 0..poly.capacity() {
+            poly.push(Point::zero());
+            for p in &A {
+                poly[i] += &p.A[i];
+            }
+        }
+
+        self.poly = poly;
+
+        Ok(())
+    }
+
     #[allow(non_snake_case)]
     /// Check and aggregate the party signatures
     fn sign(
@@ -724,7 +734,8 @@ mod tests {
         // signers [0,1,3] who have T keys
         {
             let mut signers = [signers[0].clone(), signers[1].clone(), signers[3].clone()].to_vec();
-            let mut sig_agg = v1::Aggregator::new(N, T, A.clone()).expect("aggregator ctor failed");
+            let mut sig_agg = v1::Aggregator::new(N, T);
+            sig_agg.init(A.clone()).expect("aggregator init failed");
 
             let (nonces, sig_shares) = v1::test_helpers::sign(&msg, &mut signers, &mut rng);
             if let Err(e) = sig_agg.sign(&msg, &nonces, &sig_shares, &[]) {

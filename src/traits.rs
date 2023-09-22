@@ -75,6 +75,12 @@ pub trait Signer {
 
 /// A trait which provides a common `Aggregator` interface for `v1` and `v2`
 pub trait Aggregator {
+    /// Construct an Aggregator with the passed parameters
+    fn new(num_keys: u32, threshold: u32) -> Self;
+
+    /// Initialize an Aggregator with the passed polynomial commitments
+    fn init(&mut self, poly_comms: Vec<PolyCommitment>) -> Result<(), AggregatorError>;
+
     /// Check and aggregate the signature shares into a `Signature`
     fn sign(
         &mut self,
