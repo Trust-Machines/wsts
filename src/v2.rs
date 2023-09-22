@@ -420,7 +420,18 @@ pub type SignerState = PartyState;
 /// Typedef so we can use the same tokens for v1 and v2
 pub type Signer = Party;
 
-impl crate::traits::Signer for Party {
+impl traits::Signer for Party {
+    fn new<RNG: RngCore + CryptoRng>(
+        party_id: u32,
+        key_ids: &[u32],
+        num_signers: u32,
+        num_keys: u32,
+        threshold: u32,
+        rng: &mut RNG,
+    ) -> Self {
+        Party::new(party_id, key_ids, num_signers, num_keys, threshold, rng)
+    }
+
     fn get_id(&self) -> u32 {
         self.party_id
     }

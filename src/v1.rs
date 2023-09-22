@@ -467,6 +467,17 @@ impl Signer {
 }
 
 impl traits::Signer for Signer {
+    fn new<RNG: RngCore + CryptoRng>(
+        party_id: u32,
+        key_ids: &[u32],
+        _num_signers: u32,
+        num_keys: u32,
+        threshold: u32,
+        rng: &mut RNG,
+    ) -> Self {
+        Signer::new(party_id, key_ids, num_keys, threshold, rng)
+    }
+
     fn get_id(&self) -> u32 {
         self.id
     }

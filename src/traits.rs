@@ -10,6 +10,16 @@ use crate::{
 
 /// A trait which provides a common `Signer` interface for `v1` and `v2`
 pub trait Signer {
+    /// Create a new `Signer`
+    fn new<RNG: RngCore + CryptoRng>(
+        party_id: u32,
+        key_ids: &[u32],
+        num_signers: u32,
+        num_keys: u32,
+        threshold: u32,
+        rng: &mut RNG,
+    ) -> Self;
+
     /// Get the signer ID for this signer
     fn get_id(&self) -> u32;
 
