@@ -145,7 +145,7 @@ pub mod test_helpers {
 mod test {
     use super::{test_helpers, SchnorrProof};
 
-    use crate::{compute, traits::Signer, v1, v2};
+    use crate::{compute, traits::Aggregator, traits::Signer, v1, v2};
     use rand_core::OsRng;
 
     #[test]
@@ -192,11 +192,11 @@ mod test {
         };
 
         let mut S = [signers[0].clone(), signers[1].clone(), signers[3].clone()].to_vec();
-        let mut sig_agg =
-            v1::SignatureAggregator::new(N, T, A.clone()).expect("aggregator ctor failed");
+        let mut sig_agg = v1::Aggregator::new(N, T);
+        sig_agg.init(A.clone()).expect("aggregator init failed");
         let tweaked_public_key = compute::tweaked_public_key(&sig_agg.poly[0], merkle_root);
         let (nonces, sig_shares) = test_helpers::sign(&msg, &mut S, &mut rng, merkle_root);
-        let proof = match sig_agg.sign_taproot(&msg, &nonces, &sig_shares, merkle_root) {
+        let proof = match sig_agg.sign_taproot(&msg, &nonces, &sig_shares, &[], merkle_root) {
             Err(e) => panic!("Aggregator sign failed: {:?}", e),
             Ok(proof) => proof,
         };
@@ -255,8 +255,8 @@ mod test {
 
         let mut S = [signers[0].clone(), signers[1].clone(), signers[3].clone()].to_vec();
         let key_ids = S.iter().flat_map(|s| s.get_key_ids()).collect::<Vec<u32>>();
-        let mut sig_agg =
-            v2::SignatureAggregator::new(Nk, T, A.clone()).expect("aggregator ctor failed");
+        let mut sig_agg = v2::Aggregator::new(Nk, T);
+        sig_agg.init(A.clone()).expect("aggregator init failed");
         let tweaked_public_key = compute::tweaked_public_key(&sig_agg.poly[0], merkle_root);
         let (nonces, sig_shares) = test_helpers::sign(&msg, &mut S, &mut rng, merkle_root);
         let proof = match sig_agg.sign_taproot(&msg, &nonces, &sig_shares, &key_ids, merkle_root) {

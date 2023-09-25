@@ -16,26 +16,25 @@ use crate::compute::challenge;
 use crate::schnorr::ID;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[allow(non_snake_case)]
 /// A commitment to a polynonial, with a Schnorr proof of ownership bound to the ID
 pub struct PolyCommitment {
     /// The party ID with a schnorr proof
     pub id: ID,
     /// The public polynomial which commits to the secret polynomial
-    pub A: Vec<Point>,
+    pub poly: Vec<Point>,
 }
 
 impl PolyCommitment {
     /// Verify the wrapped schnorr ID
     pub fn verify(&self) -> bool {
-        self.id.verify(&self.A[0])
+        self.id.verify(&self.poly[0])
     }
 }
 
 impl Display for PolyCommitment {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "{}", self.id.id)?;
-        for p in &self.A {
+        for p in &self.poly {
             write!(f, " {}", p)?;
         }
         Ok(())
@@ -183,9 +182,9 @@ impl<'a> CheckPrivateShares<'a> {
     /// Construct a new CheckPrivateShares object
     pub fn new(id: Scalar, shares: &HashMap<u32, Scalar>, polys: &'a [PolyCommitment]) -> Self {
         let n: u32 = shares.len().try_into().unwrap();
-        let t: u32 = polys[0].A.len().try_into().unwrap();
+        let t: u32 = polys[0].poly.len().try_into().unwrap();
         let x = id;
-        let mut powers = Vec::with_capacity(polys[0].A.len());
+        let mut powers = Vec::with_capacity(polys[0].poly.len());
         let mut pow = Scalar::one();
 
         for _ in 0..t {
@@ -228,7 +227,7 @@ impl<'a> MultiMult for CheckPrivateShares<'a> {
             let j = i / u;
             let k = i % u;
 
-            &self.polys[j].A[k]
+            &self.polys[j].poly[k]
         } else {
             &G
         }

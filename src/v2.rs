@@ -8,12 +8,15 @@ use polynomial::Polynomial;
 use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
-use crate::common::{Nonce, PolyCommitment, PublicNonce, Signature, SignatureShare};
-use crate::compute;
-use crate::errors::{AggregatorError, DkgError};
-use crate::schnorr::ID;
-use crate::taproot::SchnorrProof;
-use crate::vss::VSS;
+use crate::{
+    common::{Nonce, PolyCommitment, PublicNonce, Signature, SignatureShare},
+    compute,
+    errors::{AggregatorError, DkgError},
+    schnorr::ID,
+    taproot::SchnorrProof,
+    traits,
+    vss::VSS,
+};
 
 /// A map of private keys indexed by key ID
 pub type PrivKeyMap = HashMap<u32, Scalar>;
@@ -42,7 +45,6 @@ pub struct PartyState {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-#[allow(non_snake_case)]
 /// A WSTS party, which encapsulates a single polynomial, nonce, and one private key per key ID
 pub struct Party {
     /// The party ID
@@ -60,7 +62,6 @@ pub struct Party {
 }
 
 impl Party {
-    #[allow(non_snake_case)]
     /// Construct a random Party with the passed party ID, key IDs, and parameters
     pub fn new<RNG: RngCore + CryptoRng>(
         party_id: u32,
@@ -119,12 +120,11 @@ impl Party {
         PublicNonce::from(&self.nonce)
     }
 
-    #[allow(non_snake_case)]
     /// Get a public commitment to the private polynomial
     pub fn get_poly_commitment<RNG: RngCore + CryptoRng>(&self, rng: &mut RNG) -> PolyCommitment {
         PolyCommitment {
             id: ID::new(&self.id(), &self.f.data()[0], rng),
-            A: (0..self.f.data().len())
+            poly: (0..self.f.data().len())
                 .map(|i| &self.f.data()[i] * G)
                 .collect(),
         }
@@ -139,12 +139,11 @@ impl Party {
         shares
     }
 
-    #[allow(non_snake_case)]
     /// Compute this party's share of the group secret key
     pub fn compute_secret(
         &mut self,
         shares: &HashMap<u32, HashMap<u32, Scalar>>,
-        A: &[PolyCommitment],
+        comms: &[PolyCommitment],
     ) -> Result<(), DkgError> {
         let mut missing_shares = Vec::new();
         for key_id in &self.key_ids {
@@ -157,11 +156,11 @@ impl Party {
         }
 
         let mut bad_ids = Vec::new();
-        for (i, Ai) in A.iter().enumerate() {
-            if !Ai.verify() {
+        for (i, comm) in comms.iter().enumerate() {
+            if !comm.verify() {
                 bad_ids.push(i.try_into().unwrap());
             }
-            self.group_key += Ai.A[0];
+            self.group_key += comm.poly[0];
         }
         if !bad_ids.is_empty() {
             return Err(DkgError::BadIds(bad_ids));
@@ -180,8 +179,8 @@ impl Party {
         let mut bad_shares = Vec::new();
         for key_id in &self.key_ids {
             for (sender, s) in &shares[key_id] {
-                let Ai = &A[usize::try_from(*sender).unwrap()];
-                if s * G != compute::poly(&compute::id(*key_id), &Ai.A)? {
+                let comm = &comms[usize::try_from(*sender).unwrap()];
+                if s * G != compute::poly(&compute::id(*key_id), &comm.poly)? {
                     bad_shares.push(*sender);
                 }
             }
@@ -208,7 +207,6 @@ impl Party {
     }
 
     /// Sign `msg` with this party's shares of the group private key, using the set of `party_ids`, `key_ids` and corresponding `nonces`
-    #[allow(non_snake_case)]
     pub fn sign(
         &self,
         msg: &[u8],
@@ -230,7 +228,7 @@ impl Party {
         tweak: &Scalar,
     ) -> SignatureShare {
         let tweaked_public_key = self.group_key + tweak * G;
-        let (_R_vec, R) = compute::intermediate(msg, party_ids, nonces);
+        let (_, R) = compute::intermediate(msg, party_ids, nonces);
         let c = compute::challenge(&tweaked_public_key, &R, msg);
         let mut r = &self.nonce.d + &self.nonce.e * compute::binding(&self.id(), nonces, msg);
         if tweak != &Scalar::zero() && !R.has_even_y() {
@@ -256,9 +254,8 @@ impl Party {
     }
 }
 
-#[allow(non_snake_case)]
 /// The group signature aggregator
-pub struct SignatureAggregator {
+pub struct Aggregator {
     /// The total number of keys
     pub num_keys: u32,
     /// The threshold of signing keys needed to construct a valid signature
@@ -267,79 +264,7 @@ pub struct SignatureAggregator {
     pub poly: Vec<Point>,
 }
 
-impl SignatureAggregator {
-    #[allow(non_snake_case)]
-    /// Construct a SignatureAggregator with the passed parameters and polynomial commitments
-    pub fn new(
-        num_keys: u32,
-        threshold: u32,
-        A: Vec<PolyCommitment>, // one per party_id
-    ) -> Result<Self, AggregatorError> {
-        let mut bad_poly_commitments = Vec::new();
-        for A_i in &A {
-            if !A_i.verify() {
-                bad_poly_commitments.push(A_i.id.id);
-            }
-        }
-        if !bad_poly_commitments.is_empty() {
-            return Err(AggregatorError::BadPolyCommitments(bad_poly_commitments));
-        }
-
-        let mut poly = Vec::with_capacity(threshold.try_into().unwrap());
-
-        for i in 0..poly.capacity() {
-            poly.push(Point::zero());
-            for p in &A {
-                poly[i] += &p.A[i];
-            }
-        }
-
-        Ok(Self {
-            num_keys,
-            threshold,
-            poly,
-        })
-    }
-
-    /// Check and aggregate the party signatures
-    #[allow(non_snake_case)]
-    pub fn sign(
-        &mut self,
-        msg: &[u8],
-        nonces: &[PublicNonce],
-        sig_shares: &[SignatureShare],
-        key_ids: &[u32],
-    ) -> Result<Signature, AggregatorError> {
-        let (key, sig) = self.sign_with_tweak(msg, nonces, sig_shares, key_ids, &Scalar::zero())?;
-
-        if sig.verify(&key, msg) {
-            Ok(sig)
-        } else {
-            Err(AggregatorError::BadGroupSig)
-        }
-    }
-
-    /// Check and aggregate the party signatures
-    #[allow(non_snake_case)]
-    pub fn sign_taproot(
-        &mut self,
-        msg: &[u8],
-        nonces: &[PublicNonce],
-        sig_shares: &[SignatureShare],
-        key_ids: &[u32],
-        merkle_root: Option<[u8; 32]>,
-    ) -> Result<SchnorrProof, AggregatorError> {
-        let tweak = compute::tweak(&self.poly[0], merkle_root);
-        let (key, sig) = self.sign_with_tweak(msg, nonces, sig_shares, key_ids, &tweak)?;
-        let proof = SchnorrProof::new(&sig);
-
-        if proof.verify(&key.x(), msg) {
-            Ok(proof)
-        } else {
-            Err(AggregatorError::BadGroupSig)
-        }
-    }
-
+impl Aggregator {
     /// Check and aggregate the party signatures
     #[allow(non_snake_case)]
     pub fn sign_with_tweak(
@@ -355,7 +280,7 @@ impl SignatureAggregator {
         }
 
         let party_ids: Vec<u32> = sig_shares.iter().map(|ss| ss.id).collect();
-        let (Ris, R) = compute::intermediate(msg, &party_ids, nonces);
+        let (Rs, R) = compute::intermediate(msg, &party_ids, nonces);
         let mut z = Scalar::zero();
         let mut bad_party_keys = Vec::new();
         let mut bad_party_sigs = Vec::new();
@@ -390,7 +315,7 @@ impl SignatureAggregator {
                 cx += compute::lambda(*key_id, key_ids) * c * public_key;
             }
 
-            if z_i * G != (r_sign * Ris[i] + cx_sign * cx) {
+            if z_i * G != (r_sign * Rs[i] + cx_sign * cx) {
                 bad_party_sigs.push(sig_shares[i].id);
             }
 
@@ -410,12 +335,97 @@ impl SignatureAggregator {
     }
 }
 
+impl traits::Aggregator for Aggregator {
+    /// Construct an Aggregator with the passed parameters
+    fn new(num_keys: u32, threshold: u32) -> Self {
+        Self {
+            num_keys,
+            threshold,
+            poly: Default::default(),
+        }
+    }
+
+    /// Initialize the Aggregator polynomial
+    fn init(&mut self, comms: Vec<PolyCommitment>) -> Result<(), AggregatorError> {
+        let mut bad_poly_commitments = Vec::new();
+        for comm in &comms {
+            if !comm.verify() {
+                bad_poly_commitments.push(comm.id.id);
+            }
+        }
+        if !bad_poly_commitments.is_empty() {
+            return Err(AggregatorError::BadPolyCommitments(bad_poly_commitments));
+        }
+
+        let mut poly = Vec::with_capacity(self.threshold.try_into().unwrap());
+
+        for i in 0..poly.capacity() {
+            poly.push(Point::zero());
+            for comm in &comms {
+                poly[i] += &comm.poly[i];
+            }
+        }
+
+        self.poly = poly;
+
+        Ok(())
+    }
+
+    /// Check and aggregate the party signatures
+    fn sign(
+        &mut self,
+        msg: &[u8],
+        nonces: &[PublicNonce],
+        sig_shares: &[SignatureShare],
+        key_ids: &[u32],
+    ) -> Result<Signature, AggregatorError> {
+        let (key, sig) = self.sign_with_tweak(msg, nonces, sig_shares, key_ids, &Scalar::zero())?;
+
+        if sig.verify(&key, msg) {
+            Ok(sig)
+        } else {
+            Err(AggregatorError::BadGroupSig)
+        }
+    }
+
+    /// Check and aggregate the party signatures
+    fn sign_taproot(
+        &mut self,
+        msg: &[u8],
+        nonces: &[PublicNonce],
+        sig_shares: &[SignatureShare],
+        key_ids: &[u32],
+        merkle_root: Option<[u8; 32]>,
+    ) -> Result<SchnorrProof, AggregatorError> {
+        let tweak = compute::tweak(&self.poly[0], merkle_root);
+        let (key, sig) = self.sign_with_tweak(msg, nonces, sig_shares, key_ids, &tweak)?;
+        let proof = SchnorrProof::new(&sig);
+
+        if proof.verify(&key.x(), msg) {
+            Ok(proof)
+        } else {
+            Err(AggregatorError::BadGroupSig)
+        }
+    }
+}
+
 /// Typedef so we can use the same tokens for v1 and v2
 pub type SignerState = PartyState;
 /// Typedef so we can use the same tokens for v1 and v2
 pub type Signer = Party;
 
-impl crate::traits::Signer for Party {
+impl traits::Signer for Party {
+    fn new<RNG: RngCore + CryptoRng>(
+        party_id: u32,
+        key_ids: &[u32],
+        num_signers: u32,
+        num_keys: u32,
+        threshold: u32,
+        rng: &mut RNG,
+    ) -> Self {
+        Party::new(party_id, key_ids, num_signers, num_keys, threshold, rng)
+    }
+
     fn get_id(&self) -> u32 {
         self.party_id
     }
@@ -511,7 +521,6 @@ pub mod test_helpers {
     use hashbrown::HashMap;
     use rand_core::{CryptoRng, RngCore};
 
-    #[allow(non_snake_case)]
     /// Run a distributed key generation round
     pub fn dkg<RNG: RngCore + CryptoRng>(
         signers: &mut [v2::Party],
@@ -573,7 +582,7 @@ pub mod test_helpers {
 
 #[cfg(test)]
 mod tests {
-    use crate::v2;
+    use crate::{traits::Aggregator, v2};
 
     use rand_core::OsRng;
 
@@ -613,8 +622,8 @@ mod tests {
             .map(|(pid, pkids)| v2::Party::new(pid.try_into().unwrap(), pkids, Np, Nk, T, &mut rng))
             .collect();
 
-        let A = match v2::test_helpers::dkg(&mut signers, &mut rng) {
-            Ok(A) => A,
+        let comms = match v2::test_helpers::dkg(&mut signers, &mut rng) {
+            Ok(comms) => comms,
             Err(secret_errors) => {
                 panic!("Got secret errors from DKG: {:?}", secret_errors);
             }
@@ -623,8 +632,9 @@ mod tests {
         // signers [0,1,3] who have T keys
         {
             let mut signers = [signers[0].clone(), signers[1].clone(), signers[3].clone()].to_vec();
-            let mut sig_agg =
-                v2::SignatureAggregator::new(Nk, T, A.clone()).expect("aggregator ctor failed");
+            let mut sig_agg = v2::Aggregator::new(Nk, T);
+
+            sig_agg.init(comms.clone()).expect("aggregator init failed");
 
             let (nonces, sig_shares, key_ids) =
                 v2::test_helpers::sign(&msg, &mut signers, &mut rng);
