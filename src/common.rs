@@ -16,7 +16,6 @@ use crate::compute::challenge;
 use crate::schnorr::ID;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[allow(non_snake_case)]
 /// A commitment to a polynonial, with a Schnorr proof of ownership bound to the ID
 pub struct PolyCommitment {
     /// The party ID with a schnorr proof
