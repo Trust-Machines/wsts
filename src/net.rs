@@ -1,14 +1,9 @@
 use hashbrown::HashMap;
-use p256k1::{
-    ecdsa,
-    scalar::Scalar,
-};
+use p256k1::{ecdsa, scalar::Scalar};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::{
-    common::{PolyCommitment, PublicNonce, SignatureShare},
-};
+use crate::common::{PolyCommitment, PublicNonce, SignatureShare};
 
 /// Trait to encapsulate sign/verify, users only need to impl hash
 pub trait Signable {
@@ -96,7 +91,7 @@ pub struct DkgPublicShares {
     /// Signer ID
     pub signer_id: u32,
     /// (party_id, commitment)
-    pub comms: Vec<(u32, PolyCommitment)>, 
+    pub comms: Vec<(u32, PolyCommitment)>,
 }
 
 impl Signable for DkgPublicShares {
