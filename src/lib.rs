@@ -7,13 +7,15 @@ pub mod common;
 pub mod compute;
 /// Errors which are returned from objects and functions
 pub mod errors;
+/// Network messages
+pub mod net;
 /// Schnorr utility types
 pub mod schnorr;
 /// Functions for doing BIP-340 schnorr proofs and other taproot actions
 pub mod taproot;
 /// Traits which are used for v1 and v2
 pub mod traits;
-/// Utilities for hashing scalars
+/// Utilities for hashing and encryption
 pub mod util;
 /// Version 1 of WSTS, which encapsulates a number of parties using vanilla FROST
 pub mod v1;
