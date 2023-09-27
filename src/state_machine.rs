@@ -96,6 +96,23 @@ pub mod coordinator {
         }
     }
 
+    /// Coordinatable trait for handling the coordination of DKG and sign messages
+    pub trait Coordinatable {
+        /// Process inbound messages
+        fn process_inbound_messages(
+            &mut self,
+            packets: Vec<Packet>,
+        ) -> Result<(Vec<Packet>, Vec<OperationResult>), Error>;
+        /// Retrieve the aggregate public key
+        fn get_aggregate_public_key(&self) -> Point;
+        /// Trigger a DKG round
+        fn start_distributed_key_generation(&mut self) -> Result<Packet, Error>;
+        /// Trigger a signing round
+        fn start_signing_message(&mut self, _message: &[u8]) -> Result<Packet, Error>;
+        /// Reset internal state
+        fn reset(&mut self);
+    }
+
     /// The coordinator for the FROST algorithm
     pub struct Coordinator {
         /// current DKG round ID
@@ -574,57 +591,55 @@ pub mod coordinator {
             }
         }
     }
-}
 
-/*
-impl Coordinatable for Coordinator {
-    /// Process inbound messages
-    fn process_inbound_messages(
-        &mut self,
-        messages: Vec<Message>,
-    ) -> Result<(Vec<Message>, Vec<OperationResult>), crate::crypto::Error> {
-        let mut outbound_messages = vec![];
-        let mut operation_results = vec![];
-        for message in &messages {
-            let (outbound_message, operation_result) = self.process_message(message)?;
-            if let Some(outbound_message) = outbound_message {
-                outbound_messages.push(outbound_message);
+    impl Coordinatable for Coordinator {
+        /// Process inbound messages
+        fn process_inbound_messages(
+            &mut self,
+            packets: Vec<Packet>,
+        ) -> Result<(Vec<Packet>, Vec<OperationResult>), Error> {
+            let mut outbound_packets = vec![];
+            let mut operation_results = vec![];
+            for packet in &packets {
+                let (outbound_packet, operation_result) = self.process_message(packet)?;
+                if let Some(outbound_packet) = outbound_packet {
+                    outbound_packets.push(outbound_packet);
+                }
+                if let Some(operation_result) = operation_result {
+                    operation_results.push(operation_result);
+                }
             }
-            if let Some(operation_result) = operation_result {
-                operation_results.push(operation_result);
-            }
+            Ok((outbound_packets, operation_results))
         }
-        Ok((outbound_messages, operation_results))
-    }
 
-    /// Retrieve the aggregate public key
-    fn get_aggregate_public_key(&self) -> Point {
-        self.aggregate_public_key
-    }
+        /// Retrieve the aggregate public key
+        fn get_aggregate_public_key(&self) -> Point {
+            self.aggregate_public_key
+        }
 
-    /// Trigger a DKG round
-    fn start_distributed_key_generation(&mut self) -> Result<Message, CryptoError> {
-        let message = self.start_dkg_round()?;
-        Ok(message)
-    }
+        /// Trigger a DKG round
+        fn start_distributed_key_generation(&mut self) -> Result<Packet, Error> {
+            let packet = self.start_dkg_round()?;
+            Ok(packet)
+        }
 
-    // Trigger a signing round
-    fn start_signing_message(&mut self, message: &[u8]) -> Result<Message, CryptoError> {
-        self.message = message.to_vec();
-        let message = self.start_signing_round()?;
-        Ok(message)
-    }
+        // Trigger a signing round
+        fn start_signing_message(&mut self, message: &[u8]) -> Result<Packet, Error> {
+            self.message = message.to_vec();
+            let packet = self.start_signing_round()?;
+            Ok(packet)
+        }
 
-    // Reset internal state
-    fn reset(&mut self) {
-        self.state = State::Idle;
-        self.dkg_public_shares.clear();
-        self.public_nonces.clear();
-        self.signature_shares.clear();
-        self.ids_to_await = (0..self.total_signers).collect();
+        // Reset internal state
+        fn reset(&mut self) {
+            self.state = State::Idle;
+            self.dkg_public_shares.clear();
+            self.public_nonces.clear();
+            self.signature_shares.clear();
+            self.ids_to_await = (0..self.total_signers).collect();
+        }
     }
 }
-*/
 #[cfg(test)]
 mod test {
     //use frost_signer::{config::PublicKeys, signing_round::SigningRound};
