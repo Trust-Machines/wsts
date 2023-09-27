@@ -98,13 +98,16 @@ pub mod coordinator {
 
     /// The coordinator for the FROST algorithm
     pub struct Coordinator {
-        current_dkg_id: u64,
-        current_dkg_public_id: u64,
+        /// current DKG round ID
+        pub current_dkg_id: u64,
         current_sign_id: u64,
         current_sign_iter_id: u64,
-        total_signers: u32, // Assuming the signers cover all id:s in {1, 2, ..., total_signers}
-        total_keys: u32,
-        threshold: u32,
+        /// total number of signers
+        pub total_signers: u32, // Assuming the signers cover all id:s in {1, 2, ..., total_signers}
+        /// total number of keys 
+        pub total_keys: u32,
+        /// the threshold of the keys needed for a valid signature
+        pub threshold: u32,
         dkg_public_shares: BTreeMap<u32, DkgPublicShares>,
         party_polynomials: BTreeMap<u32, PolyCommitment>,
         public_nonces: BTreeMap<u32, NonceResponse>,
@@ -112,10 +115,14 @@ pub mod coordinator {
         aggregate_public_key: Point,
         signature: Signature,
         schnorr_proof: SchnorrProof,
-        message_private_key: Scalar,
-        ids_to_await: HashSet<u32>,
-        message: Vec<u8>,
-        state: State,
+        /// key used to sign packet messages
+        pub message_private_key: Scalar,
+        /// which signers we're currently waiting on
+        pub ids_to_await: HashSet<u32>,
+        /// the bytes that we're signing
+        pub message: Vec<u8>,
+        /// current state of the state machine
+        pub state: State,
     }
 
     impl Coordinator {
@@ -128,7 +135,6 @@ pub mod coordinator {
         ) -> Self {
             Self {
                 current_dkg_id: 0,
-                current_dkg_public_id: 0,
                 current_sign_id: 0,
                 current_sign_iter_id: 0,
                 total_signers,
@@ -253,11 +259,12 @@ pub mod coordinator {
             self.request_nonces()
         }
 
-        fn start_public_shares(&mut self) -> Result<Packet, Error> {
+        /// Ask signers to send DKG public shares
+        pub fn start_public_shares(&mut self) -> Result<Packet, Error> {
             self.dkg_public_shares.clear();
             info!(
-                "DKG Round #{}: Starting Public Share Distribution Round #{}",
-                self.current_dkg_id, self.current_dkg_public_id
+                "DKG Round #{}: Starting Public Share Distribution",
+                self.current_dkg_id,
             );
             let dkg_begin = DkgBegin {
                 dkg_id: self.current_dkg_id,
@@ -271,7 +278,8 @@ pub mod coordinator {
             Ok(dkg_begin_packet)
         }
 
-        fn start_private_shares(&mut self) -> Result<Packet, Error> {
+        /// Ask signers to send DKG private shares
+        pub fn start_private_shares(&mut self) -> Result<Packet, Error> {
             info!(
                 "DKG Round #{}: Starting Private Share Distribution",
                 self.current_dkg_id
@@ -616,17 +624,19 @@ impl Coordinatable for Coordinator {
         self.ids_to_await = (0..self.total_signers).collect();
     }
 }
-
+*/
 #[cfg(test)]
 mod test {
+    //use frost_signer::{config::PublicKeys, signing_round::SigningRound};
+    //use hashbrown::HashMap;
+    use p256k1::scalar::Scalar;
+    use rand_core::OsRng;
 
-    use crate::runloop::process_inbound_messages;
+    //use crate::runloop::process_inbound_messages;
+    use crate::net::{Message};
 
     use super::*;
-    use frost_signer::{config::PublicKeys, signing_round::SigningRound};
-    use hashbrown::HashMap;
-    use p256k1::ecdsa;
-    use rand_core::OsRng;
+    use super::coordinator::*;
 
     #[test]
     fn test_state_machine() {
@@ -748,7 +758,7 @@ mod test {
         assert_eq!(coordinator.state, State::DkgEndGather);
         assert_eq!(coordinator.current_dkg_id, 0);
     }
-
+/*
     fn setup() -> (Coordinator, Vec<SigningRound>) {
         let mut rng = OsRng;
         let total_signers = 5;
@@ -863,5 +873,5 @@ mod test {
         }
         assert_ne!(coordinator.aggregate_public_key, Point::default());
     }
-}
 */
+}
