@@ -457,11 +457,7 @@ pub mod coordinator {
             }
             if self.ids_to_await.is_empty() {
                 // Calculate the aggregate signature
-                let polys: Vec<PolyCommitment> = self
-                    .party_polynomials
-                    .values()
-                    .map(|pp| pp.clone())
-                    .collect();
+                let polys: Vec<PolyCommitment> = self.party_polynomials.values().cloned().collect();
 
                 let nonce_responses = (0..self.total_signers)
                     .map(|i| self.public_nonces[&i].clone())
