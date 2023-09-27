@@ -279,6 +279,7 @@ pub mod coordinator {
         /// Ask signers to send DKG public shares
         pub fn start_public_shares(&mut self) -> Result<Packet, Error> {
             self.dkg_public_shares.clear();
+            self.party_polynomials.clear();
             info!(
                 "DKG Round #{}: Starting Public Share Distribution",
                 self.current_dkg_id,
@@ -374,6 +375,7 @@ pub mod coordinator {
         }
 
         fn request_nonces(&mut self) -> Result<Packet, Error> {
+            self.public_nonces.clear();
             info!(
                 "Sign Round #{} Nonce round #{} Requesting Nonces",
                 self.current_sign_id, self.current_sign_iter_id,
@@ -431,6 +433,7 @@ pub mod coordinator {
         }
 
         fn request_sig_shares(&mut self) -> Result<Packet, Error> {
+            self.signature_shares.clear();
             info!(
                 "Sign Round #{} Requesting Signature Shares",
                 self.current_sign_id,
@@ -632,6 +635,7 @@ pub mod coordinator {
         fn reset(&mut self) {
             self.state = State::Idle;
             self.dkg_public_shares.clear();
+            self.party_polynomials.clear();
             self.public_nonces.clear();
             self.signature_shares.clear();
             self.ids_to_await = (0..self.total_signers).collect();
