@@ -619,15 +619,13 @@ pub mod coordinator {
 
         /// Trigger a DKG round
         fn start_distributed_key_generation(&mut self) -> Result<Packet, Error> {
-            let packet = self.start_dkg_round()?;
-            Ok(packet)
+            self.start_dkg_round()
         }
 
         // Trigger a signing round
         fn start_signing_message(&mut self, message: &[u8]) -> Result<Packet, Error> {
             self.message = message.to_vec();
-            let packet = self.start_signing_round()?;
-            Ok(packet)
+            self.start_signing_round()
         }
 
         // Reset internal state
