@@ -1,9 +1,6 @@
 use p256k1::point::Point;
 
-use crate::{
-    common::Signature,
-    taproot::SchnorrProof,
-};
+use crate::{common::Signature, taproot::SchnorrProof};
 
 /// A generic state machine
 pub trait StateMachine<S, E> {
@@ -25,14 +22,17 @@ pub enum OperationResult {
 pub mod coordinator {
     use hashbrown::HashSet;
     use p256k1::{point::Point, scalar::Scalar};
-    use std::collections::BTreeMap;    
+    use std::collections::BTreeMap;
     use tracing::{info, warn};
 
     use crate::{
         common::{PolyCommitment, PublicNonce, Signature, SignatureShare},
         compute,
         errors::AggregatorError,
-        net::{DkgBegin, DkgPublicShares, NonceRequest, NonceResponse, SignatureShareRequest, Signable, Message, Packet},
+        net::{
+            DkgBegin, DkgPublicShares, Message, NonceRequest, NonceResponse, Packet, Signable,
+            SignatureShareRequest,
+        },
         taproot::SchnorrProof,
         traits::Aggregator,
         v1,
@@ -63,7 +63,6 @@ pub mod coordinator {
         SigShareGather,
     }
 
-    
     #[derive(thiserror::Error, Debug)]
     /// The error type for the coordinator
     pub enum Error {
@@ -79,9 +78,9 @@ pub mod coordinator {
         /// A bad sign_id in received message
         #[error("Bad sign_id: got {0} expected {1}")]
         BadSignId(u64, u64),
-        /// A bad sign_nonce_id in received message
-        #[error("Bad sign_nonce_id: got {0} expected {1}")]
-        BadSignNonceId(u64, u64),
+        /// A bad sign_iter_id in received message
+        #[error("Bad sign_iter_id: got {0} expected {1}")]
+        BadSignIterId(u64, u64),
         /// SignatureAggregator error
         #[error("Aggregator: {0}")]
         Aggregator(AggregatorError),
@@ -89,7 +88,7 @@ pub mod coordinator {
         #[error("Schnorr Proof failed to verify")]
         SchnorrProofFailed,
     }
-    
+
     impl From<AggregatorError> for Error {
         fn from(err: AggregatorError) -> Self {
             Error::Aggregator(err)
@@ -101,7 +100,7 @@ pub mod coordinator {
         current_dkg_id: u64,
         current_dkg_public_id: u64,
         current_sign_id: u64,
-        current_sign_nonce_id: u64,
+        current_sign_iter_id: u64,
         total_signers: u32, // Assuming the signers cover all id:s in {1, 2, ..., total_signers}
         total_keys: u32,
         threshold: u32,
@@ -130,7 +129,7 @@ pub mod coordinator {
                 current_dkg_id: 0,
                 current_dkg_public_id: 0,
                 current_sign_id: 0,
-                current_sign_nonce_id: 0,
+                current_sign_iter_id: 0,
                 total_signers,
                 total_keys,
                 threshold,
@@ -189,7 +188,10 @@ pub mod coordinator {
                             return Ok((None, None));
                         } else if self.state == State::Idle {
                             // We are done with the DKG round! Return the operation result
-                            return Ok((None, Some(OperationResult::Dkg(self.aggregate_public_key))));
+                            return Ok((
+                                None,
+                                Some(OperationResult::Dkg(self.aggregate_public_key)),
+                            ));
                         }
                     }
                     State::NonceRequest => {
@@ -297,14 +299,13 @@ pub mod coordinator {
 
                     self.dkg_public_shares
                         .insert(dkg_public_shares.signer_id, dkg_public_shares.clone());
-                    for (party_id, comm) in &dkg_public_shares {
-                        self.party_polynomials.insert(party_id, comm.clone());
+                    for (party_id, comm) in &dkg_public_shares.comms {
+                        self.party_polynomials.insert(*party_id, comm.clone());
                     }
 
                     info!(
                         "DKG round #{} DkgPublicShares from signer #{}",
-                        dkg_public_shares.dkg_id,
-                        dkg_public_shares.signer_id
+                        dkg_public_shares.dkg_id, dkg_public_shares.signer_id
                     );
                 }
                 _ => {}
@@ -358,12 +359,12 @@ pub mod coordinator {
         fn request_nonces(&mut self) -> Result<Packet, Error> {
             info!(
                 "Sign Round #{} Nonce round #{} Requesting Nonces",
-                self.current_sign_id, self.current_sign_nonce_id,
+                self.current_sign_id, self.current_sign_iter_id,
             );
             let nonce_request = NonceRequest {
                 dkg_id: self.current_dkg_id,
                 sign_id: self.current_sign_id,
-                sign_nonce_id: self.current_sign_nonce_id,
+                sign_iter_id: self.current_sign_iter_id,
             };
             let nonce_request_msg = Packet {
                 sig: nonce_request.sign(&self.message_private_key).expect(""),
@@ -385,10 +386,10 @@ pub mod coordinator {
                         self.current_sign_id,
                     ));
                 }
-                if nonce_response.sign_nonce_id != self.current_sign_nonce_id {
-                    return Err(Error::BadSignNonceId(
-                        nonce_response.sign_nonce_id,
-                        self.current_sign_nonce_id,
+                if nonce_response.sign_iter_id != self.current_sign_iter_id {
+                    return Err(Error::BadSignIterId(
+                        nonce_response.sign_iter_id,
+                        self.current_sign_iter_id,
                     ));
                 }
 
@@ -398,25 +399,16 @@ pub mod coordinator {
                 info!(
                     "Sign round #{} nonce round #{} NonceResponse from signer #{}. Waiting on {:?}",
                     nonce_response.sign_id,
-                    nonce_response.sign_nonce_id,
+                    nonce_response.sign_iter_id,
                     nonce_response.signer_id,
                     self.ids_to_await
                 );
             }
             if self.ids_to_await.is_empty() {
-                // Calculate the aggregate nonce
                 let aggregate_nonce = self.compute_aggregate_nonce();
+                info!("Aggregate nonce: {}", aggregate_nonce);
 
-                // check to see if aggregate public key has even y
-                if aggregate_nonce.has_even_y() {
-                    info!("Aggregate nonce has even y coord!");
-                    info!("Aggregate nonce: {}", aggregate_nonce);
-                    self.move_to(State::SigShareRequest)?;
-                } else {
-                    warn!("Sign Round #{} Nonce Round #{} Failed: Aggregate nonce does not have even y coord, requesting new nonces.", self.current_sign_id, self.current_sign_nonce_id);
-                    self.current_sign_nonce_id += 1;
-                    self.move_to(State::NonceRequest)?;
-                }
+                self.move_to(State::SigShareRequest)?;
             }
             Ok(())
         }
@@ -432,6 +424,7 @@ pub mod coordinator {
             let sig_share_request = SignatureShareRequest {
                 dkg_id: self.current_dkg_id,
                 sign_id: self.current_sign_id,
+                sign_iter_id: self.current_sign_iter_id,
                 nonce_responses,
                 message: self.message.clone(),
             };
@@ -498,8 +491,7 @@ pub mod coordinator {
                     shares.len()
                 );
 
-                let mut aggregator =
-                    v1::Aggregator::new(self.total_keys, self.threshold);
+                let mut aggregator = v1::Aggregator::new(self.total_keys, self.threshold);
 
                 aggregator.init(polys);
 
@@ -557,7 +549,8 @@ pub mod coordinator {
                         || prev_state == &State::DkgEndGather
                 }
                 State::DkgPublicGather => {
-                    prev_state == &State::DkgPublicDistribute || prev_state == &State::DkgPublicGather
+                    prev_state == &State::DkgPublicDistribute
+                        || prev_state == &State::DkgPublicGather
                 }
                 State::DkgPrivateDistribute => prev_state == &State::DkgPublicGather,
                 State::DkgEndGather => prev_state == &State::DkgPrivateDistribute,
