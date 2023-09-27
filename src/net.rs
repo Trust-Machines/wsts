@@ -271,7 +271,10 @@ impl Signable for SignatureShareResponse {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+/// Network packets need to be signed so they can be verified
 pub struct Packet {
+    /// The message to sign
     pub msg: Message,
+    /// The bytes of the signature
     pub sig: Vec<u8>,
 }

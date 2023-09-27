@@ -19,6 +19,7 @@ pub enum OperationResult {
     Sign(Signature, SchnorrProof),
 }
 
+/// State machine for a simple FROST coordinator
 pub mod coordinator {
     use hashbrown::HashSet;
     use p256k1::{point::Point, scalar::Scalar};
@@ -155,6 +156,7 @@ pub mod coordinator {
     }
 
     impl Coordinator {
+        /// Process the message inside the passed packet
         pub fn process_message(
             &mut self,
             packet: &Packet,
@@ -313,21 +315,13 @@ pub mod coordinator {
             if self.ids_to_await.is_empty() {
                 // Calculate the aggregate public key
                 let key = self
-                    .dkg_public_shares
+                    .party_polynomials
                     .iter()
-                    .fold(Point::default(), |s, (_, dps)| s + dps.public_share.A[0]);
-                // check to see if aggregate public key has even y
-                if key.has_even_y() {
-                    info!("Aggregate public key has even y coord!");
-                    info!("Aggregate public key: {}", key);
-                    self.aggregate_public_key = key;
-                    self.move_to(State::DkgPrivateDistribute)?;
-                } else {
-                    warn!("DKG Round #{} Failed: Aggregate public key does not have even y coord, re-running dkg.", self.current_dkg_id);
-                    // TODO: SigningRound seems to break if we inc dkg_public_id
-                    // self.current_dkg_public_id = self.current_dkg_public_id.wrapping_add(1);
-                    self.move_to(State::DkgPublicDistribute)?;
-                }
+                    .fold(Point::default(), |s, (_, comm)| s + comm.poly[0]);
+
+                info!("Aggregate public key: {}", key);
+                self.aggregate_public_key = key;
+                self.move_to(State::DkgPrivateDistribute)?;
                 self.ids_to_await = (0..self.total_signers).collect();
             }
             Ok(())
@@ -464,9 +458,9 @@ pub mod coordinator {
             if self.ids_to_await.is_empty() {
                 // Calculate the aggregate signature
                 let polys: Vec<PolyCommitment> = self
-                    .dkg_public_shares
+                    .party_polynomials
                     .values()
-                    .map(|ps| ps.public_share.clone())
+                    .map(|pp| pp.clone())
                     .collect();
 
                 let nonce_responses = (0..self.total_signers)
@@ -493,13 +487,13 @@ pub mod coordinator {
 
                 let mut aggregator = v1::Aggregator::new(self.total_keys, self.threshold);
 
-                aggregator.init(polys);
+                aggregator.init(polys)?;
 
-                let sig = aggregator.sign(&self.message, &nonces, shares)?;
+                let sig = aggregator.sign(&self.message, &nonces, shares, &[])?; // XXX need key_ids for v2
 
                 info!("Signature ({}, {})", sig.R, sig.z);
 
-                let proof = SchnorrProof::new(&sig)?;
+                let proof = SchnorrProof::new(&sig);
 
                 info!("SchnorrProof ({}, {})", proof.r, proof.s);
 
