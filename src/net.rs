@@ -51,10 +51,12 @@ pub enum DkgStatus {
 #[derive(Clone, Serialize, Deserialize, Debug)]
 /// Encapsulation of all possible network message types
 pub enum Message {
-    /// Tell signers to begin DKG
+    /// Tell signers to begin DKG by sending DKG public shares
     DkgBegin(DkgBegin),
     /// Send DKG public shares
     DkgPublicShares(DkgPublicShares),
+    /// Tell signers to send DKG private shares
+    DkgPrivateBegin(DkgBegin),
     /// Send DKG private shares
     DkgPrivateShares(DkgPrivateShares),
     /// Tell coordinator that DKG is complete
@@ -64,7 +66,7 @@ pub enum Message {
     /// Tell coordinator signing nonces
     NonceResponse(NonceResponse),
     /// Tell signers to construct signature shares
-    SigmatureShareRequest(SignatureShareRequest),
+    SignatureShareRequest(SignatureShareRequest),
     /// Tell coordinator signature shares
     SignatureShareResponse(SignatureShareResponse),
 }
@@ -266,4 +268,10 @@ impl Signable for SignatureShareResponse {
             hasher.update(signature_share.z_i.to_bytes());
         }
     }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Packet {
+    pub msg: Message,
+    pub sig: Vec<u8>,
 }

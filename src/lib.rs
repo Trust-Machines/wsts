@@ -11,6 +11,8 @@ pub mod errors;
 pub mod net;
 /// Schnorr utility types
 pub mod schnorr;
+/// State machines
+pub mod state_machine;
 /// Functions for doing BIP-340 schnorr proofs and other taproot actions
 pub mod taproot;
 /// Traits which are used for v1 and v2
