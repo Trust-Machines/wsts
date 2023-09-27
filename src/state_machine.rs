@@ -288,30 +288,28 @@ pub mod coordinator {
         }
 
         fn gather_public_shares(&mut self, packet: &Packet) -> Result<(), Error> {
-            match &packet.msg {
-                Message::DkgPublicShares(dkg_public_shares) => {
-                    if dkg_public_shares.dkg_id != self.current_dkg_id {
-                        return Err(Error::BadDkgId(
-                            dkg_public_shares.dkg_id,
-                            self.current_dkg_id,
-                        ));
-                    }
-
-                    self.ids_to_await.remove(&dkg_public_shares.signer_id);
-
-                    self.dkg_public_shares
-                        .insert(dkg_public_shares.signer_id, dkg_public_shares.clone());
-                    for (party_id, comm) in &dkg_public_shares.comms {
-                        self.party_polynomials.insert(*party_id, comm.clone());
-                    }
-
-                    info!(
-                        "DKG round #{} DkgPublicShares from signer #{}",
-                        dkg_public_shares.dkg_id, dkg_public_shares.signer_id
-                    );
+            if let Message::DkgPublicShares(dkg_public_shares) = &packet.msg {
+                if dkg_public_shares.dkg_id != self.current_dkg_id {
+                    return Err(Error::BadDkgId(
+                        dkg_public_shares.dkg_id,
+                        self.current_dkg_id,
+                    ));
                 }
-                _ => {}
+
+                self.ids_to_await.remove(&dkg_public_shares.signer_id);
+
+                self.dkg_public_shares
+                    .insert(dkg_public_shares.signer_id, dkg_public_shares.clone());
+                for (party_id, comm) in &dkg_public_shares.comms {
+                    self.party_polynomials.insert(*party_id, comm.clone());
+                }
+
+                info!(
+                    "DKG round #{} DkgPublicShares from signer #{}",
+                    dkg_public_shares.dkg_id, dkg_public_shares.signer_id
+                );
             }
+
             if self.ids_to_await.is_empty() {
                 // Calculate the aggregate public key
                 let key = self
