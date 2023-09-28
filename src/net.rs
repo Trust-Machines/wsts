@@ -92,7 +92,7 @@ pub struct DkgPublicShares {
     pub dkg_id: u64,
     /// Signer ID
     pub signer_id: u32,
-    /// (party_id, commitment)
+    /// List of (party_id, commitment)
     pub comms: Vec<(u32, PolyCommitment)>,
 }
 
@@ -117,7 +117,7 @@ pub struct DkgPrivateShares {
     pub dkg_id: u64,
     /// Signer ID
     pub signer_id: u32,
-    /// Set of (src_key_id, (dst_key_id, encrypted_share))
+    /// List of (src_key_id, Map(dst_key_id, encrypted_share))
     pub shares: Vec<(u32, HashMap<u32, Vec<u8>>)>,
 }
 
