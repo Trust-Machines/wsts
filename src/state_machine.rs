@@ -48,8 +48,7 @@ pub mod coordinator {
         },
         state_machine::{OperationResult, StateMachine},
         taproot::SchnorrProof,
-        traits::Aggregator,
-        v1,
+        traits::Aggregator as AggregatorTrait,
     };
 
     #[derive(Debug, PartialEq)]
@@ -127,7 +126,7 @@ pub mod coordinator {
     }
 
     /// The coordinator for the FROST algorithm
-    pub struct Coordinator {
+    pub struct Coordinator<Aggregator: AggregatorTrait> {
         /// current DKG round ID
         pub current_dkg_id: u64,
         /// current signing round ID
@@ -156,9 +155,11 @@ pub mod coordinator {
         pub message: Vec<u8>,
         /// current state of the state machine
         pub state: State,
+        /// Aggregator object
+        aggregator: Aggregator,
     }
 
-    impl Coordinator {
+    impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         /// Create a new coordinator
         pub fn new(
             total_signers: u32,
@@ -190,11 +191,10 @@ pub mod coordinator {
                 message_private_key,
                 ids_to_await: (0..total_signers).collect(),
                 state: State::Idle,
+                aggregator: Aggregator::new(total_keys, threshold),
             }
         }
-    }
 
-    impl Coordinator {
         /// Process the message inside the passed packet
         pub fn process_message(
             &mut self,
@@ -552,13 +552,11 @@ pub mod coordinator {
                     shares.len()
                 );
 
-                let mut aggregator = v1::Aggregator::new(self.total_keys, self.threshold);
-
-                aggregator.init(polys)?;
+                self.aggregator.init(polys)?;
 
                 // XXX need key_ids for v2
                 if is_taproot {
-                    self.schnorr_proof = aggregator.sign_taproot(
+                    self.schnorr_proof = self.aggregator.sign_taproot(
                         &self.message,
                         &nonces,
                         shares,
@@ -570,7 +568,7 @@ pub mod coordinator {
                         self.schnorr_proof.r, self.schnorr_proof.s
                     );
                 } else {
-                    self.signature = aggregator.sign(&self.message, &nonces, shares, &[])?;
+                    self.signature = self.aggregator.sign(&self.message, &nonces, shares, &[])?;
                     info!("Signature ({}, {})", self.signature.R, self.signature.z);
                 }
 
@@ -598,7 +596,7 @@ pub mod coordinator {
         }
     }
 
-    impl StateMachine<State, Error> for Coordinator {
+    impl<Aggregator: AggregatorTrait> StateMachine<State, Error> for Coordinator<Aggregator> {
         fn move_to(&mut self, state: State) -> Result<(), Error> {
             self.can_move_to(&state)?;
             self.state = state;
@@ -647,7 +645,7 @@ pub mod coordinator {
         }
     }
 
-    impl Coordinatable for Coordinator {
+    impl<Aggregator: AggregatorTrait> Coordinatable for Coordinator<Aggregator> {
         /// Process inbound messages
         fn process_inbound_messages(
             &mut self,
@@ -720,7 +718,6 @@ pub mod signer {
         state_machine::{PublicKeys, StateMachine},
         traits::Signer as SignerTrait,
         util::{decrypt, encrypt, make_shared_secret},
-        v1,
     };
 
     #[derive(Debug, PartialEq)]
@@ -766,7 +763,7 @@ pub mod signer {
     }
 
     /// A state machine for a signing round
-    pub struct SigningRound {
+    pub struct SigningRound<Signer: SignerTrait> {
         /// current DKG round ID
         pub dkg_id: u64,
         /// current signing round ID
@@ -780,7 +777,7 @@ pub mod signer {
         /// the total number of keys
         pub total_keys: u32,
         /// the Signer object
-        pub signer: v1::Signer,
+        pub signer: Signer,
         /// the Signer ID
         pub signer_id: u32,
         /// the current state
@@ -797,7 +794,7 @@ pub mod signer {
         pub public_keys: PublicKeys,
     }
 
-    impl SigningRound {
+    impl<Signer: SignerTrait> SigningRound<Signer> {
         /// create a SigningRound
         pub fn new(
             threshold: u32,
@@ -807,10 +804,17 @@ pub mod signer {
             key_ids: Vec<u32>,
             network_private_key: Scalar,
             public_keys: PublicKeys,
-        ) -> SigningRound {
+        ) -> Self {
             assert!(threshold <= total_keys);
             let mut rng = OsRng;
-            let signer = v1::Signer::new(signer_id, &key_ids, total_keys, threshold, &mut rng);
+            let signer = Signer::new(
+                signer_id,
+                &key_ids,
+                total_signers,
+                total_keys,
+                threshold,
+                &mut rng,
+            );
 
             SigningRound {
                 dkg_id: 0,
@@ -1131,7 +1135,7 @@ pub mod signer {
             self.reset(dkg_begin.dkg_id, &mut rng);
             self.move_to(State::DkgPublicDistribute)?;
 
-            let _party_state = self.signer.save();
+            //let _party_state = self.signer.save();
 
             self.dkg_public_begin()
         }
@@ -1245,7 +1249,7 @@ pub mod signer {
         }
     }
 
-    impl StateMachine<State, Error> for SigningRound {
+    impl<Signer: SignerTrait> StateMachine<State, Error> for SigningRound<Signer> {
         fn move_to(&mut self, state: State) -> Result<(), Error> {
             self.can_move_to(&state)?;
             self.state = state;
@@ -1296,6 +1300,7 @@ mod test {
             signer::{SigningRound, State as SignerState},
             OperationResult, PublicKeys, StateMachine,
         },
+        v1,
     };
 
     #[test]
@@ -1303,7 +1308,7 @@ mod test {
         let mut rng = OsRng;
         let message_private_key = Scalar::random(&mut rng);
 
-        let mut coordinator = Coordinator::new(3, 3, 3, message_private_key);
+        let mut coordinator = Coordinator::<v1::Aggregator>::new(3, 3, 3, message_private_key);
         assert!(coordinator
             .can_move_to(&CoordinatorState::DkgPublicDistribute)
             .is_ok());
@@ -1383,8 +1388,12 @@ mod test {
         let mut rng = OsRng;
         let message_private_key = Scalar::random(&mut rng);
 
-        let coordinator =
-            Coordinator::new(total_signers, total_keys, threshold, message_private_key);
+        let coordinator = Coordinator::<v1::Aggregator>::new(
+            total_signers,
+            total_keys,
+            threshold,
+            message_private_key,
+        );
 
         assert_eq!(coordinator.total_signers, total_signers);
         assert_eq!(coordinator.total_keys, total_keys);
@@ -1401,8 +1410,12 @@ mod test {
         let threshold = 28;
         let mut rng = OsRng;
         let message_private_key = Scalar::random(&mut rng);
-        let mut coordinator =
-            Coordinator::new(total_signers, total_keys, threshold, message_private_key);
+        let mut coordinator = Coordinator::<v1::Aggregator>::new(
+            total_signers,
+            total_keys,
+            threshold,
+            message_private_key,
+        );
 
         let result = coordinator.start_dkg_round();
 
@@ -1419,8 +1432,12 @@ mod test {
         let threshold = 28;
         let mut rng = OsRng;
         let message_private_key = Scalar::random(&mut rng);
-        let mut coordinator =
-            Coordinator::new(total_signers, total_keys, threshold, message_private_key);
+        let mut coordinator = Coordinator::<v1::Aggregator>::new(
+            total_signers,
+            total_keys,
+            threshold,
+            message_private_key,
+        );
         coordinator.state = CoordinatorState::DkgPublicDistribute; // Must be in this state before calling start public shares
 
         let result = coordinator.start_public_shares().unwrap();
@@ -1437,8 +1454,12 @@ mod test {
         let threshold = 28;
         let mut rng = OsRng;
         let message_private_key = Scalar::random(&mut rng);
-        let mut coordinator =
-            Coordinator::new(total_signers, total_keys, threshold, message_private_key);
+        let mut coordinator = Coordinator::<v1::Aggregator>::new(
+            total_signers,
+            total_keys,
+            threshold,
+            message_private_key,
+        );
         coordinator.state = CoordinatorState::DkgPrivateDistribute; // Must be in this state before calling start private shares
 
         let message = coordinator.start_private_shares().unwrap();
@@ -1447,7 +1468,7 @@ mod test {
         assert_eq!(coordinator.current_dkg_id, 0);
     }
 
-    fn setup() -> (Coordinator, Vec<SigningRound>) {
+    fn setup() -> (Coordinator<v1::Aggregator>, Vec<SigningRound<v1::Signer>>) {
         let mut rng = OsRng;
         let total_signers = 5;
         let threshold = total_signers / 10 + 7;
@@ -1481,7 +1502,7 @@ mod test {
             .iter()
             .enumerate()
             .map(|(signer_id, (private_key, _public_key))| {
-                SigningRound::new(
+                SigningRound::<v1::Signer>::new(
                     threshold,
                     total_signers,
                     total_keys,
@@ -1491,7 +1512,7 @@ mod test {
                     public_keys.clone(),
                 )
             })
-            .collect::<Vec<SigningRound>>();
+            .collect::<Vec<SigningRound<v1::Signer>>>();
 
         let coordinator = Coordinator::new(total_signers, total_keys, threshold, key_pairs[0].0);
         (coordinator, signing_rounds)
@@ -1499,8 +1520,8 @@ mod test {
 
     /// Helper function for feeding messages back from the processor into the signing rounds and coordinator
     fn feedback_messages(
-        coordinator: &mut Coordinator,
-        signing_rounds: &mut Vec<SigningRound>,
+        coordinator: &mut Coordinator<v1::Aggregator>,
+        signing_rounds: &mut Vec<SigningRound<v1::Signer>>,
         messages: Vec<Packet>,
     ) -> (Vec<Packet>, Vec<OperationResult>) {
         let mut inbound_messages = vec![];
@@ -1573,8 +1594,15 @@ mod test {
     #[test]
     fn dkg_public_share() {
         let mut rnd = get_rng();
-        let mut signing_round =
-            SigningRound::new(1, 1, 1, 1, vec![1], Default::default(), Default::default());
+        let mut signing_round = SigningRound::<v1::Signer>::new(
+            1,
+            1,
+            1,
+            1,
+            vec![1],
+            Default::default(),
+            Default::default(),
+        );
         let public_share = DkgPublicShares {
             dkg_id: 0,
             signer_id: 0,
@@ -1592,8 +1620,15 @@ mod test {
 
     #[test]
     fn dkg_private_shares() {
-        let mut signing_round =
-            SigningRound::new(1, 1, 1, 1, vec![1], Default::default(), Default::default());
+        let mut signing_round = SigningRound::<v1::Signer>::new(
+            1,
+            1,
+            1,
+            1,
+            vec![1],
+            Default::default(),
+            Default::default(),
+        );
         let mut private_shares = DkgPrivateShares {
             dkg_id: 0,
             signer_id: 0,
@@ -1609,8 +1644,15 @@ mod test {
     #[test]
     fn public_shares_done() {
         let mut rnd = get_rng();
-        let mut signing_round =
-            SigningRound::new(1, 1, 1, 1, vec![1], Default::default(), Default::default());
+        let mut signing_round = SigningRound::<v1::Signer>::new(
+            1,
+            1,
+            1,
+            1,
+            vec![1],
+            Default::default(),
+            Default::default(),
+        );
         // publich_shares_done starts out as false
         assert_eq!(false, signing_round.public_shares_done());
 
@@ -1631,8 +1673,15 @@ mod test {
     #[test]
     fn can_dkg_end() {
         let mut rnd = get_rng();
-        let mut signing_round =
-            SigningRound::new(1, 1, 1, 1, vec![1], Default::default(), Default::default());
+        let mut signing_round = SigningRound::<v1::Signer>::new(
+            1,
+            1,
+            1,
+            1,
+            vec![1],
+            Default::default(),
+            Default::default(),
+        );
         // can_dkg_end starts out as false
         assert_eq!(false, signing_round.can_dkg_end());
 
@@ -1654,8 +1703,15 @@ mod test {
 
     #[test]
     fn dkg_ended() {
-        let mut signing_round =
-            SigningRound::new(1, 1, 1, 1, vec![1], Default::default(), Default::default());
+        let mut signing_round = SigningRound::<v1::Signer>::new(
+            1,
+            1,
+            1,
+            1,
+            vec![1],
+            Default::default(),
+            Default::default(),
+        );
         match signing_round.dkg_ended() {
             Ok(dkg_end) => match dkg_end {
                 Message::DkgEnd(dkg_end) => match dkg_end.status {
