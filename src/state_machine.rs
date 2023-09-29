@@ -539,6 +539,11 @@ pub mod coordinator {
                     .flat_map(|nr| nr.nonces.clone())
                     .collect::<Vec<PublicNonce>>();
 
+                let key_ids = nonce_responses
+                    .iter()
+                    .flat_map(|nr| nr.key_ids.clone())
+                    .collect::<Vec<u32>>();
+
                 let shares = &self
                     .public_nonces
                     .iter()
@@ -554,13 +559,12 @@ pub mod coordinator {
 
                 self.aggregator.init(polys)?;
 
-                // XXX need key_ids for v2
                 if is_taproot {
                     self.schnorr_proof = self.aggregator.sign_taproot(
                         &self.message,
                         &nonces,
                         shares,
-                        &[],
+                        &key_ids,
                         merkle_root,
                     )?;
                     info!(
@@ -568,7 +572,9 @@ pub mod coordinator {
                         self.schnorr_proof.r, self.schnorr_proof.s
                     );
                 } else {
-                    self.signature = self.aggregator.sign(&self.message, &nonces, shares, &[])?;
+                    self.signature =
+                        self.aggregator
+                            .sign(&self.message, &nonces, shares, &key_ids)?;
                     info!("Signature ({}, {})", self.signature.R, self.signature.z);
                 }
 
