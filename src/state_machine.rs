@@ -36,7 +36,7 @@ pub mod coordinator {
     use hashbrown::HashSet;
     use p256k1::{point::Point, scalar::Scalar};
     use std::collections::BTreeMap;
-    use tracing::{info, warn};
+    use tracing::info;
 
     use crate::{
         common::{MerkleRoot, PolyCommitment, PublicNonce, Signature, SignatureShare},
