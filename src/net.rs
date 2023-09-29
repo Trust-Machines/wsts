@@ -3,7 +3,7 @@ use p256k1::{ecdsa, scalar::Scalar};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::common::{PolyCommitment, PublicNonce, SignatureShare};
+use crate::common::{MerkleRoot, PolyCommitment, PublicNonce, SignatureShare};
 
 /// Trait to encapsulate sign/verify, users only need to impl hash
 pub trait Signable {
@@ -225,6 +225,10 @@ pub struct SignatureShareRequest {
     pub nonce_responses: Vec<NonceResponse>,
     /// Bytes to sign
     pub message: Vec<u8>,
+    /// Whether to make a taproot signature
+    pub is_taproot: bool,
+    /// Taproot merkle root
+    pub merkle_root: Option<MerkleRoot>,
 }
 
 impl Signable for SignatureShareRequest {
@@ -238,6 +242,11 @@ impl Signable for SignatureShareRequest {
         }
 
         hasher.update(self.message.as_slice());
+
+        hasher.update((self.is_taproot as u16).to_be_bytes());
+        if let Some(merkle_root) = self.merkle_root {
+            hasher.update(merkle_root);
+        }
     }
 }
 

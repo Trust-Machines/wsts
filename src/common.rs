@@ -15,6 +15,9 @@ use serde::{Deserialize, Serialize};
 use crate::compute::challenge;
 use crate::schnorr::ID;
 
+/// A merkle root is a 256 bit hash
+pub type MerkleRoot = [u8; 32];
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 /// A commitment to a polynonial, with a Schnorr proof of ownership bound to the ID
 pub struct PolyCommitment {
