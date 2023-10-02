@@ -26,6 +26,9 @@ pub trait Signer {
     /// Get all key IDs for this signer
     fn get_key_ids(&self) -> Vec<u32>;
 
+    /// Get the total number of parties
+    fn get_num_parties(&self) -> u32;
+
     /// Get all poly commitments for this signer
     fn get_poly_commitments<RNG: RngCore + CryptoRng>(&self, rng: &mut RNG) -> Vec<PolyCommitment>;
 

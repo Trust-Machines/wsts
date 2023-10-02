@@ -395,7 +395,7 @@ pub struct SignerState {
     /// The associated ID
     id: u32,
     /// The total number of keys
-    n: u32,
+    num_keys: u32,
     /// The aggregate group public key
     group_key: Point,
     /// The set of states for the parties which this object encapsulates, indexed by their party/key IDs
@@ -408,7 +408,7 @@ pub struct Signer {
     /// The associated signer ID
     id: u32,
     /// The total number of keys
-    n: u32,
+    num_keys: u32,
     /// The aggregate group public key
     group_key: Point,
     /// The parties which this object encapsulates
@@ -420,17 +420,17 @@ impl Signer {
     pub fn new<RNG: RngCore + CryptoRng>(
         id: u32,
         key_ids: &[u32],
-        n: u32,
-        t: u32,
+        num_keys: u32,
+        threshold: u32,
         rng: &mut RNG,
     ) -> Self {
         let parties = key_ids
             .iter()
-            .map(|id| Party::new(*id, n, t, rng))
+            .map(|id| Party::new(*id, num_keys, threshold, rng))
             .collect();
         Signer {
             id,
-            n,
+            num_keys,
             group_key: Point::zero(),
             parties,
         }
@@ -441,12 +441,12 @@ impl Signer {
         let parties = state
             .parties
             .iter()
-            .map(|(id, ps)| Party::load(*id, state.n, &state.group_key, ps))
+            .map(|(id, ps)| Party::load(*id, state.num_keys, &state.group_key, ps))
             .collect();
 
         Self {
             id: state.id,
-            n: state.n,
+            num_keys: state.num_keys,
             group_key: state.group_key,
             parties,
         }
@@ -462,7 +462,7 @@ impl Signer {
 
         SignerState {
             id: self.id,
-            n: self.n,
+            num_keys: self.num_keys,
             group_key: self.group_key,
             parties,
         }
@@ -487,6 +487,10 @@ impl traits::Signer for Signer {
 
     fn get_key_ids(&self) -> Vec<u32> {
         self.parties.iter().map(|p| p.id).collect()
+    }
+
+    fn get_num_parties(&self) -> u32 {
+        self.num_keys
     }
 
     fn get_poly_commitments<RNG: RngCore + CryptoRng>(&self, rng: &mut RNG) -> Vec<PolyCommitment> {

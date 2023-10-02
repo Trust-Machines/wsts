@@ -435,6 +435,10 @@ impl traits::Signer for Party {
         self.key_ids.clone()
     }
 
+    fn get_num_parties(&self) -> u32 {
+        self.num_parties
+    }
+
     fn get_poly_commitments<RNG: RngCore + CryptoRng>(&self, rng: &mut RNG) -> Vec<PolyCommitment> {
         vec![self.get_poly_commitment(rng)]
     }
