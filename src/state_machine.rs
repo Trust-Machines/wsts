@@ -1294,8 +1294,8 @@ mod test {
     use hashbrown::HashMap;
     use p256k1::{ecdsa, point::Point, scalar::Scalar};
     use rand_core::{CryptoRng, OsRng, RngCore};
+    use std::sync::atomic::{AtomicBool, Ordering};
 
-    //use crate::runloop::process_inbound_messages;
     use crate::{
         common::PolyCommitment,
         net::{DkgPublicShares, DkgStatus, Message, Packet},
@@ -1308,6 +1308,8 @@ mod test {
         traits::{Aggregator as AggregatorTrait, Signer as SignerTrait},
         v1, v2,
     };
+
+    static mut LOG_INIT: AtomicBool = AtomicBool::new(false);
 
     #[test]
     fn test_coordinator_state_machine_v1() {
@@ -1521,10 +1523,15 @@ mod test {
 
     fn setup<Aggregator: AggregatorTrait, Signer: SignerTrait>(
     ) -> (Coordinator<Aggregator>, Vec<SigningRound<Signer>>) {
-        tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::INFO)
-            .with_target(true)
-            .init();
+        unsafe {
+            match LOG_INIT.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst) {
+                Ok(true) => tracing_subscriber::fmt()
+                    .with_max_level(tracing::Level::INFO)
+                    .with_target(true)
+                    .init(),
+                _ => {}
+            }
+        }
 
         let mut rng = OsRng;
         let total_signers = 5;
