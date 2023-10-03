@@ -1295,6 +1295,7 @@ mod test {
     use p256k1::{ecdsa, point::Point, scalar::Scalar};
     use rand_core::{CryptoRng, OsRng, RngCore};
     use std::sync::atomic::{AtomicBool, Ordering};
+    use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
     use crate::{
         common::PolyCommitment,
@@ -1525,9 +1526,9 @@ mod test {
     ) -> (Coordinator<Aggregator>, Vec<SigningRound<Signer>>) {
         unsafe {
             match LOG_INIT.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst) {
-                Ok(false) => tracing_subscriber::fmt()
-                    .with_max_level(tracing::Level::WARN)
-                    .with_target(true)
+                Ok(false) => tracing_subscriber::registry()
+                    .with(fmt::layer())
+                    .with(EnvFilter::from_default_env())
                     .init(),
                 _ => {}
             }
