@@ -13,6 +13,7 @@ categories = ["cryptography"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+aes-gcm = "0.10"
 bs58 = "0.5"
 hashbrown = { version = "0.14", features = ["serde"] }
 hex = "0.4.3"
@@ -24,6 +25,7 @@ p256k1 = "5.4"
 serde = { version = "1.0", features = ["derive"] }
 sha2 = "0.10"
 thiserror = "1.0"
+tracing = "0.1.37"
 
 [dev-dependencies]
 criterion = "0.5.1"

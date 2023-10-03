@@ -3,7 +3,7 @@ use p256k1::{point::Point, scalar::Scalar};
 use rand_core::{CryptoRng, RngCore};
 
 use crate::{
-    common::{PolyCommitment, PublicNonce, Signature, SignatureShare},
+    common::{MerkleRoot, PolyCommitment, PublicNonce, Signature, SignatureShare},
     errors::{AggregatorError, DkgError},
     taproot::SchnorrProof,
 };
@@ -25,6 +25,9 @@ pub trait Signer {
 
     /// Get all key IDs for this signer
     fn get_key_ids(&self) -> Vec<u32>;
+
+    /// Get the total number of parties
+    fn get_num_parties(&self) -> u32;
 
     /// Get all poly commitments for this signer
     fn get_poly_commitments<RNG: RngCore + CryptoRng>(&self, rng: &mut RNG) -> Vec<PolyCommitment>;
@@ -69,7 +72,7 @@ pub trait Signer {
         signer_ids: &[u32],
         key_ids: &[u32],
         nonces: &[PublicNonce],
-        merkle_root: Option<[u8; 32]>,
+        merkle_root: Option<MerkleRoot>,
     ) -> Vec<SignatureShare>;
 }
 
@@ -97,6 +100,6 @@ pub trait Aggregator {
         nonces: &[PublicNonce],
         sig_shares: &[SignatureShare],
         key_ids: &[u32],
-        merkle_root: Option<[u8; 32]>,
+        merkle_root: Option<MerkleRoot>,
     ) -> Result<SchnorrProof, AggregatorError>;
 }

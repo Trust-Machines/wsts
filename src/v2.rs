@@ -168,7 +168,8 @@ impl Party {
 
         let mut not_enough_shares = Vec::new();
         for key_id in &self.key_ids {
-            if shares[key_id].len() != self.num_parties.try_into().unwrap() {
+            let num_parties: usize = self.num_parties.try_into().unwrap();
+            if shares[key_id].len() != num_parties {
                 not_enough_shares.push(*key_id);
             }
         }
@@ -432,6 +433,10 @@ impl traits::Signer for Party {
 
     fn get_key_ids(&self) -> Vec<u32> {
         self.key_ids.clone()
+    }
+
+    fn get_num_parties(&self) -> u32 {
+        self.num_parties
     }
 
     fn get_poly_commitments<RNG: RngCore + CryptoRng>(&self, rng: &mut RNG) -> Vec<PolyCommitment> {
