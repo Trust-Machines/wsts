@@ -282,7 +282,7 @@ pub mod coordinator {
         /// Start a DKG round
         pub fn start_dkg_round(&mut self) -> Result<Packet, Error> {
             self.current_dkg_id = self.current_dkg_id.wrapping_add(1);
-            info!("Starting DKG round #{}", self.current_dkg_id);
+            info!("Starting DKG round {}", self.current_dkg_id);
             self.move_to(State::DkgPublicDistribute)?;
             self.start_public_shares()
         }
@@ -294,7 +294,7 @@ pub mod coordinator {
             merkle_root: Option<MerkleRoot>,
         ) -> Result<Packet, Error> {
             self.current_sign_id = self.current_sign_id.wrapping_add(1);
-            info!("Starting signing round #{}", self.current_sign_id);
+            info!("Starting signing round {}", self.current_sign_id);
             self.move_to(State::NonceRequest(is_taproot, merkle_root))?;
             self.request_nonces(is_taproot, merkle_root)
         }
@@ -304,7 +304,7 @@ pub mod coordinator {
             self.dkg_public_shares.clear();
             self.party_polynomials.clear();
             info!(
-                "DKG Round #{}: Starting Public Share Distribution",
+                "DKG Round {}: Starting Public Share Distribution",
                 self.current_dkg_id,
             );
             let dkg_begin = DkgBegin {
@@ -322,7 +322,7 @@ pub mod coordinator {
         /// Ask signers to send DKG private shares
         pub fn start_private_shares(&mut self) -> Result<Packet, Error> {
             info!(
-                "DKG Round #{}: Starting Private Share Distribution",
+                "DKG Round {}: Starting Private Share Distribution",
                 self.current_dkg_id
             );
             let dkg_begin = DkgBegin {
@@ -354,7 +354,7 @@ pub mod coordinator {
                 }
 
                 debug!(
-                    "DKG round #{} DkgPublicShares from signer #{}",
+                    "DKG round {} DkgPublicShares from signer {}",
                     dkg_public_shares.dkg_id, dkg_public_shares.signer_id
                 );
             }
@@ -376,7 +376,7 @@ pub mod coordinator {
 
         fn gather_dkg_end(&mut self, packet: &Packet) -> Result<(), Error> {
             debug!(
-                "DKG Round #{}: waiting for Dkg End from signers {:?}",
+                "DKG Round {}: waiting for Dkg End from signers {:?}",
                 self.current_dkg_id, self.ids_to_await
             );
             if let Message::DkgEnd(dkg_end) = &packet.msg {
@@ -385,7 +385,7 @@ pub mod coordinator {
                 }
                 self.ids_to_await.remove(&dkg_end.signer_id);
                 debug!(
-                    "DKG_End round #{} from signer #{}. Waiting on {:?}",
+                    "DKG_End round {} from signer {}. Waiting on {:?}",
                     dkg_end.dkg_id, dkg_end.signer_id, self.ids_to_await
                 );
             }
@@ -404,7 +404,7 @@ pub mod coordinator {
         ) -> Result<Packet, Error> {
             self.public_nonces.clear();
             info!(
-                "Sign Round #{} Nonce round #{} Requesting Nonces",
+                "Sign Round {} Nonce round {} Requesting Nonces",
                 self.current_sign_id, self.current_sign_iter_id,
             );
             let nonce_request = NonceRequest {
@@ -448,7 +448,7 @@ pub mod coordinator {
                     .insert(nonce_response.signer_id, nonce_response.clone());
                 self.ids_to_await.remove(&nonce_response.signer_id);
                 debug!(
-                    "Sign round #{} nonce round #{} NonceResponse from signer #{}. Waiting on {:?}",
+                    "Sign round {} nonce round {} NonceResponse from signer {}. Waiting on {:?}",
                     nonce_response.sign_id,
                     nonce_response.sign_iter_id,
                     nonce_response.signer_id,
@@ -471,7 +471,7 @@ pub mod coordinator {
         ) -> Result<Packet, Error> {
             self.signature_shares.clear();
             info!(
-                "Sign Round #{} Requesting Signature Shares",
+                "Sign Round {} Requesting Signature Shares",
                 self.current_sign_id,
             );
             let nonce_responses = (0..self.total_signers)
@@ -521,7 +521,7 @@ pub mod coordinator {
                 );
                 self.ids_to_await.remove(&sig_share_response.signer_id);
                 debug!(
-                    "Sign round #{} SignatureShareResponse from signer #{}. Waiting on {:?}",
+                    "Sign round {} SignatureShareResponse from signer {}. Waiting on {:?}",
                     sig_share_response.sign_id, sig_share_response.signer_id, self.ids_to_await
                 );
             }
@@ -975,11 +975,12 @@ pub mod signer {
                 }
             };
 
-            let dkg_end = Message::DkgEnd(dkg_end);
-            debug!(
-                "DKG_END round #{} signer_id {}",
-                self.dkg_id, self.signer_id
+            info!(
+                "Signer {} sending DkgEnd round {} status {:?}",
+                self.signer_id, self.dkg_id, dkg_end.status,
             );
+
+            let dkg_end = Message::DkgEnd(dkg_end);
             Ok(dkg_end)
         }
 
@@ -1026,9 +1027,9 @@ pub mod signer {
 
             let response = Message::NonceResponse(response);
 
-            debug!(
-                "nonce request with dkg_id {:?}. response sent from signer_id {}",
-                nonce_request.dkg_id, signer_id
+            info!(
+                "Signer {} sending NonceResponse for DKG round {} sign round {} sign iteration {}",
+                signer_id, nonce_request.dkg_id, nonce_request.sign_id, nonce_request.sign_iter_id,
             );
             msgs.push(response);
 
@@ -1082,9 +1083,9 @@ pub mod signer {
                         signature_shares,
                     };
 
-                    debug!(
-                        "Sending SignatureShareResponse for signer_id {:?}",
-                        signer_id
+                    info!(
+                        "Signer {} sending SignatureShareResponse for DKG round {} sign round {} sign iteration {}",
+                        signer_id, self.dkg_id, self.sign_id, self.sign_iter_id,
                     );
 
                     let response = Message::SignatureShareResponse(response);
@@ -1113,11 +1114,10 @@ pub mod signer {
             let mut msgs = vec![];
             let comms = self.signer.get_poly_commitments(&mut rng);
 
-            debug!(
-                "sending DkgPublicSharess for round #{}, {} poly commitments for signer #{}",
-                self.dkg_id,
-                comms.len(),
+            info!(
+                "Signer {} sending DkgPublicShares for round {}",
                 self.signer.get_id(),
+                self.dkg_id,
             );
 
             let mut public_share = DkgPublicShares {
@@ -1147,20 +1147,27 @@ pub mod signer {
                 signer_id: self.signer_id,
                 shares: Vec::new(),
             };
-            debug!("shares {:?}", &self.signer.get_shares());
+            info!(
+                "Signer {} sending DkgPrivateShares for round {}",
+                self.signer.get_id(),
+                self.dkg_id,
+            );
+
+            debug!(
+                "Signer {} shares {:?}",
+                self.signer_id,
+                &self.signer.get_shares()
+            );
             for (key_id, shares) in &self.signer.get_shares() {
                 debug!(
-                    "signer {} addding dkg private share for key_id #{}",
+                    "Signer {} addding dkg private share for key_id {}",
                     self.signer_id, key_id
                 );
                 // encrypt each share for the recipient
                 let mut encrypted_shares = HashMap::new();
 
                 for (dst_key_id, private_share) in shares {
-                    debug!(
-                        "encrypting dkg private share for key_id #{}",
-                        dst_key_id + 1
-                    );
+                    debug!("encrypting dkg private share for key_id {}", dst_key_id + 1);
                     let compressed =
                         Compressed::from(self.public_keys.key_ids[&(dst_key_id + 1)].to_bytes());
                     let dst_public_key = Point::try_from(&compressed).unwrap();
@@ -1191,7 +1198,7 @@ pub mod signer {
                 self.commitments.insert(*party_id, comm.clone());
             }
             debug!(
-                "received DkgPublicShares from signer #{} {}/{}",
+                "received DkgPublicShares from signer {} {}/{}",
                 dkg_public_shares.signer_id,
                 self.commitments.len(),
                 self.signer.get_num_parties(),
@@ -1238,7 +1245,7 @@ pub mod signer {
                 self.decrypted_shares.insert(*src_id, decrypted_shares);
             }
             debug!(
-                "received DkgPrivateShares from signer #{} {}/{}",
+                "received DkgPrivateShares from signer {} {}/{}",
                 dkg_private_shares.signer_id,
                 self.decrypted_shares.len(),
                 self.signer.get_num_parties(),
