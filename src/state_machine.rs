@@ -1525,8 +1525,8 @@ mod test {
     ) -> (Coordinator<Aggregator>, Vec<SigningRound<Signer>>) {
         unsafe {
             match LOG_INIT.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst) {
-                Ok(true) => tracing_subscriber::fmt()
-                    .with_max_level(tracing::Level::INFO)
+                Ok(false) => tracing_subscriber::fmt()
+                    .with_max_level(tracing::Level::WARN)
                     .with_target(true)
                     .init(),
                 _ => {}
