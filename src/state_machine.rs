@@ -94,6 +94,15 @@ pub mod coordinator {
         /// Schnorr proof failed to verify
         #[error("Schnorr Proof failed to verify")]
         SchnorrProofFailed,
+        /// No aggregate public key set
+        #[error("No aggregate public key set")]
+        MissingAggregatePublicKey,
+        /// No schnorr proof set
+        #[error("No schnorr proof set")]
+        MissingSchnorrProof,
+        /// No signature set
+        #[error("No signature set")]
+        MissingSignature,
     }
 
     impl From<AggregatorError> for Error {
@@ -110,7 +119,9 @@ pub mod coordinator {
             packets: Vec<Packet>,
         ) -> Result<(Vec<Packet>, Vec<OperationResult>), Error>;
         /// Retrieve the aggregate public key
-        fn get_aggregate_public_key(&self) -> Point;
+        fn get_aggregate_public_key(&self) -> Option<Point>;
+        /// Set the aggregate public key
+        fn set_aggregate_public_key(&mut self, aggregate_public_key: Option<Point>);
         /// Trigger a DKG round
         fn start_distributed_key_generation(&mut self) -> Result<Packet, Error>;
         /// Trigger a signing round
@@ -143,9 +154,9 @@ pub mod coordinator {
         public_nonces: BTreeMap<u32, NonceResponse>,
         signature_shares: BTreeMap<u32, Vec<SignatureShare>>,
         /// aggregate public key
-        pub aggregate_public_key: Point,
-        signature: Signature,
-        schnorr_proof: SchnorrProof,
+        pub aggregate_public_key: Option<Point>,
+        signature: Option<Signature>,
+        schnorr_proof: Option<SchnorrProof>,
         /// key used to sign packet messages
         pub message_private_key: Scalar,
         /// which signers we're currently waiting on
@@ -177,15 +188,9 @@ pub mod coordinator {
                 party_polynomials: Default::default(),
                 public_nonces: Default::default(),
                 signature_shares: Default::default(),
-                aggregate_public_key: Point::default(),
-                signature: Signature {
-                    R: Default::default(),
-                    z: Default::default(),
-                },
-                schnorr_proof: SchnorrProof {
-                    r: Default::default(),
-                    s: Default::default(),
-                },
+                aggregate_public_key: None,
+                signature: None,
+                schnorr_proof: None,
                 message: Default::default(),
                 message_private_key,
                 ids_to_await: (0..total_signers).collect(),
@@ -230,7 +235,10 @@ pub mod coordinator {
                             // We are done with the DKG round! Return the operation result
                             return Ok((
                                 None,
-                                Some(OperationResult::Dkg(self.aggregate_public_key)),
+                                Some(OperationResult::Dkg(
+                                    self.aggregate_public_key
+                                        .ok_or(Error::MissingAggregatePublicKey)?,
+                                )),
                             ));
                         }
                     }
@@ -257,19 +265,25 @@ pub mod coordinator {
                         } else if self.state == State::Idle {
                             // We are done with the DKG round! Return the operation result
                             if is_taproot {
+                                let schnorr_proof = self
+                                    .schnorr_proof
+                                    .as_ref()
+                                    .ok_or(Error::MissingSchnorrProof)?;
                                 return Ok((
                                     None,
                                     Some(OperationResult::SignTaproot(SchnorrProof {
-                                        r: self.schnorr_proof.r,
-                                        s: self.schnorr_proof.s,
+                                        r: schnorr_proof.r,
+                                        s: schnorr_proof.s,
                                     })),
                                 ));
                             } else {
+                                let signature =
+                                    self.signature.as_ref().ok_or(Error::MissingSignature)?;
                                 return Ok((
                                     None,
                                     Some(OperationResult::Sign(Signature {
-                                        R: self.signature.R,
-                                        z: self.signature.z,
+                                        R: signature.R,
+                                        z: signature.z,
                                     })),
                                 ));
                             }
@@ -293,6 +307,10 @@ pub mod coordinator {
             is_taproot: bool,
             merkle_root: Option<MerkleRoot>,
         ) -> Result<Packet, Error> {
+            // We cannot sign if we haven't first set DKG (either manually or via DKG round).
+            if self.aggregate_public_key.is_none() {
+                return Err(Error::MissingAggregatePublicKey);
+            }
             self.current_sign_id = self.current_sign_id.wrapping_add(1);
             info!("Starting signing round {}", self.current_sign_id);
             self.move_to(State::NonceRequest(is_taproot, merkle_root))?;
@@ -367,7 +385,7 @@ pub mod coordinator {
                     .fold(Point::default(), |s, (_, comm)| s + comm.poly[0]);
 
                 info!("Aggregate public key: {}", key);
-                self.aggregate_public_key = key;
+                self.aggregate_public_key = Some(key);
                 self.move_to(State::DkgPrivateDistribute)?;
                 self.ids_to_await = (0..self.total_signers).collect();
             }
@@ -559,22 +577,21 @@ pub mod coordinator {
                 self.aggregator.init(polys)?;
 
                 if is_taproot {
-                    self.schnorr_proof = self.aggregator.sign_taproot(
+                    let schnorr_proof = self.aggregator.sign_taproot(
                         &self.message,
                         &nonces,
                         shares,
                         &key_ids,
                         merkle_root,
                     )?;
-                    info!(
-                        "SchnorrProof ({}, {})",
-                        self.schnorr_proof.r, self.schnorr_proof.s
-                    );
+                    info!("SchnorrProof ({}, {})", schnorr_proof.r, schnorr_proof.s);
+                    self.schnorr_proof = Some(schnorr_proof);
                 } else {
-                    self.signature =
+                    let signature =
                         self.aggregator
                             .sign(&self.message, &nonces, shares, &key_ids)?;
-                    info!("Signature ({}, {})", self.signature.R, self.signature.z);
+                    info!("Signature ({}, {})", signature.R, signature.z);
+                    self.signature = Some(signature);
                 }
 
                 self.move_to(State::Idle)?;
@@ -671,8 +688,13 @@ pub mod coordinator {
         }
 
         /// Retrieve the aggregate public key
-        fn get_aggregate_public_key(&self) -> Point {
+        fn get_aggregate_public_key(&self) -> Option<Point> {
             self.aggregate_public_key
+        }
+
+        /// Set the aggregate public key
+        fn set_aggregate_public_key(&mut self, aggregate_public_key: Option<Point>) {
+            self.aggregate_public_key = aggregate_public_key;
         }
 
         /// Trigger a DKG round
@@ -1293,7 +1315,7 @@ pub mod signer {
 mod test {
     use hashbrown::HashMap;
     use p256k1::{ecdsa, point::Point, scalar::Scalar};
-    use rand_core::{CryptoRng, OsRng, RngCore};
+    use rand_core::OsRng;
     use std::sync::atomic::{AtomicBool, Ordering};
     use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
@@ -1525,12 +1547,13 @@ mod test {
     fn setup<Aggregator: AggregatorTrait, Signer: SignerTrait>(
     ) -> (Coordinator<Aggregator>, Vec<SigningRound<Signer>>) {
         unsafe {
-            match LOG_INIT.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst) {
-                Ok(false) => tracing_subscriber::registry()
+            if let Ok(false) =
+                LOG_INIT.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            {
+                tracing_subscriber::registry()
                     .with(fmt::layer())
                     .with(EnvFilter::from_default_env())
-                    .init(),
-                _ => {}
+                    .init()
             }
         }
 
@@ -1627,7 +1650,7 @@ mod test {
 
         // We have started a dkg round
         let message = coordinator.start_dkg_round().unwrap();
-        assert_eq!(coordinator.aggregate_public_key, Point::default());
+        assert!(coordinator.aggregate_public_key.is_none());
         assert_eq!(coordinator.state, CoordinatorState::DkgPublicGather);
 
         // Send the DKG Begin message to all signers and gather responses by sharing with all other signers and coordinator
@@ -1652,13 +1675,11 @@ mod test {
         match operation_results[0] {
             OperationResult::Dkg(point) => {
                 assert_ne!(point, Point::default());
-                assert_eq!(coordinator.aggregate_public_key, point);
+                assert_eq!(coordinator.aggregate_public_key, Some(point));
                 assert_eq!(coordinator.state, CoordinatorState::Idle);
             }
             _ => panic!("Expected Dkg Operation result"),
         }
-
-        assert_ne!(coordinator.aggregate_public_key, Point::default());
 
         // We have started a signing round
         let msg = vec![1, 2, 3];
@@ -1695,18 +1716,17 @@ mod test {
         assert_eq!(operation_results.len(), 1);
         match &operation_results[0] {
             OperationResult::Sign(sig) => {
-                assert!(sig.verify(&coordinator.aggregate_public_key, &msg));
+                assert!(sig.verify(
+                    &coordinator
+                        .aggregate_public_key
+                        .expect("No aggregate public key set!"),
+                    &msg
+                ));
             }
             _ => panic!("Expected Signature Operation result"),
         }
 
         assert_eq!(coordinator.state, CoordinatorState::Idle);
-    }
-
-    fn get_rng() -> impl RngCore + CryptoRng {
-        let rnd = OsRng;
-        //rand::rngs::StdRng::seed_from_u64(rnd.next_u64()) // todo: fix trait `rand_core::RngCore` is not implemented for `StdRng`
-        rnd
     }
 
     #[test]
@@ -1720,7 +1740,7 @@ mod test {
     }
 
     fn dkg_public_share<Signer: SignerTrait>() {
-        let mut rnd = get_rng();
+        let mut rnd = OsRng;
         let mut signing_round = SigningRound::<Signer>::new(
             1,
             1,
@@ -1756,7 +1776,7 @@ mod test {
     }
 
     fn public_shares_done<Signer: SignerTrait>() {
-        let mut rnd = get_rng();
+        let mut rnd = OsRng;
         let mut signing_round = SigningRound::<Signer>::new(
             1,
             1,
@@ -1767,7 +1787,7 @@ mod test {
             Default::default(),
         );
         // publich_shares_done starts out as false
-        assert_eq!(false, signing_round.public_shares_done());
+        assert!(!signing_round.public_shares_done());
 
         // meet the conditions for all public keys received
         signing_round.state = SignerState::DkgPublicGather;
@@ -1794,7 +1814,7 @@ mod test {
     }
 
     fn can_dkg_end<Signer: SignerTrait>() {
-        let mut rnd = get_rng();
+        let mut rnd = OsRng;
         let mut signing_round = SigningRound::<Signer>::new(
             1,
             1,
@@ -1805,7 +1825,7 @@ mod test {
             Default::default(),
         );
         // can_dkg_end starts out as false
-        assert_eq!(false, signing_round.can_dkg_end());
+        assert!(!signing_round.can_dkg_end());
 
         // meet the conditions for DKG_END
         signing_round.state = SignerState::DkgPrivateGather;
@@ -1843,15 +1863,13 @@ mod test {
             Default::default(),
             Default::default(),
         );
-        match signing_round.dkg_ended() {
-            Ok(dkg_end) => match dkg_end {
-                Message::DkgEnd(dkg_end) => match dkg_end.status {
-                    DkgStatus::Failure(_) => assert!(true),
-                    _ => assert!(false),
-                },
-                _ => assert!(false),
-            },
-            _ => assert!(false),
+        if let Ok(Message::DkgEnd(dkg_end)) = signing_round.dkg_ended() {
+            match dkg_end.status {
+                DkgStatus::Failure(_) => {}
+                _ => panic!("Expected DkgStatus::Failure"),
+            }
+        } else {
+            panic!("Unexpected Error");
         }
     }
 }

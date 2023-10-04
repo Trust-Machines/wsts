@@ -650,7 +650,7 @@ mod tests {
 
     #[test]
     fn signer_new() {
-        let mut rng = OsRng::default();
+        let mut rng = OsRng;
         let id = 1;
         let key_ids = [1, 2, 3];
         let n: u32 = 10;
@@ -663,7 +663,7 @@ mod tests {
 
     #[test]
     fn signer_gen_nonces() {
-        let mut rng = OsRng::default();
+        let mut rng = OsRng;
         let id = 1;
         let key_ids = [1, 2, 3];
         let n: u32 = 10;
@@ -686,7 +686,7 @@ mod tests {
 
     #[test]
     fn signer_save_load() {
-        let mut rng = OsRng::default();
+        let mut rng = OsRng;
         let id = 1;
         let key_ids = [1, 2, 3];
         let n: u32 = 10;
@@ -703,7 +703,7 @@ mod tests {
     #[allow(non_snake_case)]
     #[test]
     fn aggregator_sign() {
-        let mut rng = OsRng::default();
+        let mut rng = OsRng;
         let msg = "It was many and many a year ago".as_bytes();
         let N: u32 = 10;
         let T: u32 = 7;
@@ -733,8 +733,8 @@ mod tests {
             let mut sig_agg = v1::Aggregator::new(N, T);
             sig_agg.init(comms.clone()).expect("aggregator init failed");
 
-            let (nonces, sig_shares) = v1::test_helpers::sign(&msg, &mut signers, &mut rng);
-            if let Err(e) = sig_agg.sign(&msg, &nonces, &sig_shares, &[]) {
+            let (nonces, sig_shares) = v1::test_helpers::sign(msg, &mut signers, &mut rng);
+            if let Err(e) = sig_agg.sign(msg, &nonces, &sig_shares, &[]) {
                 panic!("Aggregator sign failed: {:?}", e);
             }
         }
