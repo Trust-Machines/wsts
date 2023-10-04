@@ -35,7 +35,7 @@ pub mod coordinator {
     use hashbrown::HashSet;
     use p256k1::{point::Point, scalar::Scalar};
     use std::collections::BTreeMap;
-    //use tracing::info;
+    use tracing::{debug, info};
 
     use crate::{
         common::{MerkleRoot, PolyCommitment, PublicNonce, Signature, SignatureShare},
@@ -282,7 +282,7 @@ pub mod coordinator {
         /// Start a DKG round
         pub fn start_dkg_round(&mut self) -> Result<Packet, Error> {
             self.current_dkg_id = self.current_dkg_id.wrapping_add(1);
-            println!("Coordinator: Starting DKG round #{}", self.current_dkg_id);
+            info!("Starting DKG round {}", self.current_dkg_id);
             self.move_to(State::DkgPublicDistribute)?;
             self.start_public_shares()
         }
@@ -294,10 +294,7 @@ pub mod coordinator {
             merkle_root: Option<MerkleRoot>,
         ) -> Result<Packet, Error> {
             self.current_sign_id = self.current_sign_id.wrapping_add(1);
-            println!(
-                "Coordinator: Starting signing round #{}",
-                self.current_sign_id
-            );
+            info!("Starting signing round {}", self.current_sign_id);
             self.move_to(State::NonceRequest(is_taproot, merkle_root))?;
             self.request_nonces(is_taproot, merkle_root)
         }
@@ -306,8 +303,8 @@ pub mod coordinator {
         pub fn start_public_shares(&mut self) -> Result<Packet, Error> {
             self.dkg_public_shares.clear();
             self.party_polynomials.clear();
-            println!(
-                "Coordinator: DKG Round #{}: Starting Public Share Distribution",
+            info!(
+                "DKG Round {}: Starting Public Share Distribution",
                 self.current_dkg_id,
             );
             let dkg_begin = DkgBegin {
@@ -324,8 +321,8 @@ pub mod coordinator {
 
         /// Ask signers to send DKG private shares
         pub fn start_private_shares(&mut self) -> Result<Packet, Error> {
-            println!(
-                "Coordinator: DKG Round #{}: Starting Private Share Distribution",
+            info!(
+                "DKG Round {}: Starting Private Share Distribution",
                 self.current_dkg_id
             );
             let dkg_begin = DkgBegin {
@@ -356,8 +353,8 @@ pub mod coordinator {
                     self.party_polynomials.insert(*party_id, comm.clone());
                 }
 
-                println!(
-                    "Coordinator: DKG round #{} DkgPublicShares from signer #{}",
+                debug!(
+                    "DKG round {} DkgPublicShares from signer {}",
                     dkg_public_shares.dkg_id, dkg_public_shares.signer_id
                 );
             }
@@ -369,7 +366,7 @@ pub mod coordinator {
                     .iter()
                     .fold(Point::default(), |s, (_, comm)| s + comm.poly[0]);
 
-                println!("Coordinator: Aggregate public key: {}", key);
+                info!("Aggregate public key: {}", key);
                 self.aggregate_public_key = key;
                 self.move_to(State::DkgPrivateDistribute)?;
                 self.ids_to_await = (0..self.total_signers).collect();
@@ -378,8 +375,8 @@ pub mod coordinator {
         }
 
         fn gather_dkg_end(&mut self, packet: &Packet) -> Result<(), Error> {
-            println!(
-                "Coordinator: DKG Round #{}: waiting for Dkg End from signers {:?}",
+            debug!(
+                "DKG Round {}: waiting for Dkg End from signers {:?}",
                 self.current_dkg_id, self.ids_to_await
             );
             if let Message::DkgEnd(dkg_end) = &packet.msg {
@@ -387,8 +384,8 @@ pub mod coordinator {
                     return Err(Error::BadDkgId(dkg_end.dkg_id, self.current_dkg_id));
                 }
                 self.ids_to_await.remove(&dkg_end.signer_id);
-                println!(
-                    "Coordinator: DKG_End round #{} from signer #{}. Waiting on {:?}",
+                debug!(
+                    "DKG_End round {} from signer {}. Waiting on {:?}",
                     dkg_end.dkg_id, dkg_end.signer_id, self.ids_to_await
                 );
             }
@@ -406,8 +403,8 @@ pub mod coordinator {
             merkle_root: Option<MerkleRoot>,
         ) -> Result<Packet, Error> {
             self.public_nonces.clear();
-            println!(
-                "Coordinator: Sign Round #{} Nonce round #{} Requesting Nonces",
+            info!(
+                "Sign Round {} Nonce round {} Requesting Nonces",
                 self.current_sign_id, self.current_sign_iter_id,
             );
             let nonce_request = NonceRequest {
@@ -450,8 +447,8 @@ pub mod coordinator {
                 self.public_nonces
                     .insert(nonce_response.signer_id, nonce_response.clone());
                 self.ids_to_await.remove(&nonce_response.signer_id);
-                println!(
-                    "Coordinator: Sign round #{} nonce round #{} NonceResponse from signer #{}. Waiting on {:?}",
+                debug!(
+                    "Sign round {} nonce round {} NonceResponse from signer {}. Waiting on {:?}",
                     nonce_response.sign_id,
                     nonce_response.sign_iter_id,
                     nonce_response.signer_id,
@@ -460,7 +457,7 @@ pub mod coordinator {
             }
             if self.ids_to_await.is_empty() {
                 let aggregate_nonce = self.compute_aggregate_nonce();
-                println!("Coordinator: Aggregate nonce: {}", aggregate_nonce);
+                info!("Aggregate nonce: {}", aggregate_nonce);
 
                 self.move_to(State::SigShareRequest(is_taproot, merkle_root))?;
             }
@@ -473,8 +470,8 @@ pub mod coordinator {
             merkle_root: Option<MerkleRoot>,
         ) -> Result<Packet, Error> {
             self.signature_shares.clear();
-            println!(
-                "Coordinator: Sign Round #{} Requesting Signature Shares",
+            info!(
+                "Sign Round {} Requesting Signature Shares",
                 self.current_sign_id,
             );
             let nonce_responses = (0..self.total_signers)
@@ -523,8 +520,8 @@ pub mod coordinator {
                     sig_share_response.signature_shares.clone(),
                 );
                 self.ids_to_await.remove(&sig_share_response.signer_id);
-                println!(
-                    "Coordinator: Sign round #{} SignatureShareResponse from signer #{}. Waiting on {:?}",
+                debug!(
+                    "Sign round {} SignatureShareResponse from signer {}. Waiting on {:?}",
                     sig_share_response.sign_id, sig_share_response.signer_id, self.ids_to_await
                 );
             }
@@ -552,8 +549,8 @@ pub mod coordinator {
                     .flat_map(|(i, _)| self.signature_shares[i].clone())
                     .collect::<Vec<SignatureShare>>();
 
-                println!(
-                    "Coordinator: aggregator.sign({:?}, {:?}, {:?})",
+                debug!(
+                    "aggregator.sign({:?}, {:?}, {:?})",
                     self.message,
                     nonces.len(),
                     shares.len()
@@ -569,18 +566,15 @@ pub mod coordinator {
                         &key_ids,
                         merkle_root,
                     )?;
-                    println!(
-                        "Coordinator: SchnorrProof ({}, {})",
+                    info!(
+                        "SchnorrProof ({}, {})",
                         self.schnorr_proof.r, self.schnorr_proof.s
                     );
                 } else {
                     self.signature =
                         self.aggregator
                             .sign(&self.message, &nonces, shares, &key_ids)?;
-                    println!(
-                        "Coordinator: Signature ({}, {})",
-                        self.signature.R, self.signature.z
-                    );
+                    info!("Signature ({}, {})", self.signature.R, self.signature.z);
                 }
 
                 self.move_to(State::Idle)?;
@@ -645,14 +639,11 @@ pub mod coordinator {
                 }
             };
             if accepted {
-                println!(
-                    "Coordinator: state change from {:?} to {:?}",
-                    prev_state, state
-                );
+                debug!("state change from {:?} to {:?}", prev_state, state);
                 Ok(())
             } else {
                 Err(Error::BadStateChange(format!(
-                    "Coordinator: {:?} to {:?}",
+                    "{:?} to {:?}",
                     prev_state, state
                 )))
             }
@@ -721,7 +712,7 @@ pub mod signer {
     };
     use rand_core::{CryptoRng, OsRng, RngCore};
     use std::collections::BTreeMap;
-    //use tracing::{debug, info, warn};
+    use tracing::{debug, info, warn};
 
     use crate::{
         common::{PolyCommitment, PublicNonce},
@@ -831,8 +822,8 @@ pub mod signer {
                 threshold,
                 &mut rng,
             );
-            println!(
-                "Create Signing round for signer_id {} with key_ids {:?}",
+            debug!(
+                "new SigningRound for signer_id {} with key_ids {:?}",
                 signer_id, &key_ids
             );
             SigningRound {
@@ -938,14 +929,14 @@ pub mod signer {
             match out_msgs {
                 Ok(mut out) => {
                     if self.public_shares_done() {
-                        println!(
-                            "SigningRound: public_shares_done==true. commitments {}",
+                        debug!(
+                            "public_shares_done==true. commitments {}",
                             self.commitments.len()
                         );
                         self.move_to(State::DkgPrivateDistribute)?;
                     } else if self.can_dkg_end() {
-                        println!(
-                            "SigningRound: can_dkg_end==true. shares {} commitments {}",
+                        debug!(
+                            "can_dkg_end==true. shares {} commitments {}",
                             self.decrypted_shares.len(),
                             self.commitments.len()
                         );
@@ -984,18 +975,19 @@ pub mod signer {
                 }
             };
 
-            let dkg_end = Message::DkgEnd(dkg_end);
-            println!(
-                "SigningRound: DKG_END round #{} signer_id {}",
-                self.dkg_id, self.signer_id
+            info!(
+                "Signer {} sending DkgEnd round {} status {:?}",
+                self.signer_id, self.dkg_id, dkg_end.status,
             );
+
+            let dkg_end = Message::DkgEnd(dkg_end);
             Ok(dkg_end)
         }
 
         /// do we have all DkgPublicShares?
         pub fn public_shares_done(&self) -> bool {
-            println!(
-                "SigningRound: public_shares_done state {:?} commitments {}",
+            debug!(
+                "public_shares_done state {:?} commitments {}",
                 self.state,
                 self.commitments.len(),
             );
@@ -1005,8 +997,8 @@ pub mod signer {
 
         /// do we have all DkgPublicShares and DkgPrivateShares?
         pub fn can_dkg_end(&self) -> bool {
-            println!(
-                "SigningRound: can_dkg_end state {:?} commitments {} shares {}",
+            debug!(
+                "can_dkg_end state {:?} commitments {} shares {}",
                 self.state,
                 self.commitments.len(),
                 self.decrypted_shares.len()
@@ -1035,9 +1027,9 @@ pub mod signer {
 
             let response = Message::NonceResponse(response);
 
-            println!(
-                "SigningRound: nonce request with dkg_id {:?}. response sent from signer_id {}",
-                nonce_request.dkg_id, signer_id
+            info!(
+                "Signer {} sending NonceResponse for DKG round {} sign round {} sign iteration {}",
+                signer_id, nonce_request.dkg_id, nonce_request.sign_id, nonce_request.sign_iter_id,
             );
             msgs.push(response);
 
@@ -1056,10 +1048,7 @@ pub mod signer {
                 .map(|nr| nr.signer_id)
                 .collect::<Vec<u32>>();
 
-            println!(
-                "SigningRound: Got SignatureShareRequest for signer_ids {:?}",
-                signer_ids
-            );
+            debug!("Got SignatureShareRequest for signer_ids {:?}", signer_ids);
 
             for signer_id in &signer_ids {
                 if *signer_id == self.signer_id {
@@ -1094,19 +1083,16 @@ pub mod signer {
                         signature_shares,
                     };
 
-                    println!(
-                        "SigningRound: Sending SignatureShareResponse for signer_id {:?}",
-                        signer_id
+                    info!(
+                        "Signer {} sending SignatureShareResponse for DKG round {} sign round {} sign iteration {}",
+                        signer_id, self.dkg_id, self.sign_id, self.sign_iter_id,
                     );
 
                     let response = Message::SignatureShareResponse(response);
 
                     msgs.push(response);
                 } else {
-                    println!(
-                        "SigningRound: SignatureShareRequest for {} dropped.",
-                        signer_id
-                    );
+                    debug!("SignatureShareRequest for {} dropped.", signer_id);
                 }
             }
             Ok(msgs)
@@ -1128,11 +1114,10 @@ pub mod signer {
             let mut msgs = vec![];
             let comms = self.signer.get_poly_commitments(&mut rng);
 
-            println!(
-                "SigningRound: sending DkgPublicSharess for round #{}, {} poly commitments for signer #{}",
-                self.dkg_id,
-                comms.len(),
+            info!(
+                "Signer {} sending DkgPublicShares for round {}",
                 self.signer.get_id(),
+                self.dkg_id,
             );
 
             let mut public_share = DkgPublicShares {
@@ -1162,20 +1147,27 @@ pub mod signer {
                 signer_id: self.signer_id,
                 shares: Vec::new(),
             };
-            println!("SigningRound: shares {:?}", &self.signer.get_shares());
+            info!(
+                "Signer {} sending DkgPrivateShares for round {}",
+                self.signer.get_id(),
+                self.dkg_id,
+            );
+
+            debug!(
+                "Signer {} shares {:?}",
+                self.signer_id,
+                &self.signer.get_shares()
+            );
             for (key_id, shares) in &self.signer.get_shares() {
-                println!(
-                    "SigningRound: signer {} addding dkg private share for key_id #{}",
+                debug!(
+                    "Signer {} addding dkg private share for key_id {}",
                     self.signer_id, key_id
                 );
                 // encrypt each share for the recipient
                 let mut encrypted_shares = HashMap::new();
 
                 for (dst_key_id, private_share) in shares {
-                    println!(
-                        "SigningRound: encrypting dkg private share for key_id #{}",
-                        dst_key_id + 1
-                    );
+                    debug!("encrypting dkg private share for key_id {}", dst_key_id + 1);
                     let compressed =
                         Compressed::from(self.public_keys.key_ids[&(dst_key_id + 1)].to_bytes());
                     let dst_public_key = Point::try_from(&compressed).unwrap();
@@ -1205,8 +1197,8 @@ pub mod signer {
             for (party_id, comm) in &dkg_public_shares.comms {
                 self.commitments.insert(*party_id, comm.clone());
             }
-            println!(
-                "SigningRound: received DkgPublicShares from signer #{} {}/{}",
+            debug!(
+                "received DkgPublicShares from signer {} {}/{}",
                 dkg_public_shares.signer_id,
                 self.commitments.len(),
                 self.signer.get_num_parties(),
@@ -1239,12 +1231,12 @@ pub mod signer {
                                     decrypted_shares.insert(*dst_key_id, s);
                                 }
                                 Err(e) => {
-                                    println!("SigningRound: Failed to parse Scalar for dkg private share from src_id {} to dst_id {}: {:?}", src_id, dst_key_id, e);
+                                    warn!("Failed to parse Scalar for dkg private share from src_id {} to dst_id {}: {:?}", src_id, dst_key_id, e);
                                     self.invalid_private_shares.push(*src_id);
                                 }
                             },
                             Err(e) => {
-                                println!("SigningRound: Failed to decrypt dkg private share from src_id {} to dst_id {}: {:?}", src_id, dst_key_id, e);
+                                warn!("Failed to decrypt dkg private share from src_id {} to dst_id {}: {:?}", src_id, dst_key_id, e);
                                 self.invalid_private_shares.push(*src_id);
                             }
                         }
@@ -1252,8 +1244,8 @@ pub mod signer {
                 }
                 self.decrypted_shares.insert(*src_id, decrypted_shares);
             }
-            println!(
-                "SigningRound: received DkgPrivateShares from signer #{} {}/{}",
+            debug!(
+                "received DkgPrivateShares from signer {} {}/{}",
                 dkg_private_shares.signer_id,
                 self.decrypted_shares.len(),
                 self.signer.get_num_parties(),
@@ -1285,14 +1277,11 @@ pub mod signer {
                 State::Signed => prev_state == &State::SignGather,
             };
             if accepted {
-                println!(
-                    "SigningRound: state change from {:?} to {:?}",
-                    prev_state, state
-                );
+                debug!("state change from {:?} to {:?}", prev_state, state);
                 Ok(())
             } else {
                 Err(Error::BadStateChange(format!(
-                    "SigningRound: {:?} to {:?}",
+                    "{:?} to {:?}",
                     prev_state, state
                 )))
             }
@@ -1305,8 +1294,9 @@ mod test {
     use hashbrown::HashMap;
     use p256k1::{ecdsa, point::Point, scalar::Scalar};
     use rand_core::{CryptoRng, OsRng, RngCore};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
-    //use crate::runloop::process_inbound_messages;
     use crate::{
         common::PolyCommitment,
         net::{DkgPublicShares, DkgStatus, Message, Packet},
@@ -1319,6 +1309,8 @@ mod test {
         traits::{Aggregator as AggregatorTrait, Signer as SignerTrait},
         v1, v2,
     };
+
+    static mut LOG_INIT: AtomicBool = AtomicBool::new(false);
 
     #[test]
     fn test_coordinator_state_machine_v1() {
@@ -1532,6 +1524,16 @@ mod test {
 
     fn setup<Aggregator: AggregatorTrait, Signer: SignerTrait>(
     ) -> (Coordinator<Aggregator>, Vec<SigningRound<Signer>>) {
+        unsafe {
+            match LOG_INIT.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst) {
+                Ok(false) => tracing_subscriber::registry()
+                    .with(fmt::layer())
+                    .with(EnvFilter::from_default_env())
+                    .init(),
+                _ => {}
+            }
+        }
+
         let mut rng = OsRng;
         let total_signers = 5;
         let threshold = total_signers / 10 + 7;
