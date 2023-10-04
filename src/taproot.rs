@@ -165,7 +165,7 @@ mod test {
 
     #[allow(non_snake_case)]
     fn taproot_sign_verify_v1(merkle_root: Option<[u8; 32]>) {
-        let mut rng = OsRng::default();
+        let mut rng = OsRng;
 
         // First create and verify a frost signature
         let msg = "It was many and many a year ago".as_bytes();
@@ -195,8 +195,8 @@ mod test {
         let mut sig_agg = v1::Aggregator::new(N, T);
         sig_agg.init(A.clone()).expect("aggregator init failed");
         let tweaked_public_key = compute::tweaked_public_key(&sig_agg.poly[0], merkle_root);
-        let (nonces, sig_shares) = test_helpers::sign(&msg, &mut S, &mut rng, merkle_root);
-        let proof = match sig_agg.sign_taproot(&msg, &nonces, &sig_shares, &[], merkle_root) {
+        let (nonces, sig_shares) = test_helpers::sign(msg, &mut S, &mut rng, merkle_root);
+        let proof = match sig_agg.sign_taproot(msg, &nonces, &sig_shares, &[], merkle_root) {
             Err(e) => panic!("Aggregator sign failed: {:?}", e),
             Ok(proof) => proof,
         };
@@ -226,7 +226,7 @@ mod test {
 
     #[allow(non_snake_case)]
     fn taproot_sign_verify_v2(merkle_root: Option<[u8; 32]>) {
-        let mut rng = OsRng::default();
+        let mut rng = OsRng;
 
         // First create and verify a frost signature
         let msg = "It was many and many a year ago".as_bytes();
@@ -258,8 +258,8 @@ mod test {
         let mut sig_agg = v2::Aggregator::new(Nk, T);
         sig_agg.init(A.clone()).expect("aggregator init failed");
         let tweaked_public_key = compute::tweaked_public_key(&sig_agg.poly[0], merkle_root);
-        let (nonces, sig_shares) = test_helpers::sign(&msg, &mut S, &mut rng, merkle_root);
-        let proof = match sig_agg.sign_taproot(&msg, &nonces, &sig_shares, &key_ids, merkle_root) {
+        let (nonces, sig_shares) = test_helpers::sign(msg, &mut S, &mut rng, merkle_root);
+        let proof = match sig_agg.sign_taproot(msg, &nonces, &sig_shares, &key_ids, merkle_root) {
             Err(e) => panic!("Aggregator sign failed: {:?}", e),
             Ok(proof) => proof,
         };

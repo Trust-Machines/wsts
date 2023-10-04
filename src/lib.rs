@@ -2,6 +2,7 @@
 #![doc = include_str!("../README.md")]
 
 /// Types which are common to both v1 and v2
+#[allow(clippy::op_ref)]
 pub mod common;
 /// Functions to perform various computations needed for v1 and v2
 pub mod compute;
@@ -10,6 +11,7 @@ pub mod errors;
 /// Network messages
 pub mod net;
 /// Schnorr utility types
+#[allow(clippy::op_ref)]
 pub mod schnorr;
 /// State machines
 pub mod state_machine;
@@ -20,8 +22,10 @@ pub mod traits;
 /// Utilities for hashing and encryption
 pub mod util;
 /// Version 1 of WSTS, which encapsulates a number of parties using vanilla FROST
+#[allow(clippy::op_ref)]
 pub mod v1;
-/// Version 2 of WSTS, which optimizes the protocol for speed and bandwidth
+/// Version 1 of WSTS, which encapsulates a number of parties using vanilla FROST
+#[allow(clippy::op_ref)]
 pub mod v2;
 /// Shamir secret sharing, using in distributed key generation
 pub mod vss;

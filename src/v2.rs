@@ -593,7 +593,7 @@ mod tests {
 
     #[test]
     fn party_save_load() {
-        let mut rng = OsRng::default();
+        let mut rng = OsRng;
         let key_ids = [1, 2, 3];
         let n: u32 = 10;
         let t: u32 = 7;
@@ -609,7 +609,7 @@ mod tests {
     #[allow(non_snake_case)]
     #[test]
     fn aggregator_sign() {
-        let mut rng = OsRng::default();
+        let mut rng = OsRng;
         let msg = "It was many and many a year ago".as_bytes();
         let Nk: u32 = 10;
         let T: u32 = 7;
@@ -641,9 +641,8 @@ mod tests {
 
             sig_agg.init(comms.clone()).expect("aggregator init failed");
 
-            let (nonces, sig_shares, key_ids) =
-                v2::test_helpers::sign(&msg, &mut signers, &mut rng);
-            if let Err(e) = sig_agg.sign(&msg, &nonces, &sig_shares, &key_ids) {
+            let (nonces, sig_shares, key_ids) = v2::test_helpers::sign(msg, &mut signers, &mut rng);
+            if let Err(e) = sig_agg.sign(msg, &nonces, &sig_shares, &key_ids) {
                 panic!("Aggregator sign failed: {:?}", e);
             }
         }

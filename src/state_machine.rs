@@ -1557,12 +1557,13 @@ mod test {
     fn setup<Aggregator: AggregatorTrait, Signer: SignerTrait>(
     ) -> (Coordinator<Aggregator>, Vec<SigningRound<Signer>>) {
         unsafe {
-            match LOG_INIT.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst) {
-                Ok(false) => tracing_subscriber::registry()
+            if let Ok(false) =
+                LOG_INIT.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            {
+                tracing_subscriber::registry()
                     .with(fmt::layer())
                     .with(EnvFilter::from_default_env())
-                    .init(),
-                _ => {}
+                    .init()
             }
         }
 
@@ -1739,9 +1740,8 @@ mod test {
     }
 
     fn get_rng() -> impl RngCore + CryptoRng {
-        let rnd = OsRng;
         //rand::rngs::StdRng::seed_from_u64(rnd.next_u64()) // todo: fix trait `rand_core::RngCore` is not implemented for `StdRng`
-        rnd
+        OsRng
     }
 
     #[test]
@@ -1802,7 +1802,7 @@ mod test {
             Default::default(),
         );
         // publich_shares_done starts out as false
-        assert_eq!(false, signing_round.public_shares_done());
+        assert!(!signing_round.public_shares_done());
 
         // meet the conditions for all public keys received
         signing_round.state = SignerState::DkgPublicGather;
@@ -1840,7 +1840,7 @@ mod test {
             Default::default(),
         );
         // can_dkg_end starts out as false
-        assert_eq!(false, signing_round.can_dkg_end());
+        assert!(!signing_round.can_dkg_end());
 
         // meet the conditions for DKG_END
         signing_round.state = SignerState::DkgPrivateGather;
@@ -1878,15 +1878,13 @@ mod test {
             Default::default(),
             Default::default(),
         );
-        match signing_round.dkg_ended() {
-            Ok(dkg_end) => match dkg_end {
-                Message::DkgEnd(dkg_end) => match dkg_end.status {
-                    DkgStatus::Failure(_) => assert!(true),
-                    _ => assert!(false),
-                },
-                _ => assert!(false),
-            },
-            _ => assert!(false),
+        if let Ok(Message::DkgEnd(dkg_end)) = signing_round.dkg_ended() {
+            match dkg_end.status {
+                DkgStatus::Failure(_) => {}
+                _ => panic!("Expected DkgStatus::Failure"),
+            }
+        } else {
+            panic!("Unexpected Error");
         }
     }
 }
