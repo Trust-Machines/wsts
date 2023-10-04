@@ -317,6 +317,10 @@ pub mod coordinator {
             is_taproot: bool,
             merkle_root: Option<MerkleRoot>,
         ) -> Result<Packet, Error> {
+            // We cannot sign if we haven't first set DKG (either manually or via DKG round).
+            if self.aggregate_public_key.is_none() {
+                return Err(Error::MissingAggregatePublicKey);
+            }
             self.current_sign_id = self.current_sign_id.wrapping_add(1);
             info!("Starting signing round {}", self.current_sign_id);
             self.move_to(State::NonceRequest(is_taproot, merkle_root))?;
