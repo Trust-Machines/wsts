@@ -265,35 +265,25 @@ pub mod coordinator {
                         } else if self.state == State::Idle {
                             // We are done with the DKG round! Return the operation result
                             if is_taproot {
+                                let schnorr_proof = self
+                                    .schnorr_proof
+                                    .as_ref()
+                                    .ok_or(Error::MissingSchnorrProof)?;
                                 return Ok((
                                     None,
                                     Some(OperationResult::SignTaproot(SchnorrProof {
-                                        r: self
-                                            .schnorr_proof
-                                            .as_ref()
-                                            .ok_or(Error::MissingSchnorrProof)?
-                                            .r,
-                                        s: self
-                                            .schnorr_proof
-                                            .as_ref()
-                                            .ok_or(Error::MissingSchnorrProof)?
-                                            .s,
+                                        r: schnorr_proof.r,
+                                        s: schnorr_proof.s,
                                     })),
                                 ));
                             } else {
+                                let signature =
+                                    self.signature.as_ref().ok_or(Error::MissingSignature)?;
                                 return Ok((
                                     None,
                                     Some(OperationResult::Sign(Signature {
-                                        R: self
-                                            .signature
-                                            .as_ref()
-                                            .ok_or(Error::MissingSignature)?
-                                            .R,
-                                        z: self
-                                            .signature
-                                            .as_ref()
-                                            .ok_or(Error::MissingSignature)?
-                                            .z,
+                                        R: signature.R,
+                                        z: signature.z,
                                     })),
                                 ));
                             }
@@ -1325,7 +1315,7 @@ pub mod signer {
 mod test {
     use hashbrown::HashMap;
     use p256k1::{ecdsa, point::Point, scalar::Scalar};
-    use rand_core::{CryptoRng, OsRng, RngCore};
+    use rand_core::OsRng;
     use std::sync::atomic::{AtomicBool, Ordering};
     use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
@@ -1739,11 +1729,6 @@ mod test {
         assert_eq!(coordinator.state, CoordinatorState::Idle);
     }
 
-    fn get_rng() -> impl RngCore + CryptoRng {
-        //rand::rngs::StdRng::seed_from_u64(rnd.next_u64()) // todo: fix trait `rand_core::RngCore` is not implemented for `StdRng`
-        OsRng
-    }
-
     #[test]
     fn dkg_public_share_v1() {
         dkg_public_share::<v1::Signer>();
@@ -1755,7 +1740,7 @@ mod test {
     }
 
     fn dkg_public_share<Signer: SignerTrait>() {
-        let mut rnd = get_rng();
+        let mut rnd = OsRng;
         let mut signing_round = SigningRound::<Signer>::new(
             1,
             1,
@@ -1791,7 +1776,7 @@ mod test {
     }
 
     fn public_shares_done<Signer: SignerTrait>() {
-        let mut rnd = get_rng();
+        let mut rnd = OsRng;
         let mut signing_round = SigningRound::<Signer>::new(
             1,
             1,
@@ -1829,7 +1814,7 @@ mod test {
     }
 
     fn can_dkg_end<Signer: SignerTrait>() {
-        let mut rnd = get_rng();
+        let mut rnd = OsRng;
         let mut signing_round = SigningRound::<Signer>::new(
             1,
             1,
