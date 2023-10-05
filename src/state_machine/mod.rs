@@ -49,7 +49,7 @@ mod test {
         net::{DkgPublicShares, DkgStatus, Message, Packet},
         schnorr::ID,
         state_machine::{
-            coordinator::{Coordinatable, Coordinator, State as CoordinatorState},
+            coordinator::{frost::Coordinator, Coordinatable, State as CoordinatorState},
             signer::{SigningRound, State as SignerState},
             OperationResult, PublicKeys, StateMachine,
         },
