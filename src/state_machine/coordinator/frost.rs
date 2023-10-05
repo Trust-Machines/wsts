@@ -553,11 +553,11 @@ impl<Aggregator: AggregatorTrait> Coordinatable for Coordinator<Aggregator> {
     /// Process inbound messages
     fn process_inbound_messages(
         &mut self,
-        packets: Vec<Packet>,
+        packets: &[Packet],
     ) -> Result<(Vec<Packet>, Vec<OperationResult>), Error> {
         let mut outbound_packets = vec![];
         let mut operation_results = vec![];
-        for packet in &packets {
+        for packet in packets {
             let (outbound_packet, operation_result) = self.process_message(packet)?;
             if let Some(outbound_packet) = outbound_packet {
                 outbound_packets.push(outbound_packet);

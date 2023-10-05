@@ -70,7 +70,7 @@ pub trait Coordinatable {
     /// Process inbound messages
     fn process_inbound_messages(
         &mut self,
-        packets: Vec<Packet>,
+        packets: &[Packet],
     ) -> Result<(Vec<Packet>, Vec<OperationResult>), Error>;
     /// Retrieve the aggregate public key
     fn get_aggregate_public_key(&self) -> Option<Point>;
