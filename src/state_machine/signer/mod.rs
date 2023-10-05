@@ -148,19 +148,15 @@ impl<Signer: SignerTrait> SigningRound<Signer> {
     }
 
     ///
-    pub fn process_inbound_messages(
-        &mut self,
-        messages: Vec<Packet>,
-    ) -> Result<Vec<Packet>, Error> {
+    pub fn process_inbound_messages(&mut self, messages: &[Packet]) -> Result<Vec<Packet>, Error> {
         let mut responses = vec![];
         for message in messages {
             // TODO: this code was swiped from frost-signer. Expose it there so we don't have duplicate code
             // See: https://github.com/stacks-network/stacks-blockchain/issues/3913
-            let outbounds = self.process(message.msg)?;
+            let outbounds = self.process(&message.msg)?;
             for out in outbounds {
                 let msg = Packet {
-                    msg: out.clone(),
-                    sig: match out {
+                    sig: match &out {
                         Message::DkgBegin(msg) | Message::DkgPrivateBegin(msg) => msg
                             .sign(&self.network_private_key)
                             .expect("failed to sign DkgBegin")
@@ -194,6 +190,7 @@ impl<Signer: SignerTrait> SigningRound<Signer> {
                             .expect("failed to sign SignShareResponse")
                             .to_vec(),
                     },
+                    msg: out,
                 };
                 responses.push(msg);
             }
@@ -202,7 +199,7 @@ impl<Signer: SignerTrait> SigningRound<Signer> {
     }
 
     /// process the passed incoming message, and return any outgoing messages needed in response
-    pub fn process(&mut self, message: Message) -> Result<Vec<Message>, Error> {
+    pub fn process(&mut self, message: &Message) -> Result<Vec<Message>, Error> {
         let out_msgs = match message {
             Message::DkgBegin(dkg_begin) => self.dkg_begin(dkg_begin),
             Message::DkgPrivateBegin(_) => self.dkg_private_begin(),
@@ -300,7 +297,7 @@ impl<Signer: SignerTrait> SigningRound<Signer> {
                 == usize::try_from(self.signer.get_num_parties()).unwrap()
     }
 
-    fn nonce_request(&mut self, nonce_request: NonceRequest) -> Result<Vec<Message>, Error> {
+    fn nonce_request(&mut self, nonce_request: &NonceRequest) -> Result<Vec<Message>, Error> {
         let mut rng = OsRng;
         let mut msgs = vec![];
         let signer_id = self.signer_id;
@@ -329,7 +326,7 @@ impl<Signer: SignerTrait> SigningRound<Signer> {
 
     fn sign_share_request(
         &mut self,
-        sign_request: SignatureShareRequest,
+        sign_request: &SignatureShareRequest,
     ) -> Result<Vec<Message>, Error> {
         let mut msgs = vec![];
 
@@ -389,7 +386,7 @@ impl<Signer: SignerTrait> SigningRound<Signer> {
         Ok(msgs)
     }
 
-    fn dkg_begin(&mut self, dkg_begin: DkgBegin) -> Result<Vec<Message>, Error> {
+    fn dkg_begin(&mut self, dkg_begin: &DkgBegin) -> Result<Vec<Message>, Error> {
         let mut rng = OsRng;
 
         self.reset(dkg_begin.dkg_id, &mut rng);
@@ -482,7 +479,7 @@ impl<Signer: SignerTrait> SigningRound<Signer> {
     /// handle incoming DkgPublicShares
     pub fn dkg_public_share(
         &mut self,
-        dkg_public_shares: DkgPublicShares,
+        dkg_public_shares: &DkgPublicShares,
     ) -> Result<Vec<Message>, Error> {
         for (party_id, comm) in &dkg_public_shares.comms {
             self.commitments.insert(*party_id, comm.clone());
@@ -499,7 +496,7 @@ impl<Signer: SignerTrait> SigningRound<Signer> {
     /// handle incoming DkgPrivateShares
     pub fn dkg_private_shares(
         &mut self,
-        dkg_private_shares: DkgPrivateShares,
+        dkg_private_shares: &DkgPrivateShares,
     ) -> Result<Vec<Message>, Error> {
         // go ahead and decrypt here, since we know the signer_id and hence the pubkey of the sender
 

@@ -338,25 +338,23 @@ mod test {
     fn feedback_messages<Aggregator: AggregatorTrait, Signer: SignerTrait>(
         coordinator: &mut Coordinator<Aggregator>,
         signing_rounds: &mut Vec<SigningRound<Signer>>,
-        messages: Vec<Packet>,
+        messages: &[Packet],
     ) -> (Vec<Packet>, Vec<OperationResult>) {
         let mut inbound_messages = vec![];
         let mut feedback_messages = vec![];
         for signing_round in signing_rounds.as_mut_slice() {
-            let outbound_messages = signing_round
-                .process_inbound_messages(messages.clone())
-                .unwrap();
+            let outbound_messages = signing_round.process_inbound_messages(messages).unwrap();
             feedback_messages.extend_from_slice(outbound_messages.as_slice());
             inbound_messages.extend(outbound_messages);
         }
         for signing_round in signing_rounds.as_mut_slice() {
             let outbound_messages = signing_round
-                .process_inbound_messages(feedback_messages.clone())
+                .process_inbound_messages(&feedback_messages)
                 .unwrap();
             inbound_messages.extend(outbound_messages);
         }
         coordinator
-            .process_inbound_messages(inbound_messages)
+            .process_inbound_messages(&inbound_messages)
             .unwrap()
     }
 
@@ -380,7 +378,7 @@ mod test {
 
         // Send the DKG Begin message to all signers and gather responses by sharing with all other signers and coordinator
         let (outbound_messages, operation_results) =
-            feedback_messages(&mut coordinator, &mut signing_rounds, vec![message.clone()]);
+            feedback_messages(&mut coordinator, &mut signing_rounds, &[message]);
         assert!(operation_results.is_empty());
         assert_eq!(coordinator.state, CoordinatorState::DkgEndGather);
 
@@ -394,7 +392,7 @@ mod test {
         }
         // Send the DKG Private Begin message to all signers and share their responses with the coordinator and signers
         let (outbound_messages, operation_results) =
-            feedback_messages(&mut coordinator, &mut signing_rounds, outbound_messages);
+            feedback_messages(&mut coordinator, &mut signing_rounds, &outbound_messages);
         assert!(outbound_messages.is_empty());
         assert_eq!(operation_results.len(), 1);
         match operation_results[0] {
@@ -420,7 +418,7 @@ mod test {
 
         // Send the message to all signers and gather responses by sharing with all other signers and coordinator
         let (outbound_messages, operation_results) =
-            feedback_messages(&mut coordinator, &mut signing_rounds, vec![message.clone()]);
+            feedback_messages(&mut coordinator, &mut signing_rounds, &[message]);
         assert!(operation_results.is_empty());
         assert_eq!(
             coordinator.state,
@@ -436,7 +434,7 @@ mod test {
         }
         // Send the SignatureShareRequest message to all signers and share their responses with the coordinator and signers
         let (outbound_messages, operation_results) =
-            feedback_messages(&mut coordinator, &mut signing_rounds, outbound_messages);
+            feedback_messages(&mut coordinator, &mut signing_rounds, &outbound_messages);
         assert!(outbound_messages.is_empty());
         assert_eq!(operation_results.len(), 1);
         match &operation_results[0] {
@@ -486,7 +484,7 @@ mod test {
                 },
             )],
         };
-        signing_round.dkg_public_share(public_share).unwrap();
+        signing_round.dkg_public_share(&public_share).unwrap();
         assert_eq!(1, signing_round.commitments.len())
     }
 
