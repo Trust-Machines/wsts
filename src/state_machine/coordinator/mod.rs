@@ -553,8 +553,8 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 info!("SchnorrProof ({}, {})", schnorr_proof.r, schnorr_proof.s);
                 self.schnorr_proof = Some(schnorr_proof);
             } else {
-                let signature =
-                    self.aggregator
+                let signature = self
+                    .aggregator
                     .sign(&self.message, &nonces, shares, &key_ids)?;
                 info!("Signature ({}, {})", signature.R, signature.z);
                 self.signature = Some(signature);
@@ -601,8 +601,7 @@ impl<Aggregator: AggregatorTrait> StateMachine<State, Error> for Coordinator<Agg
                     || prev_state == &State::DkgEndGather
             }
             State::DkgPublicGather => {
-                prev_state == &State::DkgPublicDistribute
-                    || prev_state == &State::DkgPublicGather
+                prev_state == &State::DkgPublicDistribute || prev_state == &State::DkgPublicGather
             }
             State::DkgPrivateDistribute => prev_state == &State::DkgPublicGather,
             State::DkgEndGather => prev_state == &State::DkgPrivateDistribute,
