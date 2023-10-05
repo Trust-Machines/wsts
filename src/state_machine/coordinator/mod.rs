@@ -67,11 +67,11 @@ impl From<AggregatorError> for Error {
 
 /// Coordinatable trait for handling the coordination of DKG and sign messages
 pub trait Coordinatable {
-    /// Process inbound messages
-    fn process_inbound_messages(
+    /// Process a packet and return any outbound packet response and operation result
+    fn process_packet(
         &mut self,
-        packets: &[Packet],
-    ) -> Result<(Vec<Packet>, Vec<OperationResult>), Error>;
+        packet: &Packet,
+    ) -> Result<(Option<Packet>, Option<OperationResult>), Error>;
     /// Retrieve the aggregate public key
     fn get_aggregate_public_key(&self) -> Option<Point>;
     /// Set the aggregate public key

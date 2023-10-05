@@ -147,59 +147,55 @@ impl<Signer: SignerTrait> SigningRound<Signer> {
         self.signer.reset_polys(rng);
     }
 
-    ///
-    pub fn process_inbound_messages(&mut self, messages: &[Packet]) -> Result<Vec<Packet>, Error> {
-        let mut responses = vec![];
-        for message in messages {
-            // TODO: this code was swiped from frost-signer. Expose it there so we don't have duplicate code
-            // See: https://github.com/stacks-network/stacks-blockchain/issues/3913
-            let outbounds = self.process(&message.msg)?;
-            for out in outbounds {
-                let msg = Packet {
-                    sig: match &out {
-                        Message::DkgBegin(msg) | Message::DkgPrivateBegin(msg) => msg
-                            .sign(&self.network_private_key)
-                            .expect("failed to sign DkgBegin")
-                            .to_vec(),
-                        Message::DkgEnd(msg) => msg
-                            .sign(&self.network_private_key)
-                            .expect("failed to sign DkgEnd")
-                            .to_vec(),
-                        Message::DkgPublicShares(msg) => msg
-                            .sign(&self.network_private_key)
-                            .expect("failed to sign DkgPublicShares")
-                            .to_vec(),
-                        Message::DkgPrivateShares(msg) => msg
-                            .sign(&self.network_private_key)
-                            .expect("failed to sign DkgPrivateShare")
-                            .to_vec(),
-                        Message::NonceRequest(msg) => msg
-                            .sign(&self.network_private_key)
-                            .expect("failed to sign NonceRequest")
-                            .to_vec(),
-                        Message::NonceResponse(msg) => msg
-                            .sign(&self.network_private_key)
-                            .expect("failed to sign NonceResponse")
-                            .to_vec(),
-                        Message::SignatureShareRequest(msg) => msg
-                            .sign(&self.network_private_key)
-                            .expect("failed to sign SignShareRequest")
-                            .to_vec(),
-                        Message::SignatureShareResponse(msg) => msg
-                            .sign(&self.network_private_key)
-                            .expect("failed to sign SignShareResponse")
-                            .to_vec(),
-                    },
-                    msg: out,
-                };
-                responses.push(msg);
-            }
-        }
-        Ok(responses)
+    /// Process packet and return any outbound packet responses
+    pub fn process_packet(&mut self, packet: &Packet) -> Result<Vec<Packet>, Error> {
+        // TODO: this code was swiped from frost-signer. Expose it there so we don't have duplicate code
+        // See: https://github.com/stacks-network/stacks-blockchain/issues/3913
+        Ok(self
+            .process_message(&packet.msg)?
+            .into_iter()
+            .map(|out| Packet {
+                sig: match &out {
+                    Message::DkgBegin(msg) | Message::DkgPrivateBegin(msg) => msg
+                        .sign(&self.network_private_key)
+                        .expect("failed to sign DkgBegin")
+                        .to_vec(),
+                    Message::DkgEnd(msg) => msg
+                        .sign(&self.network_private_key)
+                        .expect("failed to sign DkgEnd")
+                        .to_vec(),
+                    Message::DkgPublicShares(msg) => msg
+                        .sign(&self.network_private_key)
+                        .expect("failed to sign DkgPublicShares")
+                        .to_vec(),
+                    Message::DkgPrivateShares(msg) => msg
+                        .sign(&self.network_private_key)
+                        .expect("failed to sign DkgPrivateShare")
+                        .to_vec(),
+                    Message::NonceRequest(msg) => msg
+                        .sign(&self.network_private_key)
+                        .expect("failed to sign NonceRequest")
+                        .to_vec(),
+                    Message::NonceResponse(msg) => msg
+                        .sign(&self.network_private_key)
+                        .expect("failed to sign NonceResponse")
+                        .to_vec(),
+                    Message::SignatureShareRequest(msg) => msg
+                        .sign(&self.network_private_key)
+                        .expect("failed to sign SignShareRequest")
+                        .to_vec(),
+                    Message::SignatureShareResponse(msg) => msg
+                        .sign(&self.network_private_key)
+                        .expect("failed to sign SignShareResponse")
+                        .to_vec(),
+                },
+                msg: out,
+            })
+            .collect())
     }
 
     /// process the passed incoming message, and return any outgoing messages needed in response
-    pub fn process(&mut self, message: &Message) -> Result<Vec<Message>, Error> {
+    pub fn process_message(&mut self, message: &Message) -> Result<Vec<Message>, Error> {
         let out_msgs = match message {
             Message::DkgBegin(dkg_begin) => self.dkg_begin(dkg_begin),
             Message::DkgPrivateBegin(_) => self.dkg_private_begin(),

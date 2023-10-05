@@ -334,28 +334,39 @@ mod test {
         (coordinator, signing_rounds)
     }
 
-    /// Helper function for feeding messages back from the processor into the signing rounds and coordinator
-    fn feedback_messages<Aggregator: AggregatorTrait, Signer: SignerTrait>(
+    /// Helper function for feeding packets back from the processor into the signing rounds and coordinator
+    fn feedback_packets<Aggregator: AggregatorTrait, Signer: SignerTrait>(
         coordinator: &mut Coordinator<Aggregator>,
         signing_rounds: &mut Vec<SigningRound<Signer>>,
-        messages: &[Packet],
+        packets: &[Packet],
     ) -> (Vec<Packet>, Vec<OperationResult>) {
-        let mut inbound_messages = vec![];
-        let mut feedback_messages = vec![];
+        let mut coordinator_packets = vec![];
+        let mut signer_packets = vec![];
+        // For each signing round, process the packets array
         for signing_round in signing_rounds.as_mut_slice() {
-            let outbound_messages = signing_round.process_inbound_messages(messages).unwrap();
-            feedback_messages.extend_from_slice(outbound_messages.as_slice());
-            inbound_messages.extend(outbound_messages);
+            for packet in packets {
+                let out = signing_round.process_packet(packet).unwrap();
+                // The resulting packets should be fed back into the other signers
+                signer_packets.extend_from_slice(out.as_slice());
+                // Store all resulting packets to be fed back into the coordinator
+                coordinator_packets.extend(out);
+            }
         }
         for signing_round in signing_rounds.as_mut_slice() {
-            let outbound_messages = signing_round
-                .process_inbound_messages(&feedback_messages)
-                .unwrap();
-            inbound_messages.extend(outbound_messages);
+            // Feed all packets from signers into each other
+            for packet in &signer_packets {
+                let out = signing_round.process_packet(packet).unwrap();
+                coordinator_packets.extend(out);
+            }
         }
-        coordinator
-            .process_inbound_messages(&inbound_messages)
-            .unwrap()
+        let mut coordinator_outbound = vec![];
+        let mut coordinator_operations = vec![];
+        for packet in coordinator_packets {
+            let (out, ops) = coordinator.process_packet(&packet).unwrap();
+            coordinator_outbound.extend(out);
+            coordinator_operations.extend(ops);
+        }
+        (coordinator_outbound, coordinator_operations)
     }
 
     #[test]
@@ -378,7 +389,7 @@ mod test {
 
         // Send the DKG Begin message to all signers and gather responses by sharing with all other signers and coordinator
         let (outbound_messages, operation_results) =
-            feedback_messages(&mut coordinator, &mut signing_rounds, &[message]);
+            feedback_packets(&mut coordinator, &mut signing_rounds, &[message]);
         assert!(operation_results.is_empty());
         assert_eq!(coordinator.state, CoordinatorState::DkgEndGather);
 
@@ -392,7 +403,7 @@ mod test {
         }
         // Send the DKG Private Begin message to all signers and share their responses with the coordinator and signers
         let (outbound_messages, operation_results) =
-            feedback_messages(&mut coordinator, &mut signing_rounds, &outbound_messages);
+            feedback_packets(&mut coordinator, &mut signing_rounds, &outbound_messages);
         assert!(outbound_messages.is_empty());
         assert_eq!(operation_results.len(), 1);
         match operation_results[0] {
@@ -418,7 +429,7 @@ mod test {
 
         // Send the message to all signers and gather responses by sharing with all other signers and coordinator
         let (outbound_messages, operation_results) =
-            feedback_messages(&mut coordinator, &mut signing_rounds, &[message]);
+            feedback_packets(&mut coordinator, &mut signing_rounds, &[message]);
         assert!(operation_results.is_empty());
         assert_eq!(
             coordinator.state,
@@ -434,7 +445,7 @@ mod test {
         }
         // Send the SignatureShareRequest message to all signers and share their responses with the coordinator and signers
         let (outbound_messages, operation_results) =
-            feedback_messages(&mut coordinator, &mut signing_rounds, &outbound_messages);
+            feedback_packets(&mut coordinator, &mut signing_rounds, &outbound_messages);
         assert!(outbound_messages.is_empty());
         assert_eq!(operation_results.len(), 1);
         match &operation_results[0] {

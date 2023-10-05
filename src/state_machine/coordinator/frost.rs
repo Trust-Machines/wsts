@@ -82,100 +82,6 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         }
     }
 
-    /// Process the message inside the passed packet
-    pub fn process_message(
-        &mut self,
-        packet: &Packet,
-    ) -> Result<(Option<Packet>, Option<OperationResult>), Error> {
-        loop {
-            match self.state {
-                State::Idle => {
-                    // do nothing
-                    // We are the coordinator and should be the only thing triggering messages right now
-                    return Ok((None, None));
-                }
-                State::DkgPublicDistribute => {
-                    let packet = self.start_public_shares()?;
-                    return Ok((Some(packet), None));
-                }
-                State::DkgPublicGather => {
-                    self.gather_public_shares(packet)?;
-                    if self.state == State::DkgPublicGather {
-                        // We need more data
-                        return Ok((None, None));
-                    }
-                }
-                State::DkgPrivateDistribute => {
-                    let packet = self.start_private_shares()?;
-                    return Ok((Some(packet), None));
-                }
-                State::DkgEndGather => {
-                    self.gather_dkg_end(packet)?;
-                    if self.state == State::DkgEndGather {
-                        // We need more data
-                        return Ok((None, None));
-                    } else if self.state == State::Idle {
-                        // We are done with the DKG round! Return the operation result
-                        return Ok((
-                            None,
-                            Some(OperationResult::Dkg(
-                                self.aggregate_public_key
-                                    .ok_or(Error::MissingAggregatePublicKey)?,
-                            )),
-                        ));
-                    }
-                }
-                State::NonceRequest(is_taproot, merkle_root) => {
-                    let packet = self.request_nonces(is_taproot, merkle_root)?;
-                    return Ok((Some(packet), None));
-                }
-                State::NonceGather(is_taproot, merkle_root) => {
-                    self.gather_nonces(packet, is_taproot, merkle_root)?;
-                    if self.state == State::NonceGather(is_taproot, merkle_root) {
-                        // We need more data
-                        return Ok((None, None));
-                    }
-                }
-                State::SigShareRequest(is_taproot, merkle_root) => {
-                    let packet = self.request_sig_shares(is_taproot, merkle_root)?;
-                    return Ok((Some(packet), None));
-                }
-                State::SigShareGather(is_taproot, merkle_root) => {
-                    self.gather_sig_shares(packet, is_taproot, merkle_root)?;
-                    if self.state == State::SigShareGather(is_taproot, merkle_root) {
-                        // We need more data
-                        return Ok((None, None));
-                    } else if self.state == State::Idle {
-                        // We are done with the DKG round! Return the operation result
-                        if is_taproot {
-                            let schnorr_proof = self
-                                .schnorr_proof
-                                .as_ref()
-                                .ok_or(Error::MissingSchnorrProof)?;
-                            return Ok((
-                                None,
-                                Some(OperationResult::SignTaproot(SchnorrProof {
-                                    r: schnorr_proof.r,
-                                    s: schnorr_proof.s,
-                                })),
-                            ));
-                        } else {
-                            let signature =
-                                self.signature.as_ref().ok_or(Error::MissingSignature)?;
-                            return Ok((
-                                None,
-                                Some(OperationResult::Sign(Signature {
-                                    R: signature.R,
-                                    z: signature.z,
-                                })),
-                            ));
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     /// Start a DKG round
     pub fn start_dkg_round(&mut self) -> Result<Packet, Error> {
         self.current_dkg_id = self.current_dkg_id.wrapping_add(1);
@@ -550,23 +456,98 @@ impl<Aggregator: AggregatorTrait> StateMachine<State, Error> for Coordinator<Agg
 }
 
 impl<Aggregator: AggregatorTrait> Coordinatable for Coordinator<Aggregator> {
-    /// Process inbound messages
-    fn process_inbound_messages(
+    /// Process inbound packet and return an outbound packet response and operation result if any
+    fn process_packet(
         &mut self,
-        packets: &[Packet],
-    ) -> Result<(Vec<Packet>, Vec<OperationResult>), Error> {
-        let mut outbound_packets = vec![];
-        let mut operation_results = vec![];
-        for packet in packets {
-            let (outbound_packet, operation_result) = self.process_message(packet)?;
-            if let Some(outbound_packet) = outbound_packet {
-                outbound_packets.push(outbound_packet);
-            }
-            if let Some(operation_result) = operation_result {
-                operation_results.push(operation_result);
+        packet: &Packet,
+    ) -> Result<(Option<Packet>, Option<OperationResult>), Error> {
+        loop {
+            match self.state {
+                State::Idle => {
+                    // do nothing
+                    // We are the coordinator and should be the only thing triggering messages right now
+                    return Ok((None, None));
+                }
+                State::DkgPublicDistribute => {
+                    let packet = self.start_public_shares()?;
+                    return Ok((Some(packet), None));
+                }
+                State::DkgPublicGather => {
+                    self.gather_public_shares(packet)?;
+                    if self.state == State::DkgPublicGather {
+                        // We need more data
+                        return Ok((None, None));
+                    }
+                }
+                State::DkgPrivateDistribute => {
+                    let packet = self.start_private_shares()?;
+                    return Ok((Some(packet), None));
+                }
+                State::DkgEndGather => {
+                    self.gather_dkg_end(packet)?;
+                    if self.state == State::DkgEndGather {
+                        // We need more data
+                        return Ok((None, None));
+                    } else if self.state == State::Idle {
+                        // We are done with the DKG round! Return the operation result
+                        return Ok((
+                            None,
+                            Some(OperationResult::Dkg(
+                                self.aggregate_public_key
+                                    .ok_or(Error::MissingAggregatePublicKey)?,
+                            )),
+                        ));
+                    }
+                }
+                State::NonceRequest(is_taproot, merkle_root) => {
+                    let packet = self.request_nonces(is_taproot, merkle_root)?;
+                    return Ok((Some(packet), None));
+                }
+                State::NonceGather(is_taproot, merkle_root) => {
+                    self.gather_nonces(packet, is_taproot, merkle_root)?;
+                    if self.state == State::NonceGather(is_taproot, merkle_root) {
+                        // We need more data
+                        return Ok((None, None));
+                    }
+                }
+                State::SigShareRequest(is_taproot, merkle_root) => {
+                    let packet = self.request_sig_shares(is_taproot, merkle_root)?;
+                    return Ok((Some(packet), None));
+                }
+                State::SigShareGather(is_taproot, merkle_root) => {
+                    self.gather_sig_shares(packet, is_taproot, merkle_root)?;
+                    if self.state == State::SigShareGather(is_taproot, merkle_root) {
+                        // We need more data
+                        return Ok((None, None));
+                    } else if self.state == State::Idle {
+                        // We are done with the DKG round! Return the operation result
+                        if is_taproot {
+                            let schnorr_proof = self
+                                .schnorr_proof
+                                .as_ref()
+                                .ok_or(Error::MissingSchnorrProof)?;
+                            return Ok((
+                                None,
+                                Some(OperationResult::SignTaproot(SchnorrProof {
+                                    r: schnorr_proof.r,
+                                    s: schnorr_proof.s,
+                                })),
+                            ));
+                        } else {
+                            let signature =
+                                self.signature.as_ref().ok_or(Error::MissingSignature)?;
+                            return Ok((
+                                None,
+                                Some(OperationResult::Sign(Signature {
+                                    R: signature.R,
+                                    z: signature.z,
+                                })),
+                            ));
+                        }
+                    }
+                }
             }
         }
-        Ok((outbound_packets, operation_results))
     }
 
     /// Retrieve the aggregate public key
