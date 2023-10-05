@@ -206,9 +206,7 @@ impl<Signer: SignerTrait> SigningRound<Signer> {
         let out_msgs = match message {
             Message::DkgBegin(dkg_begin) => self.dkg_begin(dkg_begin),
             Message::DkgPrivateBegin(_) => self.dkg_private_begin(),
-            Message::DkgPublicShares(dkg_public_shares) => {
-                self.dkg_public_share(dkg_public_shares)
-            }
+            Message::DkgPublicShares(dkg_public_shares) => self.dkg_public_share(dkg_public_shares),
             Message::DkgPrivateShares(dkg_private_shares) => {
                 self.dkg_private_shares(dkg_private_shares)
             }
@@ -299,7 +297,7 @@ impl<Signer: SignerTrait> SigningRound<Signer> {
         self.state == State::DkgPrivateGather
             && self.commitments.len() == usize::try_from(self.signer.get_num_parties()).unwrap()
             && self.decrypted_shares.len()
-            == usize::try_from(self.signer.get_num_parties()).unwrap()
+                == usize::try_from(self.signer.get_num_parties()).unwrap()
     }
 
     fn nonce_request(&mut self, nonce_request: NonceRequest) -> Result<Vec<Message>, Error> {
@@ -464,8 +462,7 @@ impl<Signer: SignerTrait> SigningRound<Signer> {
                 let compressed =
                     Compressed::from(self.public_keys.key_ids[&(dst_key_id + 1)].to_bytes());
                 let dst_public_key = Point::try_from(&compressed).unwrap();
-                let shared_secret =
-                    make_shared_secret(&self.network_private_key, &dst_public_key);
+                let shared_secret = make_shared_secret(&self.network_private_key, &dst_public_key);
                 let encrypted_share =
                     encrypt(&shared_secret, &private_share.to_bytes(), &mut rng).unwrap();
 
@@ -508,9 +505,8 @@ impl<Signer: SignerTrait> SigningRound<Signer> {
 
         // make a HashSet of our key_ids so we can quickly query them
         let key_ids: HashSet<u32> = self.signer.get_key_ids().into_iter().collect();
-        let compressed = Compressed::from(
-            self.public_keys.signers[&dkg_private_shares.signer_id].to_bytes(),
-        );
+        let compressed =
+            Compressed::from(self.public_keys.signers[&dkg_private_shares.signer_id].to_bytes());
         let public_key = Point::try_from(&compressed).unwrap();
         let shared_secret = make_shared_secret(&self.network_private_key, &public_key);
 

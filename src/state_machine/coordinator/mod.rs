@@ -194,10 +194,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                         return Ok((None, None));
                     } else if self.state == State::Idle {
                         // We are done with the DKG round! Return the operation result
-                        return Ok((
-                            None,
-                            Some(OperationResult::Dkg(self.aggregate_public_key)),
-                        ));
+                        return Ok((None, Some(OperationResult::Dkg(self.aggregate_public_key))));
                     }
                 }
                 State::NonceRequest(is_taproot, merkle_root) => {
@@ -537,8 +534,8 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                     self.schnorr_proof.r, self.schnorr_proof.s
                 );
             } else {
-                self.signature =
-                    self.aggregator
+                self.signature = self
+                    .aggregator
                     .sign(&self.message, &nonces, shares, &key_ids)?;
                 info!("Signature ({}, {})", self.signature.R, self.signature.z);
             }
@@ -584,8 +581,7 @@ impl<Aggregator: AggregatorTrait> StateMachine<State, Error> for Coordinator<Agg
                     || prev_state == &State::DkgEndGather
             }
             State::DkgPublicGather => {
-                prev_state == &State::DkgPublicDistribute
-                    || prev_state == &State::DkgPublicGather
+                prev_state == &State::DkgPublicDistribute || prev_state == &State::DkgPublicGather
             }
             State::DkgPrivateDistribute => prev_state == &State::DkgPublicGather,
             State::DkgEndGather => prev_state == &State::DkgPrivateDistribute,
