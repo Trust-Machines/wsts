@@ -156,8 +156,7 @@ impl<Signer: SignerTrait> SigningRound<Signer> {
             let outbounds = self.process(&message.msg)?;
             for out in outbounds {
                 let msg = Packet {
-                    msg: out.clone(),
-                    sig: match out {
+                    sig: match &out {
                         Message::DkgBegin(msg) | Message::DkgPrivateBegin(msg) => msg
                             .sign(&self.network_private_key)
                             .expect("failed to sign DkgBegin")
@@ -191,6 +190,7 @@ impl<Signer: SignerTrait> SigningRound<Signer> {
                             .expect("failed to sign SignShareResponse")
                             .to_vec(),
                     },
+                    msg: out,
                 };
                 responses.push(msg);
             }
