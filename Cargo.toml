@@ -25,7 +25,7 @@ num-traits = "0.2"
 polynomial = { version = "0.2.5", features = ["serde"] }
 primitive-types = "0.12"
 rand_core = "0.6"
-p256k1 = { version = "5.4", default-features = false, git = "https://github.com/jcnelson/p256k1" }
+p256k1 = "5.5"
 serde = { version = "1.0", features = ["derive"] }
 sha2 = "0.10"
 thiserror = "1.0"
