@@ -194,6 +194,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
 
     /// Ask signers to send DKG private shares
     pub fn start_private_shares(&mut self) -> Result<Packet, Error> {
+        self.ids_to_await = (0..self.total_signers).collect();
         info!(
             "DKG Round {}: Starting Private Share Distribution",
             self.current_dkg_id
@@ -242,7 +243,6 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             info!("Aggregate public key: {}", key);
             self.aggregate_public_key = Some(key);
             self.move_to(State::DkgPrivateDistribute)?;
-            self.ids_to_await = (0..self.total_signers).collect();
         }
         Ok(())
     }
@@ -264,7 +264,6 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         }
 
         if self.ids_to_await.is_empty() {
-            self.ids_to_await = (0..self.total_signers).collect();
             self.move_to(State::Idle)?;
         }
         Ok(())
