@@ -179,6 +179,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
     pub fn start_public_shares(&mut self) -> Result<Packet, Error> {
         self.dkg_public_shares.clear();
         self.party_polynomials.clear();
+        self.dkg_wait_ids = (0..self.total_signers).collect();
         info!(
             "DKG Round {}: Starting Public Share Distribution",
             self.current_dkg_id,

@@ -288,9 +288,9 @@ pub mod test {
 
         let mut rng = OsRng;
         let total_signers = 5;
-        let threshold = total_signers / 10 + 7;
-        let keys_per_signer = 3;
+        let keys_per_signer = 2;
         let total_keys = total_signers * keys_per_signer;
+        let threshold = (total_keys * 7) / 10;
         let key_pairs = (0..total_signers)
             .map(|_| {
                 let private_key = Scalar::random(&mut rng);
