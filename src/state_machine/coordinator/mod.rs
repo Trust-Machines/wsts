@@ -5,7 +5,7 @@ use crate::{
     Scalar,
 };
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 /// Coordinator states
 pub enum State {
     /// The coordinator is idle
@@ -87,6 +87,12 @@ pub trait Coordinator {
 
     /// Set the aggregate public key
     fn set_aggregate_public_key(&mut self, aggregate_public_key: Option<Point>);
+
+    /// Retrive the current state
+    fn get_state(&self) -> State;
+
+    /// Set the current state
+    fn set_state(&mut self, state: State);
 
     /// Trigger a DKG round
     fn start_distributed_key_generation(&mut self) -> Result<Packet, Error>;

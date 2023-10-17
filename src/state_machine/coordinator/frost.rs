@@ -579,6 +579,16 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
         self.aggregate_public_key = aggregate_public_key;
     }
 
+    /// Retrive the current state
+    fn get_state(&self) -> State {
+        self.state.clone()
+    }
+
+    /// Set the current state
+    fn set_state(&mut self, state: State) {
+        self.state = state;
+    }
+
     /// Trigger a DKG round
     fn start_distributed_key_generation(&mut self) -> Result<Packet, Error> {
         self.start_dkg_round()

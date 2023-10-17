@@ -50,7 +50,8 @@ pub mod test {
         schnorr::ID,
         state_machine::{
             coordinator::{
-                frost::Coordinator, Coordinator as CoordinatorTrait, State as CoordinatorState,
+                frost::Coordinator as FrostCoordinator, Coordinator as CoordinatorTrait,
+                State as CoordinatorState,
             },
             signer::{SigningRound, State as SignerState},
             OperationResult, PublicKeys, StateMachine,
@@ -75,7 +76,7 @@ pub mod test {
         let mut rng = OsRng;
         let message_private_key = Scalar::random(&mut rng);
 
-        let mut coordinator = Coordinator::<Aggregator>::new(3, 3, 3, message_private_key);
+        let mut coordinator = FrostCoordinator::<Aggregator>::new(3, 3, 3, message_private_key);
         assert!(coordinator
             .can_move_to(&CoordinatorState::DkgPublicDistribute)
             .is_ok());
@@ -164,7 +165,7 @@ pub mod test {
         let mut rng = OsRng;
         let message_private_key = Scalar::random(&mut rng);
 
-        let coordinator = Coordinator::<Aggregator>::new(
+        let coordinator = FrostCoordinator::<Aggregator>::new(
             total_signers,
             total_keys,
             threshold,
@@ -176,7 +177,7 @@ pub mod test {
         assert_eq!(coordinator.threshold, threshold);
         assert_eq!(coordinator.message_private_key, message_private_key);
         assert_eq!(coordinator.ids_to_await.len(), total_signers as usize);
-        assert_eq!(coordinator.state, CoordinatorState::Idle);
+        assert_eq!(coordinator.get_state(), CoordinatorState::Idle);
     }
 
     #[test]
@@ -195,7 +196,7 @@ pub mod test {
         let threshold = 28;
         let mut rng = OsRng;
         let message_private_key = Scalar::random(&mut rng);
-        let mut coordinator = Coordinator::<Aggregator>::new(
+        let mut coordinator = FrostCoordinator::<Aggregator>::new(
             total_signers,
             total_keys,
             threshold,
@@ -206,7 +207,7 @@ pub mod test {
 
         assert!(result.is_ok());
         assert!(matches!(result.unwrap().msg, Message::DkgBegin(_)));
-        assert_eq!(coordinator.state, CoordinatorState::DkgPublicGather);
+        assert_eq!(coordinator.get_state(), CoordinatorState::DkgPublicGather);
         assert_eq!(coordinator.current_dkg_id, 1);
     }
 
@@ -226,18 +227,19 @@ pub mod test {
         let threshold = 28;
         let mut rng = OsRng;
         let message_private_key = Scalar::random(&mut rng);
-        let mut coordinator = Coordinator::<Aggregator>::new(
+        let mut coordinator = FrostCoordinator::<Aggregator>::new(
             total_signers,
             total_keys,
             threshold,
             message_private_key,
         );
-        coordinator.state = CoordinatorState::DkgPublicDistribute; // Must be in this state before calling start public shares
+
+        coordinator.set_state(CoordinatorState::DkgPublicDistribute); // Must be in this state before calling start public shares
 
         let result = coordinator.start_public_shares().unwrap();
 
         assert!(matches!(result.msg, Message::DkgBegin(_)));
-        assert_eq!(coordinator.state, CoordinatorState::DkgPublicGather);
+        assert_eq!(coordinator.get_state(), CoordinatorState::DkgPublicGather);
         assert_eq!(coordinator.current_dkg_id, 0);
     }
 
@@ -257,22 +259,22 @@ pub mod test {
         let threshold = 28;
         let mut rng = OsRng;
         let message_private_key = Scalar::random(&mut rng);
-        let mut coordinator = Coordinator::<Aggregator>::new(
+        let mut coordinator = FrostCoordinator::<Aggregator>::new(
             total_signers,
             total_keys,
             threshold,
             message_private_key,
         );
-        coordinator.state = CoordinatorState::DkgPrivateDistribute; // Must be in this state before calling start private shares
+        coordinator.set_state(CoordinatorState::DkgPrivateDistribute); // Must be in this state before calling start private shares
 
         let message = coordinator.start_private_shares().unwrap();
         assert!(matches!(message.msg, Message::DkgPrivateBegin(_)));
-        assert_eq!(coordinator.state, CoordinatorState::DkgEndGather);
+        assert_eq!(coordinator.get_state(), CoordinatorState::DkgEndGather);
         assert_eq!(coordinator.current_dkg_id, 0);
     }
 
-    pub fn setup<Aggregator: AggregatorTrait, Signer: SignerTrait>(
-    ) -> (Coordinator<Aggregator>, Vec<SigningRound<Signer>>) {
+    pub fn setup<Coordinator: CoordinatorTrait, Signer: SignerTrait>(
+    ) -> (Coordinator, Vec<SigningRound<Signer>>) {
         unsafe {
             if let Ok(false) =
                 LOG_INIT.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
@@ -331,14 +333,13 @@ pub mod test {
             })
             .collect::<Vec<SigningRound<Signer>>>();
 
-        let coordinator =
-            Coordinator::<Aggregator>::new(total_signers, total_keys, threshold, key_pairs[0].0);
+        let coordinator = Coordinator::new(total_signers, total_keys, threshold, key_pairs[0].0);
         (coordinator, signing_rounds)
     }
 
     /// Helper function for feeding messages back from the processor into the signing rounds and coordinator
-    pub fn feedback_messages<Aggregator: AggregatorTrait, Signer: SignerTrait>(
-        coordinator: &mut Coordinator<Aggregator>,
+    pub fn feedback_messages<Coordinator: CoordinatorTrait, Signer: SignerTrait>(
+        coordinator: &mut Coordinator,
         signing_rounds: &mut Vec<SigningRound<Signer>>,
         messages: &[Packet],
     ) -> (Vec<Packet>, Vec<OperationResult>) {
@@ -362,27 +363,27 @@ pub mod test {
 
     #[test]
     fn test_process_inbound_messages_v1() {
-        test_process_inbound_messages::<v1::Aggregator, v1::Signer>();
+        test_process_inbound_messages::<FrostCoordinator<v1::Aggregator>, v1::Signer>();
     }
 
     #[test]
     fn test_process_inbound_messages_v2() {
-        test_process_inbound_messages::<v2::Aggregator, v2::Signer>();
+        test_process_inbound_messages::<FrostCoordinator<v2::Aggregator>, v2::Signer>();
     }
 
-    fn test_process_inbound_messages<Aggregator: AggregatorTrait, Signer: SignerTrait>() {
-        let (mut coordinator, mut signing_rounds) = setup::<Aggregator, Signer>();
+    pub fn test_process_inbound_messages<Coordinator: CoordinatorTrait, Signer: SignerTrait>() {
+        let (mut coordinator, mut signing_rounds) = setup::<Coordinator, Signer>();
 
         // We have started a dkg round
-        let message = coordinator.start_dkg_round().unwrap();
-        assert!(coordinator.aggregate_public_key.is_none());
-        assert_eq!(coordinator.state, CoordinatorState::DkgPublicGather);
+        let message = coordinator.start_distributed_key_generation().unwrap();
+        assert!(coordinator.get_aggregate_public_key().is_none());
+        assert_eq!(coordinator.get_state(), CoordinatorState::DkgPublicGather);
 
         // Send the DKG Begin message to all signers and gather responses by sharing with all other signers and coordinator
         let (outbound_messages, operation_results) =
             feedback_messages(&mut coordinator, &mut signing_rounds, &[message]);
         assert!(operation_results.is_empty());
-        assert_eq!(coordinator.state, CoordinatorState::DkgEndGather);
+        assert_eq!(coordinator.get_state(), CoordinatorState::DkgEndGather);
 
         // Successfully got an Aggregate Public Key...
         assert_eq!(outbound_messages.len(), 1);
@@ -400,8 +401,8 @@ pub mod test {
         match operation_results[0] {
             OperationResult::Dkg(point) => {
                 assert_ne!(point, Point::default());
-                assert_eq!(coordinator.aggregate_public_key, Some(point));
-                assert_eq!(coordinator.state, CoordinatorState::Idle);
+                assert_eq!(coordinator.get_aggregate_public_key(), Some(point));
+                assert_eq!(coordinator.get_state(), CoordinatorState::Idle);
             }
             _ => panic!("Expected Dkg Operation result"),
         }
@@ -414,7 +415,7 @@ pub mod test {
             .start_signing_message(&msg, is_taproot, merkle_root)
             .unwrap();
         assert_eq!(
-            coordinator.state,
+            coordinator.get_state(),
             CoordinatorState::NonceGather(is_taproot, merkle_root)
         );
 
@@ -423,7 +424,7 @@ pub mod test {
             feedback_messages(&mut coordinator, &mut signing_rounds, &[message]);
         assert!(operation_results.is_empty());
         assert_eq!(
-            coordinator.state,
+            coordinator.get_state(),
             CoordinatorState::SigShareGather(is_taproot, merkle_root)
         );
 
@@ -443,7 +444,7 @@ pub mod test {
             OperationResult::Sign(sig) => {
                 assert!(sig.verify(
                     &coordinator
-                        .aggregate_public_key
+                        .get_aggregate_public_key()
                         .expect("No aggregate public key set!"),
                     &msg
                 ));
@@ -451,7 +452,7 @@ pub mod test {
             _ => panic!("Expected Signature Operation result"),
         }
 
-        assert_eq!(coordinator.state, CoordinatorState::Idle);
+        assert_eq!(coordinator.get_state(), CoordinatorState::Idle);
     }
 
     #[test]
