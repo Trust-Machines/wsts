@@ -39,7 +39,7 @@ pub mod signer;
 #[cfg(test)]
 pub mod test {
     use hashbrown::HashMap;
-    use p256k1::{ecdsa, point::Point, scalar::Scalar};
+    use p256k1::ecdsa;
     use rand_core::OsRng;
     use std::sync::atomic::{AtomicBool, Ordering};
     use tracing_subscriber::{fmt, prelude::*, EnvFilter};
@@ -57,7 +57,7 @@ pub mod test {
             OperationResult, PublicKeys, StateMachine,
         },
         traits::{Aggregator as AggregatorTrait, Signer as SignerTrait},
-        v1, v2,
+        v1, v2, Point, Scalar,
     };
 
     static mut LOG_INIT: AtomicBool = AtomicBool::new(false);
@@ -359,16 +359,6 @@ pub mod test {
         coordinator
             .process_inbound_messages(&inbound_messages)
             .unwrap()
-    }
-
-    #[test]
-    fn test_process_inbound_messages_v1() {
-        test_process_inbound_messages::<FrostCoordinator<v1::Aggregator>, v1::Signer>();
-    }
-
-    #[test]
-    fn test_process_inbound_messages_v2() {
-        test_process_inbound_messages::<FrostCoordinator<v2::Aggregator>, v2::Signer>();
     }
 
     pub fn test_process_inbound_messages<Coordinator: CoordinatorTrait, Signer: SignerTrait>() {

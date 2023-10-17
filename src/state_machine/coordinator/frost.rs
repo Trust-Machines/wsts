@@ -615,3 +615,24 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
         self.ids_to_await = (0..self.total_signers).collect();
     }
 }
+
+#[cfg(test)]
+pub mod test {
+    use crate::{
+        state_machine::{
+            coordinator::frost::Coordinator as FrostCoordinator,
+            test::test_process_inbound_messages,
+        },
+        v1, v2,
+    };
+
+    #[test]
+    fn test_process_inbound_messages_v1() {
+        test_process_inbound_messages::<FrostCoordinator<v1::Aggregator>, v1::Signer>();
+    }
+
+    #[test]
+    fn test_process_inbound_messages_v2() {
+        test_process_inbound_messages::<FrostCoordinator<v2::Aggregator>, v2::Signer>();
+    }
+}
