@@ -5,7 +5,7 @@ use p256k1::{
 };
 use rand_core::{CryptoRng, OsRng, RngCore};
 use std::collections::BTreeMap;
-use tracing::{debug, info, warn};
+use tracing::{debug, info, trace, warn};
 
 use crate::{
     common::{PolyCommitment, PublicNonce},
@@ -441,7 +441,7 @@ impl<Signer: SignerTrait> SigningRound<Signer> {
             self.dkg_id,
         );
 
-        debug!(
+        trace!(
             "Signer {} shares {:?}",
             self.signer_id,
             &self.signer.get_shares()

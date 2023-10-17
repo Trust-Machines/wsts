@@ -398,7 +398,9 @@ pub mod test {
         }
 
         // We have started a signing round
-        let msg = vec![1, 2, 3];
+        let msg = "It was many and many a year ago, in a kingdom by the sea"
+            .as_bytes()
+            .to_vec();
         let is_taproot = false;
         let merkle_root = None;
         let message = coordinator
