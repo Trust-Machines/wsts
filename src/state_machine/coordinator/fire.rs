@@ -151,30 +151,6 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         }
     }
 
-    /// Start a DKG round
-    pub fn start_dkg_round(&mut self) -> Result<Packet, Error> {
-        self.current_dkg_id = self.current_dkg_id.wrapping_add(1);
-        info!("Starting DKG round {}", self.current_dkg_id);
-        self.move_to(State::DkgPublicDistribute)?;
-        self.start_public_shares()
-    }
-
-    /// Start a signing round
-    pub fn start_signing_round(
-        &mut self,
-        is_taproot: bool,
-        merkle_root: Option<MerkleRoot>,
-    ) -> Result<Packet, Error> {
-        // We cannot sign if we haven't first set DKG (either manually or via DKG round).
-        if self.aggregate_public_key.is_none() {
-            return Err(Error::MissingAggregatePublicKey);
-        }
-        self.current_sign_id = self.current_sign_id.wrapping_add(1);
-        info!("Starting signing round {}", self.current_sign_id);
-        self.move_to(State::NonceRequest(is_taproot, merkle_root))?;
-        self.request_nonces(is_taproot, merkle_root)
-    }
-
     /// Ask signers to send DKG public shares
     pub fn start_public_shares(&mut self) -> Result<Packet, Error> {
         self.dkg_public_shares.clear();
@@ -596,20 +572,30 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
         self.state = state;
     }
 
-    /// Trigger a DKG round
-    fn start_distributed_key_generation(&mut self) -> Result<Packet, Error> {
-        self.start_dkg_round()
+    /// Start a DKG round
+    fn start_dkg_round(&mut self) -> Result<Packet, Error> {
+        self.current_dkg_id = self.current_dkg_id.wrapping_add(1);
+        info!("Starting DKG round {}", self.current_dkg_id);
+        self.move_to(State::DkgPublicDistribute)?;
+        self.start_public_shares()
     }
 
-    // Trigger a signing round
-    fn start_signing_message(
+    /// Start a signing round
+    fn start_signing_round(
         &mut self,
         message: &[u8],
         is_taproot: bool,
         merkle_root: Option<MerkleRoot>,
     ) -> Result<Packet, Error> {
+        // We cannot sign if we haven't first set DKG (either manually or via DKG round).
+        if self.aggregate_public_key.is_none() {
+            return Err(Error::MissingAggregatePublicKey);
+        }
         self.message = message.to_vec();
-        self.start_signing_round(is_taproot, merkle_root)
+        self.current_sign_id = self.current_sign_id.wrapping_add(1);
+        info!("Starting signing round {}", self.current_sign_id);
+        self.move_to(State::NonceRequest(is_taproot, merkle_root))?;
+        self.request_nonces(is_taproot, merkle_root)
     }
 
     // Reset internal state
@@ -665,7 +651,7 @@ pub mod test {
         let (mut coordinator, mut signing_rounds) = setup::<FireCoordinator<Aggregator>, Signer>();
 
         // We have started a dkg round
-        let message = coordinator.start_distributed_key_generation().unwrap();
+        let message = coordinator.start_dkg_round().unwrap();
         assert!(coordinator.aggregate_public_key.is_none());
         assert_eq!(coordinator.state, CoordinatorState::DkgPublicGather);
 
@@ -704,7 +690,7 @@ pub mod test {
         let is_taproot = false;
         let merkle_root = None;
         let message = coordinator
-            .start_signing_message(&msg, is_taproot, merkle_root)
+            .start_signing_round(&msg, is_taproot, merkle_root)
             .unwrap();
         assert_eq!(
             coordinator.state,

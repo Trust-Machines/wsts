@@ -365,7 +365,7 @@ pub mod test {
         let (mut coordinator, mut signing_rounds) = setup::<Coordinator, Signer>();
 
         // We have started a dkg round
-        let message = coordinator.start_distributed_key_generation().unwrap();
+        let message = coordinator.start_dkg_round().unwrap();
         assert!(coordinator.get_aggregate_public_key().is_none());
         assert_eq!(coordinator.get_state(), CoordinatorState::DkgPublicGather);
 
@@ -404,7 +404,7 @@ pub mod test {
         let is_taproot = false;
         let merkle_root = None;
         let message = coordinator
-            .start_signing_message(&msg, is_taproot, merkle_root)
+            .start_signing_round(&msg, is_taproot, merkle_root)
             .unwrap();
         assert_eq!(
             coordinator.get_state(),

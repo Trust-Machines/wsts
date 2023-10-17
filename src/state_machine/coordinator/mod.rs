@@ -95,10 +95,10 @@ pub trait Coordinator {
     fn set_state(&mut self, state: State);
 
     /// Trigger a DKG round
-    fn start_distributed_key_generation(&mut self) -> Result<Packet, Error>;
+    fn start_dkg_round(&mut self) -> Result<Packet, Error>;
 
     /// Trigger a signing round
-    fn start_signing_message(
+    fn start_signing_round(
         &mut self,
         message: &[u8],
         is_taproot: bool,
