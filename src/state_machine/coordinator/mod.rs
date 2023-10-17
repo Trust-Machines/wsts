@@ -2,6 +2,7 @@ use p256k1::point::Point;
 
 use crate::{
     common::MerkleRoot, errors::AggregatorError, net::Packet, state_machine::OperationResult,
+    Scalar,
 };
 
 #[derive(Debug, PartialEq)]
@@ -65,19 +66,31 @@ impl From<AggregatorError> for Error {
     }
 }
 
-/// Coordinatable trait for handling the coordination of DKG and sign messages
-pub trait Coordinatable {
+/// Coordinator trait for handling the coordination of DKG and sign messages
+pub trait Coordinator {
+    /// Create a new Coordinator
+    fn new(
+        total_signers: u32,
+        total_keys: u32,
+        threshold: u32,
+        message_private_key: Scalar,
+    ) -> Self;
+
     /// Process inbound messages
     fn process_inbound_messages(
         &mut self,
         packets: &[Packet],
     ) -> Result<(Vec<Packet>, Vec<OperationResult>), Error>;
+
     /// Retrieve the aggregate public key
     fn get_aggregate_public_key(&self) -> Option<Point>;
+
     /// Set the aggregate public key
     fn set_aggregate_public_key(&mut self, aggregate_public_key: Option<Point>);
+
     /// Trigger a DKG round
     fn start_distributed_key_generation(&mut self) -> Result<Packet, Error>;
+
     /// Trigger a signing round
     fn start_signing_message(
         &mut self,
@@ -85,9 +98,13 @@ pub trait Coordinatable {
         is_taproot: bool,
         merkle_root: Option<MerkleRoot>,
     ) -> Result<Packet, Error>;
+
     /// Reset internal state
     fn reset(&mut self);
 }
 
 /// The coordinator for the FROST algorithm
 pub mod frost;
+
+/// The coordinator for the FIRE algorithm
+pub mod fire;

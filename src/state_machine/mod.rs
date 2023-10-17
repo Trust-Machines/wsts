@@ -37,7 +37,7 @@ pub mod coordinator;
 pub mod signer;
 
 #[cfg(test)]
-mod test {
+pub mod test {
     use hashbrown::HashMap;
     use p256k1::{ecdsa, point::Point, scalar::Scalar};
     use rand_core::OsRng;
@@ -49,7 +49,9 @@ mod test {
         net::{DkgPublicShares, DkgStatus, Message, Packet},
         schnorr::ID,
         state_machine::{
-            coordinator::{frost::Coordinator, Coordinatable, State as CoordinatorState},
+            coordinator::{
+                frost::Coordinator, Coordinator as CoordinatorTrait, State as CoordinatorState,
+            },
             signer::{SigningRound, State as SignerState},
             OperationResult, PublicKeys, StateMachine,
         },
@@ -269,7 +271,7 @@ mod test {
         assert_eq!(coordinator.current_dkg_id, 0);
     }
 
-    fn setup<Aggregator: AggregatorTrait, Signer: SignerTrait>(
+    pub fn setup<Aggregator: AggregatorTrait, Signer: SignerTrait>(
     ) -> (Coordinator<Aggregator>, Vec<SigningRound<Signer>>) {
         unsafe {
             if let Ok(false) =
@@ -335,7 +337,7 @@ mod test {
     }
 
     /// Helper function for feeding messages back from the processor into the signing rounds and coordinator
-    fn feedback_messages<Aggregator: AggregatorTrait, Signer: SignerTrait>(
+    pub fn feedback_messages<Aggregator: AggregatorTrait, Signer: SignerTrait>(
         coordinator: &mut Coordinator<Aggregator>,
         signing_rounds: &mut Vec<SigningRound<Signer>>,
         messages: &[Packet],
