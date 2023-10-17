@@ -175,6 +175,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
     pub fn start_public_shares(&mut self) -> Result<Packet, Error> {
         self.dkg_public_shares.clear();
         self.party_polynomials.clear();
+        self.ids_to_await = (0..self.total_signers).collect();
         info!(
             "DKG Round {}: Starting Public Share Distribution",
             self.current_dkg_id,
@@ -544,7 +545,7 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
             schnorr_proof: None,
             message: Default::default(),
             message_private_key,
-            ids_to_await: (0..total_signers).collect(),
+            ids_to_await: Default::default(),
             state: State::Idle,
             aggregator: Aggregator::new(total_keys, threshold),
         }

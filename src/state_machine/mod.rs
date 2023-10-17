@@ -176,7 +176,7 @@ pub mod test {
         assert_eq!(coordinator.total_keys, total_keys);
         assert_eq!(coordinator.threshold, threshold);
         assert_eq!(coordinator.message_private_key, message_private_key);
-        assert_eq!(coordinator.ids_to_await.len(), total_signers as usize);
+        assert_eq!(coordinator.ids_to_await.len(), 0);
         assert_eq!(coordinator.get_state(), CoordinatorState::Idle);
     }
 
