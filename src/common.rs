@@ -4,16 +4,10 @@ use core::{
 };
 use hashbrown::HashMap;
 use num_traits::{One, Zero};
-use p256k1::{
-    point::{Point, G},
-    scalar::Scalar,
-    traits::MultiMult,
-};
 use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
-use crate::compute::challenge;
-use crate::schnorr::ID;
+use crate::{compute::challenge, schnorr::ID, MultiMult, Point, Scalar, G};
 
 /// A merkle root is a 256 bit hash
 pub type MerkleRoot = [u8; 32];

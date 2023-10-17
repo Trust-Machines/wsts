@@ -1,8 +1,4 @@
 use hashbrown::{HashMap, HashSet};
-use p256k1::{
-    point::{Compressed, Point},
-    scalar::Scalar,
-};
 use rand_core::{CryptoRng, OsRng, RngCore};
 use std::collections::BTreeMap;
 use tracing::{debug, info, trace, warn};
@@ -16,6 +12,7 @@ use crate::{
     state_machine::{PublicKeys, StateMachine},
     traits::Signer as SignerTrait,
     util::{decrypt, encrypt, make_shared_secret},
+    Compressed, Point, Scalar,
 };
 
 #[derive(Debug, PartialEq)]
@@ -570,6 +567,165 @@ impl<Signer: SignerTrait> StateMachine<State, Error> for SigningRound<Signer> {
                 "{:?} to {:?}",
                 prev_state, state
             )))
+        }
+    }
+}
+
+#[cfg(test)]
+pub mod test {
+    use hashbrown::HashMap;
+    use rand_core::OsRng;
+
+    use crate::{
+        common::PolyCommitment,
+        net::{DkgPublicShares, DkgStatus, Message},
+        schnorr::ID,
+        state_machine::signer::{SigningRound, State as SignerState},
+        traits::Signer as SignerTrait,
+        v1, v2, Scalar,
+    };
+
+    #[test]
+    fn dkg_public_share_v1() {
+        dkg_public_share::<v1::Signer>();
+    }
+
+    #[test]
+    fn dkg_public_share_v2() {
+        dkg_public_share::<v2::Signer>();
+    }
+
+    fn dkg_public_share<Signer: SignerTrait>() {
+        let mut rnd = OsRng;
+        let mut signing_round = SigningRound::<Signer>::new(
+            1,
+            1,
+            1,
+            1,
+            vec![1],
+            Default::default(),
+            Default::default(),
+        );
+        let public_share = DkgPublicShares {
+            dkg_id: 0,
+            signer_id: 0,
+            comms: vec![(
+                0,
+                PolyCommitment {
+                    id: ID::new(&Scalar::new(), &Scalar::new(), &mut rnd),
+                    poly: vec![],
+                },
+            )],
+        };
+        signing_round.dkg_public_share(&public_share).unwrap();
+        assert_eq!(1, signing_round.commitments.len())
+    }
+
+    #[test]
+    fn public_shares_done_v1() {
+        public_shares_done::<v1::Signer>();
+    }
+
+    #[test]
+    fn public_shares_done_v2() {
+        public_shares_done::<v2::Signer>();
+    }
+
+    fn public_shares_done<Signer: SignerTrait>() {
+        let mut rnd = OsRng;
+        let mut signing_round = SigningRound::<Signer>::new(
+            1,
+            1,
+            1,
+            1,
+            vec![1],
+            Default::default(),
+            Default::default(),
+        );
+        // publich_shares_done starts out as false
+        assert!(!signing_round.public_shares_done());
+
+        // meet the conditions for all public keys received
+        signing_round.state = SignerState::DkgPublicGather;
+        signing_round.commitments.insert(
+            1,
+            PolyCommitment {
+                id: ID::new(&Scalar::new(), &Scalar::new(), &mut rnd),
+                poly: vec![],
+            },
+        );
+
+        // public_shares_done should be true
+        assert!(signing_round.public_shares_done());
+    }
+
+    #[test]
+    fn can_dkg_end_v1() {
+        can_dkg_end::<v1::Signer>();
+    }
+
+    #[test]
+    fn can_dkg_end_v2() {
+        can_dkg_end::<v2::Signer>();
+    }
+
+    fn can_dkg_end<Signer: SignerTrait>() {
+        let mut rnd = OsRng;
+        let mut signing_round = SigningRound::<Signer>::new(
+            1,
+            1,
+            1,
+            1,
+            vec![1],
+            Default::default(),
+            Default::default(),
+        );
+        // can_dkg_end starts out as false
+        assert!(!signing_round.can_dkg_end());
+
+        // meet the conditions for DKG_END
+        signing_round.state = SignerState::DkgPrivateGather;
+        signing_round.commitments.insert(
+            1,
+            PolyCommitment {
+                id: ID::new(&Scalar::new(), &Scalar::new(), &mut rnd),
+                poly: vec![],
+            },
+        );
+        let shares: HashMap<u32, Scalar> = HashMap::new();
+        signing_round.decrypted_shares.insert(1, shares);
+
+        // can_dkg_end should be true
+        assert!(signing_round.can_dkg_end());
+    }
+
+    #[test]
+    fn dkg_ended_v1() {
+        dkg_ended::<v1::Signer>();
+    }
+
+    #[test]
+    fn dkg_ended_v2() {
+        dkg_ended::<v2::Signer>();
+    }
+
+    fn dkg_ended<Signer: SignerTrait>() {
+        let mut signing_round = SigningRound::<Signer>::new(
+            1,
+            1,
+            1,
+            1,
+            vec![1],
+            Default::default(),
+            Default::default(),
+        );
+        if let Ok(Message::DkgEnd(dkg_end)) = signing_round.dkg_ended() {
+            match dkg_end.status {
+                DkgStatus::Failure(_) => {}
+                _ => panic!("Expected DkgStatus::Failure"),
+            }
+        } else {
+            panic!("Unexpected Error");
         }
     }
 }

@@ -1,12 +1,8 @@
-use p256k1::{
-    point::{Point, G},
-    scalar::Scalar,
-};
 use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::util::hash_to_scalar;
+use crate::{util::hash_to_scalar, Point, Scalar, G};
 
 #[allow(non_snake_case)]
 #[derive(Clone, Debug, Deserialize, Serialize)]

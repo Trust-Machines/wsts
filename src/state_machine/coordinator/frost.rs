@@ -1,5 +1,4 @@
 use hashbrown::HashSet;
-use p256k1::{point::Point, scalar::Scalar};
 use std::collections::BTreeMap;
 use tracing::{debug, info};
 
@@ -16,6 +15,7 @@ use crate::{
     },
     taproot::SchnorrProof,
     traits::Aggregator as AggregatorTrait,
+    Point, Scalar,
 };
 
 /// The coordinator for the FROST algorithm
@@ -605,9 +605,8 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
 #[cfg(test)]
 pub mod test {
     use crate::{
-        state_machine::{
-            coordinator::frost::Coordinator as FrostCoordinator,
-            test::test_process_inbound_messages,
+        state_machine::coordinator::{
+            frost::Coordinator as FrostCoordinator, test::test_process_inbound_messages,
         },
         v1, v2,
     };

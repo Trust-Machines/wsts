@@ -1,5 +1,4 @@
 use hashbrown::HashSet;
-use p256k1::{point::Point, scalar::Scalar};
 use std::collections::BTreeMap;
 use tracing::{debug, info};
 
@@ -16,6 +15,7 @@ use crate::{
     },
     taproot::SchnorrProof,
     traits::Aggregator as AggregatorTrait,
+    Point, Scalar,
 };
 
 /// The coordinator for the FIRE algorithm
@@ -617,10 +617,10 @@ pub mod test {
         net::Message,
         state_machine::{
             coordinator::{
-                fire::Coordinator as FireCoordinator, Coordinator as CoordinatorTrait,
-                State as CoordinatorState,
+                fire::Coordinator as FireCoordinator,
+                test::{feedback_messages, setup, test_process_inbound_messages},
+                Coordinator as CoordinatorTrait, State as CoordinatorState,
             },
-            test::{feedback_messages, setup, test_process_inbound_messages},
             OperationResult,
         },
         traits::{Aggregator as AggregatorTrait, Signer as SignerTrait},

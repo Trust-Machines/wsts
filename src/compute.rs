@@ -1,12 +1,8 @@
 use core::iter::zip;
 use num_traits::{One, Zero};
-use p256k1::{
-    point::Compressed, point::Error as PointError, point::Point, point::G, scalar::Scalar,
-};
 use sha2::{Digest, Sha256};
 
-use crate::common::PublicNonce;
-use crate::util::hash_to_scalar;
+use crate::{common::PublicNonce, util::hash_to_scalar, Compressed, Point, PointError, Scalar, G};
 
 #[allow(non_snake_case)]
 /// Compute a binding value from the party ID, public nonces, and signed message

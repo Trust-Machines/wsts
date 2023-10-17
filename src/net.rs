@@ -1,9 +1,11 @@
 use hashbrown::HashMap;
-use p256k1::{ecdsa, scalar::Scalar};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::common::{MerkleRoot, PolyCommitment, PublicNonce, SignatureShare};
+use crate::{
+    common::{MerkleRoot, PolyCommitment, PublicNonce, SignatureShare},
+    ecdsa, Scalar,
+};
 
 /// Trait to encapsulate sign/verify, users only need to impl hash
 pub trait Signable {

@@ -1,10 +1,4 @@
-use p256k1::{
-    field,
-    point::{Point, G},
-    scalar::Scalar,
-};
-
-use crate::{common::Signature, compute};
+use crate::{common::Signature, compute, field, Point, Scalar, G};
 
 /// A SchnorrProof in BIP-340 format
 #[allow(non_snake_case)]

@@ -1,11 +1,11 @@
 use hashbrown::HashMap;
-use p256k1::{point::Point, scalar::Scalar};
 use rand_core::{CryptoRng, RngCore};
 
 use crate::{
     common::{MerkleRoot, PolyCommitment, PublicNonce, Signature, SignatureShare},
     errors::{AggregatorError, DkgError},
     taproot::SchnorrProof,
+    Point, Scalar,
 };
 
 /// A trait which provides a common `Signer` interface for `v1` and `v2`
