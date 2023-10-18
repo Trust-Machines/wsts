@@ -1,6 +1,6 @@
 use hashbrown::HashSet;
 use std::collections::BTreeMap;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use crate::{
     common::{MerkleRoot, PolyCommitment, PublicNonce, Signature, SignatureShare},
@@ -43,11 +43,13 @@ pub struct Coordinator<Aggregator: AggregatorTrait> {
     /// key used to sign packet messages
     pub message_private_key: Scalar,
     /// which signers we're currently waiting on for DKG
-    pub dkg_wait_ids: HashSet<u32>,
-    /// which signers we're currently waiting on for nonces
-    pub nonce_wait_ids: HashSet<u32>,
-    /// which signers we're currently waiting on for sig shares
-    pub sig_share_wait_ids: HashSet<u32>,
+    pub dkg_wait_signer_ids: HashSet<u32>,
+    /// which key_ids we've received nonces for this iteration
+    pub nonce_recv_key_ids: HashSet<u32>,
+    /// which signer_ids we're expecting sig shares from this iteration
+    pub sign_wait_signer_ids: HashSet<u32>,
+    /// which key_ids we're received sig shares for this iteration
+    pub sign_recv_key_ids: HashSet<u32>,
     /// the bytes that we're signing
     pub message: Vec<u8>,
     /// current state of the state machine
@@ -155,26 +157,30 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
     pub fn start_public_shares(&mut self) -> Result<Packet, Error> {
         self.dkg_public_shares.clear();
         self.party_polynomials.clear();
-        self.dkg_wait_ids = (0..self.total_signers).collect();
+        self.dkg_wait_signer_ids = (0..self.total_signers).collect();
+
         info!(
             "DKG Round {}: Starting Public Share Distribution",
             self.current_dkg_id,
         );
+
         let dkg_begin = DkgBegin {
             dkg_id: self.current_dkg_id,
         };
-
         let dkg_begin_packet = Packet {
-            sig: dkg_begin.sign(&self.message_private_key).expect(""),
+            sig: dkg_begin
+                .sign(&self.message_private_key)
+                .expect("Failed to sign DkgBegin"),
             msg: Message::DkgBegin(dkg_begin),
         };
+
         self.move_to(State::DkgPublicGather)?;
         Ok(dkg_begin_packet)
     }
 
     /// Ask signers to send DKG private shares
     pub fn start_private_shares(&mut self) -> Result<Packet, Error> {
-        self.dkg_wait_ids = (0..self.total_signers).collect();
+        self.dkg_wait_signer_ids = (0..self.total_signers).collect();
         info!(
             "DKG Round {}: Starting Private Share Distribution",
             self.current_dkg_id
@@ -183,7 +189,9 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             dkg_id: self.current_dkg_id,
         };
         let dkg_private_begin_msg = Packet {
-            sig: dkg_begin.sign(&self.message_private_key).expect(""),
+            sig: dkg_begin
+                .sign(&self.message_private_key)
+                .expect("Failed to sign DkgPrivateBegin"),
             msg: Message::DkgPrivateBegin(dkg_begin),
         };
         self.move_to(State::DkgEndGather)?;
@@ -199,7 +207,8 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 ));
             }
 
-            self.dkg_wait_ids.remove(&dkg_public_shares.signer_id);
+            self.dkg_wait_signer_ids
+                .remove(&dkg_public_shares.signer_id);
 
             self.dkg_public_shares
                 .insert(dkg_public_shares.signer_id, dkg_public_shares.clone());
@@ -213,7 +222,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             );
         }
 
-        if self.dkg_wait_ids.is_empty() {
+        if self.dkg_wait_signer_ids.is_empty() {
             // Calculate the aggregate public key
             let key = self
                 .party_polynomials
@@ -230,20 +239,20 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
     fn gather_dkg_end(&mut self, packet: &Packet) -> Result<(), Error> {
         debug!(
             "DKG Round {}: waiting for Dkg End from signers {:?}",
-            self.current_dkg_id, self.dkg_wait_ids
+            self.current_dkg_id, self.dkg_wait_signer_ids
         );
         if let Message::DkgEnd(dkg_end) = &packet.msg {
             if dkg_end.dkg_id != self.current_dkg_id {
                 return Err(Error::BadDkgId(dkg_end.dkg_id, self.current_dkg_id));
             }
-            self.dkg_wait_ids.remove(&dkg_end.signer_id);
+            self.dkg_wait_signer_ids.remove(&dkg_end.signer_id);
             debug!(
                 "DKG_End round {} from signer {}. Waiting on {:?}",
-                dkg_end.dkg_id, dkg_end.signer_id, self.dkg_wait_ids
+                dkg_end.dkg_id, dkg_end.signer_id, self.dkg_wait_signer_ids
             );
         }
 
-        if self.dkg_wait_ids.is_empty() {
+        if self.dkg_wait_signer_ids.is_empty() {
             self.move_to(State::Idle)?;
         }
         Ok(())
@@ -255,6 +264,8 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         merkle_root: Option<MerkleRoot>,
     ) -> Result<Packet, Error> {
         self.public_nonces.clear();
+        self.nonce_recv_key_ids.clear();
+        self.sign_wait_signer_ids.clear();
         info!(
             "Sign Round {} Nonce round {} Requesting Nonces",
             self.current_sign_id, self.current_sign_iter_id,
@@ -265,10 +276,11 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             sign_iter_id: self.current_sign_iter_id,
         };
         let nonce_request_msg = Packet {
-            sig: nonce_request.sign(&self.message_private_key).expect(""),
+            sig: nonce_request
+                .sign(&self.message_private_key)
+                .expect("Failed to sign NonceRequest"),
             msg: Message::NonceRequest(nonce_request),
         };
-        self.nonce_wait_ids = (0..self.total_signers).collect();
         self.move_to(State::NonceGather(is_taproot, merkle_root))?;
         Ok(nonce_request_msg)
     }
@@ -298,16 +310,22 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
 
             self.public_nonces
                 .insert(nonce_response.signer_id, nonce_response.clone());
-            self.nonce_wait_ids.remove(&nonce_response.signer_id);
-            debug!(
-                "Sign round {} nonce round {} NonceResponse from signer {}. Waiting on {:?}",
+            self.sign_wait_signer_ids.insert(nonce_response.signer_id);
+
+            for key_id in &nonce_response.key_ids {
+                // XXX TODO chech that this key_id belongs to this signer
+                self.nonce_recv_key_ids.insert(*key_id);
+            }
+            info!(
+                "Sign round {} nonce round {} received NonceResponse from signer {} ({}/{})",
                 nonce_response.sign_id,
                 nonce_response.sign_iter_id,
                 nonce_response.signer_id,
-                self.nonce_wait_ids
+                self.nonce_recv_key_ids.len(),
+                self.threshold,
             );
         }
-        if self.nonce_wait_ids.is_empty() {
+        if self.nonce_recv_key_ids.len() >= self.threshold as usize {
             let aggregate_nonce = self.compute_aggregate_nonce();
             info!("Aggregate nonce: {}", aggregate_nonce);
 
@@ -322,12 +340,15 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         merkle_root: Option<MerkleRoot>,
     ) -> Result<Packet, Error> {
         self.signature_shares.clear();
+        self.sign_recv_key_ids.clear();
         info!(
             "Sign Round {} Requesting Signature Shares",
             self.current_sign_id,
         );
-        let nonce_responses = (0..self.total_signers)
-            .map(|i| self.public_nonces[&i].clone())
+        let nonce_responses = self
+            .public_nonces
+            .values()
+            .cloned()
             .collect::<Vec<NonceResponse>>();
         let sig_share_request = SignatureShareRequest {
             dkg_id: self.current_dkg_id,
@@ -339,10 +360,11 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             merkle_root,
         };
         let sig_share_request_msg = Packet {
-            sig: sig_share_request.sign(&self.message_private_key).expect(""),
+            sig: sig_share_request
+                .sign(&self.message_private_key)
+                .expect("Failed to sign SignatureShareRequest"),
             msg: Message::SignatureShareRequest(sig_share_request),
         };
-        self.sig_share_wait_ids = (0..self.total_signers).collect();
         self.move_to(State::SigShareGather(is_taproot, merkle_root))?;
 
         Ok(sig_share_request_msg)
@@ -371,19 +393,41 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 sig_share_response.signer_id,
                 sig_share_response.signature_shares.clone(),
             );
-            self.sig_share_wait_ids
-                .remove(&sig_share_response.signer_id);
-            debug!(
-                "Sign round {} SignatureShareResponse from signer {}. Waiting on {:?}",
-                sig_share_response.sign_id, sig_share_response.signer_id, self.sig_share_wait_ids
-            );
+            if self
+                .sign_wait_signer_ids
+                .contains(&sig_share_response.signer_id)
+            {
+                self.sign_wait_signer_ids
+                    .remove(&sig_share_response.signer_id);
+                for sig_share in &sig_share_response.signature_shares {
+                    for key_id in &sig_share.key_ids {
+                        self.sign_recv_key_ids.insert(*key_id);
+                    }
+                }
+
+                debug!(
+                    "Sign round {} SignatureShareResponse from signer {} ({}/{} key_ids). Waiting on {:?}",
+                    sig_share_response.sign_id,
+                    sig_share_response.signer_id,
+                    self.sign_recv_key_ids.len(),
+                    self.nonce_recv_key_ids.len(),
+                    self.sign_wait_signer_ids
+                );
+            } else {
+                warn!(
+                    "Sign round {} SignatureShareResponse from signer {} not in the wait list",
+                    sig_share_response.sign_id, sig_share_response.signer_id,
+                );
+            }
         }
-        if self.sig_share_wait_ids.is_empty() {
+        if self.sign_wait_signer_ids.is_empty() {
             // Calculate the aggregate signature
             let polys: Vec<PolyCommitment> = self.party_polynomials.values().cloned().collect();
 
-            let nonce_responses = (0..self.total_signers)
-                .map(|i| self.public_nonces[&i].clone())
+            let nonce_responses = self
+                .public_nonces
+                .values()
+                .cloned()
                 .collect::<Vec<NonceResponse>>();
 
             let nonces = nonce_responses
@@ -525,9 +569,10 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
             schnorr_proof: None,
             message: Default::default(),
             message_private_key,
-            dkg_wait_ids: Default::default(),
-            nonce_wait_ids: Default::default(),
-            sig_share_wait_ids: Default::default(),
+            dkg_wait_signer_ids: Default::default(),
+            nonce_recv_key_ids: Default::default(),
+            sign_wait_signer_ids: Default::default(),
+            sign_recv_key_ids: Default::default(),
             state: State::Idle,
             aggregator: Aggregator::new(total_keys, threshold),
         }
@@ -605,9 +650,10 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
         self.party_polynomials.clear();
         self.public_nonces.clear();
         self.signature_shares.clear();
-        self.dkg_wait_ids = (0..self.total_signers).collect();
-        self.nonce_wait_ids = (0..self.total_signers).collect();
-        self.sig_share_wait_ids = (0..self.total_signers).collect();
+        self.dkg_wait_signer_ids.clear();
+        self.nonce_recv_key_ids.clear();
+        self.sign_recv_key_ids.clear();
+        self.sign_wait_signer_ids.clear();
     }
 }
 
