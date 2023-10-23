@@ -280,7 +280,7 @@ pub mod test {
             key_ids: key_ids_map,
         };
 
-        let signing_rounds = key_pairs
+        let signers = key_pairs
             .iter()
             .enumerate()
             .map(|(signer_id, (private_key, _public_key))| {
@@ -302,26 +302,24 @@ pub mod test {
             message_private_key: key_pairs[0].0,
         };
         let coordinator = Coordinator::new(config);
-        (coordinator, signing_rounds)
+        (coordinator, signers)
     }
 
     /// Helper function for feeding messages back from the processor into the signing rounds and coordinator
     pub fn feedback_messages<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
         coordinator: &mut Coordinator,
-        signing_rounds: &mut Vec<Signer<SignerType>>,
+        signers: &mut Vec<Signer<SignerType>>,
         messages: &[Packet],
     ) -> (Vec<Packet>, Vec<OperationResult>) {
         let mut inbound_messages = vec![];
         let mut feedback_messages = vec![];
-        for signing_round in signing_rounds.as_mut_slice() {
-            let outbound_messages = signing_round.process_inbound_messages(messages).unwrap();
+        for signer in signers.as_mut_slice() {
+            let outbound_messages = signer.process_inbound_messages(messages).unwrap();
             feedback_messages.extend_from_slice(outbound_messages.as_slice());
             inbound_messages.extend(outbound_messages);
         }
-        for signing_round in signing_rounds.as_mut_slice() {
-            let outbound_messages = signing_round
-                .process_inbound_messages(&feedback_messages)
-                .unwrap();
+        for signer in signers.as_mut_slice() {
+            let outbound_messages = signer.process_inbound_messages(&feedback_messages).unwrap();
             inbound_messages.extend(outbound_messages);
         }
         coordinator
@@ -330,7 +328,7 @@ pub mod test {
     }
 
     pub fn process_inbound_messages<Coordinator: CoordinatorTrait, SignerType: SignerTrait>() {
-        let (mut coordinator, mut signing_rounds) = setup::<Coordinator, SignerType>();
+        let (mut coordinator, mut signers) = setup::<Coordinator, SignerType>();
 
         // We have started a dkg round
         let message = coordinator.start_dkg_round().unwrap();
@@ -339,7 +337,7 @@ pub mod test {
 
         // Send the DKG Begin message to all signers and gather responses by sharing with all other signers and coordinator
         let (outbound_messages, operation_results) =
-            feedback_messages(&mut coordinator, &mut signing_rounds, &[message]);
+            feedback_messages(&mut coordinator, &mut signers, &[message]);
         assert!(operation_results.is_empty());
         assert_eq!(coordinator.get_state(), State::DkgEndGather);
 
@@ -353,7 +351,7 @@ pub mod test {
         }
         // Send the DKG Private Begin message to all signers and share their responses with the coordinator and signers
         let (outbound_messages, operation_results) =
-            feedback_messages(&mut coordinator, &mut signing_rounds, &outbound_messages);
+            feedback_messages(&mut coordinator, &mut signers, &outbound_messages);
         assert!(outbound_messages.is_empty());
         assert_eq!(operation_results.len(), 1);
         match operation_results[0] {
@@ -381,7 +379,7 @@ pub mod test {
 
         // Send the message to all signers and gather responses by sharing with all other signers and coordinator
         let (outbound_messages, operation_results) =
-            feedback_messages(&mut coordinator, &mut signing_rounds, &[message]);
+            feedback_messages(&mut coordinator, &mut signers, &[message]);
         assert!(operation_results.is_empty());
         assert_eq!(
             coordinator.get_state(),
@@ -397,7 +395,7 @@ pub mod test {
         }
         // Send the SignatureShareRequest message to all signers and share their responses with the coordinator and signers
         let (outbound_messages, operation_results) =
-            feedback_messages(&mut coordinator, &mut signing_rounds, &outbound_messages);
+            feedback_messages(&mut coordinator, &mut signers, &outbound_messages);
         assert!(outbound_messages.is_empty());
         assert_eq!(operation_results.len(), 1);
         match &operation_results[0] {

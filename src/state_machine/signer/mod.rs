@@ -597,7 +597,7 @@ pub mod test {
 
     fn dkg_public_share<SignerType: SignerTrait>() {
         let mut rnd = OsRng;
-        let mut signing_round =
+        let mut signer =
             Signer::<SignerType>::new(1, 1, 1, 1, vec![1], Default::default(), Default::default());
         let public_share = DkgPublicShares {
             dkg_id: 0,
@@ -610,8 +610,8 @@ pub mod test {
                 },
             )],
         };
-        signing_round.dkg_public_share(&public_share).unwrap();
-        assert_eq!(1, signing_round.commitments.len())
+        signer.dkg_public_share(&public_share).unwrap();
+        assert_eq!(1, signer.commitments.len())
     }
 
     #[test]
@@ -626,14 +626,14 @@ pub mod test {
 
     fn public_shares_done<SignerType: SignerTrait>() {
         let mut rnd = OsRng;
-        let mut signing_round =
+        let mut signer =
             Signer::<SignerType>::new(1, 1, 1, 1, vec![1], Default::default(), Default::default());
         // publich_shares_done starts out as false
-        assert!(!signing_round.public_shares_done());
+        assert!(!signer.public_shares_done());
 
         // meet the conditions for all public keys received
-        signing_round.state = SignerState::DkgPublicGather;
-        signing_round.commitments.insert(
+        signer.state = SignerState::DkgPublicGather;
+        signer.commitments.insert(
             1,
             PolyCommitment {
                 id: ID::new(&Scalar::new(), &Scalar::new(), &mut rnd),
@@ -642,7 +642,7 @@ pub mod test {
         );
 
         // public_shares_done should be true
-        assert!(signing_round.public_shares_done());
+        assert!(signer.public_shares_done());
     }
 
     #[test]
@@ -657,14 +657,14 @@ pub mod test {
 
     fn can_dkg_end<SignerType: SignerTrait>() {
         let mut rnd = OsRng;
-        let mut signing_round =
+        let mut signer =
             Signer::<SignerType>::new(1, 1, 1, 1, vec![1], Default::default(), Default::default());
         // can_dkg_end starts out as false
-        assert!(!signing_round.can_dkg_end());
+        assert!(!signer.can_dkg_end());
 
         // meet the conditions for DKG_END
-        signing_round.state = SignerState::DkgPrivateGather;
-        signing_round.commitments.insert(
+        signer.state = SignerState::DkgPrivateGather;
+        signer.commitments.insert(
             1,
             PolyCommitment {
                 id: ID::new(&Scalar::new(), &Scalar::new(), &mut rnd),
@@ -672,10 +672,10 @@ pub mod test {
             },
         );
         let shares: HashMap<u32, Scalar> = HashMap::new();
-        signing_round.decrypted_shares.insert(1, shares);
+        signer.decrypted_shares.insert(1, shares);
 
         // can_dkg_end should be true
-        assert!(signing_round.can_dkg_end());
+        assert!(signer.can_dkg_end());
     }
 
     #[test]
@@ -689,9 +689,9 @@ pub mod test {
     }
 
     fn dkg_ended<SignerType: SignerTrait>() {
-        let mut signing_round =
+        let mut signer =
             Signer::<SignerType>::new(1, 1, 1, 1, vec![1], Default::default(), Default::default());
-        if let Ok(Message::DkgEnd(dkg_end)) = signing_round.dkg_ended() {
+        if let Ok(Message::DkgEnd(dkg_end)) = signer.dkg_ended() {
             match dkg_end.status {
                 DkgStatus::Failure(_) => {}
                 _ => panic!("Expected DkgStatus::Failure"),
