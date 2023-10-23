@@ -58,7 +58,7 @@ pub enum Error {
 }
 
 /// A state machine for a signing round
-pub struct SigningRound<Signer: SignerTrait> {
+pub struct SigningRound<SignerType: SignerTrait> {
     /// current DKG round ID
     pub dkg_id: u64,
     /// current signing round ID
@@ -72,7 +72,7 @@ pub struct SigningRound<Signer: SignerTrait> {
     /// the total number of keys
     pub total_keys: u32,
     /// the Signer object
-    pub signer: Signer,
+    pub signer: SignerType,
     /// the Signer ID
     pub signer_id: u32,
     /// the current state
@@ -91,7 +91,7 @@ pub struct SigningRound<Signer: SignerTrait> {
     pub public_keys: PublicKeys,
 }
 
-impl<Signer: SignerTrait> SigningRound<Signer> {
+impl<SignerType: SignerTrait> SigningRound<SignerType> {
     /// create a SigningRound
     pub fn new(
         threshold: u32,
@@ -104,7 +104,7 @@ impl<Signer: SignerTrait> SigningRound<Signer> {
     ) -> Self {
         assert!(threshold <= total_keys);
         let mut rng = OsRng;
-        let signer = Signer::new(
+        let signer = SignerType::new(
             signer_id,
             &key_ids,
             total_signers,
@@ -537,7 +537,7 @@ impl<Signer: SignerTrait> SigningRound<Signer> {
     }
 }
 
-impl<Signer: SignerTrait> StateMachine<State, Error> for SigningRound<Signer> {
+impl<SignerType: SignerTrait> StateMachine<State, Error> for SigningRound<SignerType> {
     fn move_to(&mut self, state: State) -> Result<(), Error> {
         self.can_move_to(&state)?;
         self.state = state;
@@ -595,9 +595,9 @@ pub mod test {
         dkg_public_share::<v2::Signer>();
     }
 
-    fn dkg_public_share<Signer: SignerTrait>() {
+    fn dkg_public_share<SignerType: SignerTrait>() {
         let mut rnd = OsRng;
-        let mut signing_round = SigningRound::<Signer>::new(
+        let mut signing_round = SigningRound::<SignerType>::new(
             1,
             1,
             1,
@@ -631,9 +631,9 @@ pub mod test {
         public_shares_done::<v2::Signer>();
     }
 
-    fn public_shares_done<Signer: SignerTrait>() {
+    fn public_shares_done<SignerType: SignerTrait>() {
         let mut rnd = OsRng;
-        let mut signing_round = SigningRound::<Signer>::new(
+        let mut signing_round = SigningRound::<SignerType>::new(
             1,
             1,
             1,
@@ -669,9 +669,9 @@ pub mod test {
         can_dkg_end::<v2::Signer>();
     }
 
-    fn can_dkg_end<Signer: SignerTrait>() {
+    fn can_dkg_end<SignerType: SignerTrait>() {
         let mut rnd = OsRng;
-        let mut signing_round = SigningRound::<Signer>::new(
+        let mut signing_round = SigningRound::<SignerType>::new(
             1,
             1,
             1,
@@ -709,8 +709,8 @@ pub mod test {
         dkg_ended::<v2::Signer>();
     }
 
-    fn dkg_ended<Signer: SignerTrait>() {
-        let mut signing_round = SigningRound::<Signer>::new(
+    fn dkg_ended<SignerType: SignerTrait>() {
+        let mut signing_round = SigningRound::<SignerType>::new(
             1,
             1,
             1,
