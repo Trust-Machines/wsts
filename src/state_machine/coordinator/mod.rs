@@ -100,9 +100,6 @@ pub trait Coordinator {
     /// Retrive the current state
     fn get_state(&self) -> State;
 
-    /// Set the current state
-    fn set_state(&mut self, state: State);
-
     /// Trigger a DKG round
     fn start_dkg_round(&mut self) -> Result<Packet, Error>;
 

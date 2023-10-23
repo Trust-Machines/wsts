@@ -603,11 +603,6 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
         self.state.clone()
     }
 
-    /// Set the current state
-    fn set_state(&mut self, state: State) {
-        self.state = state;
-    }
-
     /// Start a DKG round
     fn start_dkg_round(&mut self) -> Result<Packet, Error> {
         self.current_dkg_id = self.current_dkg_id.wrapping_add(1);
@@ -718,7 +713,7 @@ pub mod test {
         };
         let mut coordinator = FireCoordinator::<Aggregator>::new(config);
 
-        coordinator.set_state(State::DkgPublicDistribute); // Must be in this state before calling start public shares
+        coordinator.state = State::DkgPublicDistribute; // Must be in this state before calling start public shares
 
         let result = coordinator.start_public_shares().unwrap();
 
@@ -747,7 +742,7 @@ pub mod test {
         };
         let mut coordinator = FireCoordinator::<Aggregator>::new(config);
 
-        coordinator.set_state(State::DkgPrivateDistribute); // Must be in this state before calling start private shares
+        coordinator.state = State::DkgPrivateDistribute; // Must be in this state before calling start private shares
 
         let message = coordinator.start_private_shares().unwrap();
         assert!(matches!(message.msg, Message::DkgPrivateBegin(_)));
