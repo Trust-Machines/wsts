@@ -10,28 +10,24 @@ use crate::{
         SignatureShareRequest,
     },
     state_machine::{
-        coordinator::{Coordinator as CoordinatorTrait, Error, State},
+        coordinator::{Config, Coordinator as CoordinatorTrait, Error, State},
         OperationResult, StateMachine,
     },
     taproot::SchnorrProof,
     traits::Aggregator as AggregatorTrait,
-    Point, Scalar,
+    Point,
 };
 
 /// The coordinator for the FROST algorithm
 pub struct Coordinator<Aggregator: AggregatorTrait> {
+    /// common config fields
+    config: Config,
     /// current DKG round ID
     pub current_dkg_id: u64,
     /// current signing round ID
     current_sign_id: u64,
     /// current signing iteration ID
     current_sign_iter_id: u64,
-    /// total number of signers
-    pub total_signers: u32, // Assuming the signers cover all id:s in {1, 2, ..., total_signers}
-    /// total number of keys
-    pub total_keys: u32,
-    /// the threshold of the keys needed for a valid signature
-    pub threshold: u32,
     dkg_public_shares: BTreeMap<u32, DkgPublicShares>,
     party_polynomials: BTreeMap<u32, PolyCommitment>,
     public_nonces: BTreeMap<u32, NonceResponse>,
@@ -40,8 +36,6 @@ pub struct Coordinator<Aggregator: AggregatorTrait> {
     pub aggregate_public_key: Option<Point>,
     signature: Option<Signature>,
     schnorr_proof: Option<SchnorrProof>,
-    /// key used to sign packet messages
-    pub message_private_key: Scalar,
     /// which signers we're currently waiting on
     pub ids_to_await: HashSet<u32>,
     /// the bytes that we're signing
@@ -151,7 +145,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
     pub fn start_public_shares(&mut self) -> Result<Packet, Error> {
         self.dkg_public_shares.clear();
         self.party_polynomials.clear();
-        self.ids_to_await = (0..self.total_signers).collect();
+        self.ids_to_await = (0..self.config.num_signers).collect();
         info!(
             "DKG Round {}: Starting Public Share Distribution",
             self.current_dkg_id,
@@ -161,7 +155,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         };
 
         let dkg_begin_packet = Packet {
-            sig: dkg_begin.sign(&self.message_private_key).expect(""),
+            sig: dkg_begin.sign(&self.config.message_private_key).expect(""),
             msg: Message::DkgBegin(dkg_begin),
         };
         self.move_to(State::DkgPublicGather)?;
@@ -170,7 +164,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
 
     /// Ask signers to send DKG private shares
     pub fn start_private_shares(&mut self) -> Result<Packet, Error> {
-        self.ids_to_await = (0..self.total_signers).collect();
+        self.ids_to_await = (0..self.config.num_signers).collect();
         info!(
             "DKG Round {}: Starting Private Share Distribution",
             self.current_dkg_id
@@ -179,7 +173,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             dkg_id: self.current_dkg_id,
         };
         let dkg_private_begin_msg = Packet {
-            sig: dkg_begin.sign(&self.message_private_key).expect(""),
+            sig: dkg_begin.sign(&self.config.message_private_key).expect(""),
             msg: Message::DkgPrivateBegin(dkg_begin),
         };
         self.move_to(State::DkgEndGather)?;
@@ -261,10 +255,12 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             sign_iter_id: self.current_sign_iter_id,
         };
         let nonce_request_msg = Packet {
-            sig: nonce_request.sign(&self.message_private_key).expect(""),
+            sig: nonce_request
+                .sign(&self.config.message_private_key)
+                .expect(""),
             msg: Message::NonceRequest(nonce_request),
         };
-        self.ids_to_await = (0..self.total_signers).collect();
+        self.ids_to_await = (0..self.config.num_signers).collect();
         self.move_to(State::NonceGather(is_taproot, merkle_root))?;
         Ok(nonce_request_msg)
     }
@@ -322,7 +318,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             "Sign Round {} Requesting Signature Shares",
             self.current_sign_id,
         );
-        let nonce_responses = (0..self.total_signers)
+        let nonce_responses = (0..self.config.num_signers)
             .map(|i| self.public_nonces[&i].clone())
             .collect::<Vec<NonceResponse>>();
         let sig_share_request = SignatureShareRequest {
@@ -335,10 +331,12 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             merkle_root,
         };
         let sig_share_request_msg = Packet {
-            sig: sig_share_request.sign(&self.message_private_key).expect(""),
+            sig: sig_share_request
+                .sign(&self.config.message_private_key)
+                .expect(""),
             msg: Message::SignatureShareRequest(sig_share_request),
         };
-        self.ids_to_await = (0..self.total_signers).collect();
+        self.ids_to_await = (0..self.config.num_signers).collect();
         self.move_to(State::SigShareGather(is_taproot, merkle_root))?;
 
         Ok(sig_share_request_msg)
@@ -377,7 +375,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             // Calculate the aggregate signature
             let polys: Vec<PolyCommitment> = self.party_polynomials.values().cloned().collect();
 
-            let nonce_responses = (0..self.total_signers)
+            let nonce_responses = (0..self.config.num_signers)
                 .map(|i| self.public_nonces[&i].clone())
                 .collect::<Vec<NonceResponse>>();
 
@@ -498,19 +496,13 @@ impl<Aggregator: AggregatorTrait> StateMachine<State, Error> for Coordinator<Agg
 
 impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
     /// Create a new coordinator
-    fn new(
-        total_signers: u32,
-        total_keys: u32,
-        threshold: u32,
-        message_private_key: Scalar,
-    ) -> Self {
+    fn new(config: Config) -> Self {
         Self {
+            aggregator: Aggregator::new(config.num_keys, config.threshold),
+            config,
             current_dkg_id: 0,
             current_sign_id: 0,
             current_sign_iter_id: 0,
-            total_signers,
-            total_keys,
-            threshold,
             dkg_public_shares: Default::default(),
             party_polynomials: Default::default(),
             public_nonces: Default::default(),
@@ -519,11 +511,14 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
             signature: None,
             schnorr_proof: None,
             message: Default::default(),
-            message_private_key,
             ids_to_await: Default::default(),
             state: State::Idle,
-            aggregator: Aggregator::new(total_keys, threshold),
         }
+    }
+
+    /// Retrieve the config
+    fn get_config(&self) -> Config {
+        self.config.clone()
     }
 
     /// Process inbound messages
@@ -598,26 +593,121 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
         self.party_polynomials.clear();
         self.public_nonces.clear();
         self.signature_shares.clear();
-        self.ids_to_await = (0..self.total_signers).collect();
+        self.ids_to_await = (0..self.config.num_signers).collect();
     }
 }
 
 #[cfg(test)]
 pub mod test {
     use crate::{
+        net::Message,
         state_machine::coordinator::{
-            frost::Coordinator as FrostCoordinator, test::test_process_inbound_messages,
+            frost::Coordinator as FrostCoordinator,
+            test::{
+                coordinator_state_machine, new_coordinator, process_inbound_messages,
+                start_dkg_round,
+            },
+            Config, Coordinator as CoordinatorTrait, State,
         },
-        v1, v2,
+        traits::Aggregator as AggregatorTrait,
+        v1, v2, Scalar,
     };
+    use rand_core::OsRng;
 
     #[test]
-    fn test_process_inbound_messages_v1() {
-        test_process_inbound_messages::<FrostCoordinator<v1::Aggregator>, v1::Signer>();
+    fn new_coordinator_v1() {
+        new_coordinator::<FrostCoordinator<v1::Aggregator>>();
     }
 
     #[test]
-    fn test_process_inbound_messages_v2() {
-        test_process_inbound_messages::<FrostCoordinator<v2::Aggregator>, v2::Signer>();
+    fn new_coordinator_v2() {
+        new_coordinator::<FrostCoordinator<v2::Aggregator>>();
+    }
+
+    #[test]
+    fn coordinator_state_machine_v1() {
+        coordinator_state_machine::<FrostCoordinator<v1::Aggregator>>();
+    }
+
+    #[test]
+    fn coordinator_state_machine_v2() {
+        coordinator_state_machine::<FrostCoordinator<v2::Aggregator>>();
+    }
+
+    #[test]
+    fn start_dkg_round_v1() {
+        start_dkg_round::<FrostCoordinator<v1::Aggregator>>();
+    }
+
+    #[test]
+    fn start_dkg_round_v2() {
+        start_dkg_round::<FrostCoordinator<v2::Aggregator>>();
+    }
+
+    #[test]
+    fn start_public_shares_v1() {
+        start_public_shares::<v1::Aggregator>();
+    }
+
+    #[test]
+    fn start_public_shares_v2() {
+        start_public_shares::<v2::Aggregator>();
+    }
+
+    fn start_public_shares<Aggregator: AggregatorTrait>() {
+        let mut rng = OsRng;
+        let config = Config {
+            num_signers: 10,
+            num_keys: 40,
+            threshold: 28,
+            message_private_key: Scalar::random(&mut rng),
+        };
+        let mut coordinator = FrostCoordinator::<Aggregator>::new(config);
+
+        coordinator.set_state(State::DkgPublicDistribute); // Must be in this state before calling start public shares
+
+        let result = coordinator.start_public_shares().unwrap();
+
+        assert!(matches!(result.msg, Message::DkgBegin(_)));
+        assert_eq!(coordinator.get_state(), State::DkgPublicGather);
+        assert_eq!(coordinator.current_dkg_id, 0);
+    }
+
+    #[test]
+    fn start_private_shares_v1() {
+        start_private_shares::<v1::Aggregator>();
+    }
+
+    #[test]
+    fn start_private_shares_v2() {
+        start_private_shares::<v2::Aggregator>();
+    }
+
+    fn start_private_shares<Aggregator: AggregatorTrait>() {
+        let mut rng = OsRng;
+        let config = Config {
+            num_signers: 10,
+            num_keys: 40,
+            threshold: 28,
+            message_private_key: Scalar::random(&mut rng),
+        };
+        let mut coordinator = FrostCoordinator::<Aggregator>::new(config);
+
+        coordinator.set_state(State::DkgPrivateDistribute); // Must be in this state before calling start private shares
+
+        let message = coordinator.start_private_shares().unwrap();
+        assert!(matches!(message.msg, Message::DkgPrivateBegin(_)));
+        assert_eq!(coordinator.get_state(), State::DkgEndGather);
+        assert_eq!(coordinator.current_dkg_id, 0);
+    }
+
+    #[test]
+    fn process_inbound_messages_v1() {
+        process_inbound_messages::<FrostCoordinator<v1::Aggregator>, v1::Signer>();
+    }
+
+    #[test]
+    fn process_inbound_messages_v2() {
+        process_inbound_messages::<FrostCoordinator<v2::Aggregator>, v2::Signer>();
     }
 }

@@ -10,28 +10,24 @@ use crate::{
         SignatureShareRequest,
     },
     state_machine::{
-        coordinator::{Coordinator as CoordinatorTrait, Error, State},
+        coordinator::{Config, Coordinator as CoordinatorTrait, Error, State},
         OperationResult, StateMachine,
     },
     taproot::SchnorrProof,
     traits::Aggregator as AggregatorTrait,
-    Point, Scalar,
+    Point,
 };
 
 /// The coordinator for the FIRE algorithm
 pub struct Coordinator<Aggregator: AggregatorTrait> {
+    /// common config fields
+    config: Config,
     /// current DKG round ID
     pub current_dkg_id: u64,
     /// current signing round ID
     current_sign_id: u64,
     /// current signing iteration ID
     current_sign_iter_id: u64,
-    /// total number of signers
-    pub total_signers: u32, // Assuming the signers cover all id:s in {1, 2, ..., total_signers}
-    /// total number of keys
-    pub total_keys: u32,
-    /// the threshold of the keys needed for a valid signature
-    pub threshold: u32,
     dkg_public_shares: BTreeMap<u32, DkgPublicShares>,
     party_polynomials: BTreeMap<u32, PolyCommitment>,
     public_nonces: BTreeMap<u32, NonceResponse>,
@@ -40,8 +36,6 @@ pub struct Coordinator<Aggregator: AggregatorTrait> {
     pub aggregate_public_key: Option<Point>,
     signature: Option<Signature>,
     schnorr_proof: Option<SchnorrProof>,
-    /// key used to sign packet messages
-    pub message_private_key: Scalar,
     /// which signers we're currently waiting on for DKG
     pub dkg_wait_signer_ids: HashSet<u32>,
     /// which key_ids we've received nonces for this iteration
@@ -157,7 +151,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
     pub fn start_public_shares(&mut self) -> Result<Packet, Error> {
         self.dkg_public_shares.clear();
         self.party_polynomials.clear();
-        self.dkg_wait_signer_ids = (0..self.total_signers).collect();
+        self.dkg_wait_signer_ids = (0..self.config.num_signers).collect();
 
         info!(
             "DKG Round {}: Starting Public Share Distribution",
@@ -169,7 +163,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         };
         let dkg_begin_packet = Packet {
             sig: dkg_begin
-                .sign(&self.message_private_key)
+                .sign(&self.config.message_private_key)
                 .expect("Failed to sign DkgBegin"),
             msg: Message::DkgBegin(dkg_begin),
         };
@@ -180,7 +174,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
 
     /// Ask signers to send DKG private shares
     pub fn start_private_shares(&mut self) -> Result<Packet, Error> {
-        self.dkg_wait_signer_ids = (0..self.total_signers).collect();
+        self.dkg_wait_signer_ids = (0..self.config.num_signers).collect();
         info!(
             "DKG Round {}: Starting Private Share Distribution",
             self.current_dkg_id
@@ -190,7 +184,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         };
         let dkg_private_begin_msg = Packet {
             sig: dkg_begin
-                .sign(&self.message_private_key)
+                .sign(&self.config.message_private_key)
                 .expect("Failed to sign DkgPrivateBegin"),
             msg: Message::DkgPrivateBegin(dkg_begin),
         };
@@ -277,7 +271,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         };
         let nonce_request_msg = Packet {
             sig: nonce_request
-                .sign(&self.message_private_key)
+                .sign(&self.config.message_private_key)
                 .expect("Failed to sign NonceRequest"),
             msg: Message::NonceRequest(nonce_request),
         };
@@ -322,10 +316,10 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 nonce_response.sign_iter_id,
                 nonce_response.signer_id,
                 self.nonce_recv_key_ids.len(),
-                self.threshold,
+                self.config.threshold,
             );
         }
-        if self.nonce_recv_key_ids.len() >= self.threshold as usize {
+        if self.nonce_recv_key_ids.len() >= self.config.threshold as usize {
             let aggregate_nonce = self.compute_aggregate_nonce();
             info!("Aggregate nonce: {}", aggregate_nonce);
 
@@ -361,7 +355,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         };
         let sig_share_request_msg = Packet {
             sig: sig_share_request
-                .sign(&self.message_private_key)
+                .sign(&self.config.message_private_key)
                 .expect("Failed to sign SignatureShareRequest"),
             msg: Message::SignatureShareRequest(sig_share_request),
         };
@@ -547,19 +541,13 @@ impl<Aggregator: AggregatorTrait> StateMachine<State, Error> for Coordinator<Agg
 
 impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
     /// Create a new coordinator
-    fn new(
-        total_signers: u32,
-        total_keys: u32,
-        threshold: u32,
-        message_private_key: Scalar,
-    ) -> Self {
+    fn new(config: Config) -> Self {
         Self {
+            aggregator: Aggregator::new(config.num_keys, config.threshold),
+            config,
             current_dkg_id: 0,
             current_sign_id: 0,
             current_sign_iter_id: 0,
-            total_signers,
-            total_keys,
-            threshold,
             dkg_public_shares: Default::default(),
             party_polynomials: Default::default(),
             public_nonces: Default::default(),
@@ -568,14 +556,17 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
             signature: None,
             schnorr_proof: None,
             message: Default::default(),
-            message_private_key,
             dkg_wait_signer_ids: Default::default(),
             nonce_recv_key_ids: Default::default(),
             sign_wait_signer_ids: Default::default(),
             sign_recv_key_ids: Default::default(),
             state: State::Idle,
-            aggregator: Aggregator::new(total_keys, threshold),
         }
+    }
+
+    /// Retrieve the config
+    fn get_config(&self) -> Config {
+        self.config.clone()
     }
 
     /// Process inbound messages
@@ -664,48 +655,139 @@ pub mod test {
         state_machine::{
             coordinator::{
                 fire::Coordinator as FireCoordinator,
-                test::{feedback_messages, setup, test_process_inbound_messages},
-                Coordinator as CoordinatorTrait, State as CoordinatorState,
+                test::{
+                    coordinator_state_machine, feedback_messages, new_coordinator,
+                    process_inbound_messages, setup, start_dkg_round,
+                },
+                Config, Coordinator as CoordinatorTrait, State,
             },
             OperationResult,
         },
         traits::{Aggregator as AggregatorTrait, Signer as SignerTrait},
-        v1, v2, Point,
+        v1, v2, Point, Scalar,
     };
+    use rand_core::OsRng;
 
     #[test]
-    fn test_process_inbound_messages_v1() {
-        test_process_inbound_messages::<FireCoordinator<v1::Aggregator>, v1::Signer>();
+    fn new_coordinator_v1() {
+        new_coordinator::<FireCoordinator<v1::Aggregator>>();
     }
 
     #[test]
-    fn test_process_inbound_messages_v2() {
-        test_process_inbound_messages::<FireCoordinator<v2::Aggregator>, v2::Signer>();
+    fn new_coordinator_v2() {
+        new_coordinator::<FireCoordinator<v2::Aggregator>>();
     }
 
     #[test]
-    fn test_valid_threshold_v1() {
-        test_valid_threshold::<v1::Aggregator, v1::Signer>();
+    fn coordinator_state_machine_v1() {
+        coordinator_state_machine::<FireCoordinator<v1::Aggregator>>();
     }
 
     #[test]
-    fn test_valid_threshold_v2() {
-        test_valid_threshold::<v2::Aggregator, v2::Signer>();
+    fn coordinator_state_machine_v2() {
+        coordinator_state_machine::<FireCoordinator<v2::Aggregator>>();
     }
 
-    fn test_valid_threshold<Aggregator: AggregatorTrait, Signer: SignerTrait>() {
+    #[test]
+    fn start_dkg_round_v1() {
+        start_dkg_round::<FireCoordinator<v1::Aggregator>>();
+    }
+
+    #[test]
+    fn start_dkg_round_v2() {
+        start_dkg_round::<FireCoordinator<v2::Aggregator>>();
+    }
+
+    #[test]
+    fn start_public_shares_v1() {
+        start_public_shares::<v1::Aggregator>();
+    }
+
+    #[test]
+    fn start_public_shares_v2() {
+        start_public_shares::<v2::Aggregator>();
+    }
+
+    fn start_public_shares<Aggregator: AggregatorTrait>() {
+        let mut rng = OsRng;
+        let config = Config {
+            num_signers: 10,
+            num_keys: 40,
+            threshold: 28,
+            message_private_key: Scalar::random(&mut rng),
+        };
+        let mut coordinator = FireCoordinator::<Aggregator>::new(config);
+
+        coordinator.set_state(State::DkgPublicDistribute); // Must be in this state before calling start public shares
+
+        let result = coordinator.start_public_shares().unwrap();
+
+        assert!(matches!(result.msg, Message::DkgBegin(_)));
+        assert_eq!(coordinator.get_state(), State::DkgPublicGather);
+        assert_eq!(coordinator.current_dkg_id, 0);
+    }
+
+    #[test]
+    fn start_private_shares_v1() {
+        start_private_shares::<v1::Aggregator>();
+    }
+
+    #[test]
+    fn start_private_shares_v2() {
+        start_private_shares::<v2::Aggregator>();
+    }
+
+    fn start_private_shares<Aggregator: AggregatorTrait>() {
+        let mut rng = OsRng;
+        let config = Config {
+            num_signers: 10,
+            num_keys: 40,
+            threshold: 28,
+            message_private_key: Scalar::random(&mut rng),
+        };
+        let mut coordinator = FireCoordinator::<Aggregator>::new(config);
+
+        coordinator.set_state(State::DkgPrivateDistribute); // Must be in this state before calling start private shares
+
+        let message = coordinator.start_private_shares().unwrap();
+        assert!(matches!(message.msg, Message::DkgPrivateBegin(_)));
+        assert_eq!(coordinator.get_state(), State::DkgEndGather);
+        assert_eq!(coordinator.current_dkg_id, 0);
+    }
+
+    #[test]
+    fn process_inbound_messages_v1() {
+        process_inbound_messages::<FireCoordinator<v1::Aggregator>, v1::Signer>();
+    }
+
+    #[test]
+    fn process_inbound_messages_v2() {
+        process_inbound_messages::<FireCoordinator<v2::Aggregator>, v2::Signer>();
+    }
+
+    #[test]
+    fn valid_threshold_v1() {
+        valid_threshold::<v1::Aggregator, v1::Signer>();
+    }
+
+    #[test]
+    fn valid_threshold_v2() {
+        valid_threshold::<v2::Aggregator, v2::Signer>();
+    }
+
+    fn valid_threshold<Aggregator: AggregatorTrait, Signer: SignerTrait>() {
         let (mut coordinator, mut signing_rounds) = setup::<FireCoordinator<Aggregator>, Signer>();
 
         // We have started a dkg round
         let message = coordinator.start_dkg_round().unwrap();
         assert!(coordinator.aggregate_public_key.is_none());
-        assert_eq!(coordinator.state, CoordinatorState::DkgPublicGather);
+        assert_eq!(coordinator.state, State::DkgPublicGather);
 
         // Send the DKG Begin message to all signers and gather responses by sharing with all other signers and coordinator
         let (outbound_messages, operation_results) =
             feedback_messages(&mut coordinator, &mut signing_rounds, &[message]);
         assert!(operation_results.is_empty());
-        assert_eq!(coordinator.state, CoordinatorState::DkgEndGather);
+        assert_eq!(coordinator.state, State::DkgEndGather);
 
         // Successfully got an Aggregate Public Key...
         assert_eq!(outbound_messages.len(), 1);
@@ -724,7 +806,7 @@ pub mod test {
             OperationResult::Dkg(point) => {
                 assert_ne!(point, Point::default());
                 assert_eq!(coordinator.aggregate_public_key, Some(point));
-                assert_eq!(coordinator.state, CoordinatorState::Idle);
+                assert_eq!(coordinator.state, State::Idle);
             }
             _ => panic!("Expected Dkg Operation result"),
         }
@@ -740,7 +822,7 @@ pub mod test {
             .unwrap();
         assert_eq!(
             coordinator.state,
-            CoordinatorState::NonceGather(is_taproot, merkle_root)
+            State::NonceGather(is_taproot, merkle_root)
         );
 
         // Send the message to all signers and gather responses by sharing with all other signers and coordinator
@@ -749,7 +831,7 @@ pub mod test {
         assert!(operation_results.is_empty());
         assert_eq!(
             coordinator.state,
-            CoordinatorState::SigShareGather(is_taproot, merkle_root)
+            State::SigShareGather(is_taproot, merkle_root)
         );
 
         assert_eq!(outbound_messages.len(), 1);
@@ -776,6 +858,6 @@ pub mod test {
             _ => panic!("Expected Signature Operation result"),
         }
 
-        assert_eq!(coordinator.state, CoordinatorState::Idle);
+        assert_eq!(coordinator.state, State::Idle);
     }
 }
