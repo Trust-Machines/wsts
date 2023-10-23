@@ -133,7 +133,7 @@ pub mod test {
         net::{Message, Packet},
         state_machine::{
             coordinator::{Config, Coordinator as CoordinatorTrait, Error, State},
-            signer::SigningRound,
+            signer::Signer,
             OperationResult, PublicKeys, StateMachine,
         },
         traits::Signer as SignerTrait,
@@ -236,8 +236,8 @@ pub mod test {
         assert_eq!(coordinator.get_state(), State::DkgPublicGather);
     }
 
-    pub fn setup<Coordinator: CoordinatorTrait, Signer: SignerTrait>(
-    ) -> (Coordinator, Vec<SigningRound<Signer>>) {
+    pub fn setup<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
+    ) -> (Coordinator, Vec<Signer<SignerType>>) {
         unsafe {
             if let Ok(false) =
                 LOG_INIT.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
@@ -284,7 +284,7 @@ pub mod test {
             .iter()
             .enumerate()
             .map(|(signer_id, (private_key, _public_key))| {
-                SigningRound::<Signer>::new(
+                Signer::<SignerType>::new(
                     threshold,
                     num_signers,
                     num_keys,
@@ -294,7 +294,7 @@ pub mod test {
                     public_keys.clone(),
                 )
             })
-            .collect::<Vec<SigningRound<Signer>>>();
+            .collect::<Vec<Signer<SignerType>>>();
         let config = Config {
             num_signers,
             num_keys,
@@ -306,9 +306,9 @@ pub mod test {
     }
 
     /// Helper function for feeding messages back from the processor into the signing rounds and coordinator
-    pub fn feedback_messages<Coordinator: CoordinatorTrait, Signer: SignerTrait>(
+    pub fn feedback_messages<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
         coordinator: &mut Coordinator,
-        signing_rounds: &mut Vec<SigningRound<Signer>>,
+        signing_rounds: &mut Vec<Signer<SignerType>>,
         messages: &[Packet],
     ) -> (Vec<Packet>, Vec<OperationResult>) {
         let mut inbound_messages = vec![];
@@ -329,8 +329,8 @@ pub mod test {
             .unwrap()
     }
 
-    pub fn process_inbound_messages<Coordinator: CoordinatorTrait, Signer: SignerTrait>() {
-        let (mut coordinator, mut signing_rounds) = setup::<Coordinator, Signer>();
+    pub fn process_inbound_messages<Coordinator: CoordinatorTrait, SignerType: SignerTrait>() {
+        let (mut coordinator, mut signing_rounds) = setup::<Coordinator, SignerType>();
 
         // We have started a dkg round
         let message = coordinator.start_dkg_round().unwrap();

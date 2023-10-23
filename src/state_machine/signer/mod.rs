@@ -58,7 +58,7 @@ pub enum Error {
 }
 
 /// A state machine for a signing round
-pub struct SigningRound<SignerType: SignerTrait> {
+pub struct Signer<SignerType: SignerTrait> {
     /// current DKG round ID
     pub dkg_id: u64,
     /// current signing round ID
@@ -91,8 +91,8 @@ pub struct SigningRound<SignerType: SignerTrait> {
     pub public_keys: PublicKeys,
 }
 
-impl<SignerType: SignerTrait> SigningRound<SignerType> {
-    /// create a SigningRound
+impl<SignerType: SignerTrait> Signer<SignerType> {
+    /// create a Signer
     pub fn new(
         threshold: u32,
         total_signers: u32,
@@ -113,10 +113,10 @@ impl<SignerType: SignerTrait> SigningRound<SignerType> {
             &mut rng,
         );
         debug!(
-            "new SigningRound for signer_id {} with key_ids {:?}",
+            "new Signer for signer_id {} with key_ids {:?}",
             signer_id, &key_ids
         );
-        SigningRound {
+        Signer {
             dkg_id: 0,
             sign_id: 1,
             sign_iter_id: 1,
@@ -537,7 +537,7 @@ impl<SignerType: SignerTrait> SigningRound<SignerType> {
     }
 }
 
-impl<SignerType: SignerTrait> StateMachine<State, Error> for SigningRound<SignerType> {
+impl<SignerType: SignerTrait> StateMachine<State, Error> for Signer<SignerType> {
     fn move_to(&mut self, state: State) -> Result<(), Error> {
         self.can_move_to(&state)?;
         self.state = state;
@@ -580,7 +580,7 @@ pub mod test {
         common::PolyCommitment,
         net::{DkgPublicShares, DkgStatus, Message},
         schnorr::ID,
-        state_machine::signer::{SigningRound, State as SignerState},
+        state_machine::signer::{Signer, State as SignerState},
         traits::Signer as SignerTrait,
         v1, v2, Scalar,
     };
@@ -597,15 +597,8 @@ pub mod test {
 
     fn dkg_public_share<SignerType: SignerTrait>() {
         let mut rnd = OsRng;
-        let mut signing_round = SigningRound::<SignerType>::new(
-            1,
-            1,
-            1,
-            1,
-            vec![1],
-            Default::default(),
-            Default::default(),
-        );
+        let mut signing_round =
+            Signer::<SignerType>::new(1, 1, 1, 1, vec![1], Default::default(), Default::default());
         let public_share = DkgPublicShares {
             dkg_id: 0,
             signer_id: 0,
@@ -633,15 +626,8 @@ pub mod test {
 
     fn public_shares_done<SignerType: SignerTrait>() {
         let mut rnd = OsRng;
-        let mut signing_round = SigningRound::<SignerType>::new(
-            1,
-            1,
-            1,
-            1,
-            vec![1],
-            Default::default(),
-            Default::default(),
-        );
+        let mut signing_round =
+            Signer::<SignerType>::new(1, 1, 1, 1, vec![1], Default::default(), Default::default());
         // publich_shares_done starts out as false
         assert!(!signing_round.public_shares_done());
 
@@ -671,15 +657,8 @@ pub mod test {
 
     fn can_dkg_end<SignerType: SignerTrait>() {
         let mut rnd = OsRng;
-        let mut signing_round = SigningRound::<SignerType>::new(
-            1,
-            1,
-            1,
-            1,
-            vec![1],
-            Default::default(),
-            Default::default(),
-        );
+        let mut signing_round =
+            Signer::<SignerType>::new(1, 1, 1, 1, vec![1], Default::default(), Default::default());
         // can_dkg_end starts out as false
         assert!(!signing_round.can_dkg_end());
 
@@ -710,15 +689,8 @@ pub mod test {
     }
 
     fn dkg_ended<SignerType: SignerTrait>() {
-        let mut signing_round = SigningRound::<SignerType>::new(
-            1,
-            1,
-            1,
-            1,
-            vec![1],
-            Default::default(),
-            Default::default(),
-        );
+        let mut signing_round =
+            Signer::<SignerType>::new(1, 1, 1, 1, vec![1], Default::default(), Default::default());
         if let Ok(Message::DkgEnd(dkg_end)) = signing_round.dkg_ended() {
             match dkg_end.status {
                 DkgStatus::Failure(_) => {}
