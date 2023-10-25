@@ -1056,7 +1056,7 @@ pub mod test {
             State::NonceGather(is_taproot, merkle_root)
         );
 
-        assert_eq!(outbound_messages.len(), 0);
+        assert!(outbound_messages.is_empty());
 
         // Start a new signing round with a sufficient number of signers for nonces but not sig shares
         let mut insufficient_coordinator = coordinator.clone();
