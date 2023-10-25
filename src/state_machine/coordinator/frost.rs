@@ -698,11 +698,11 @@ pub mod test {
 
     #[test]
     fn process_inbound_messages_v1() {
-        process_inbound_messages::<FrostCoordinator<v1::Aggregator>, v1::Signer>();
+        process_inbound_messages::<FrostCoordinator<v1::Aggregator>, v1::Signer>(5, 2);
     }
 
     #[test]
     fn process_inbound_messages_v2() {
-        process_inbound_messages::<FrostCoordinator<v2::Aggregator>, v2::Signer>();
+        process_inbound_messages::<FrostCoordinator<v2::Aggregator>, v2::Signer>(5, 2);
     }
 }

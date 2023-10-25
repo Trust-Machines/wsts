@@ -237,6 +237,8 @@ pub mod test {
     }
 
     pub fn setup<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
+        num_signers: u32,
+        keys_per_signer: u32,
     ) -> (Coordinator, Vec<Signer<SignerType>>) {
         unsafe {
             if let Ok(false) =
@@ -250,8 +252,6 @@ pub mod test {
         }
 
         let mut rng = OsRng;
-        let num_signers = 5;
-        let keys_per_signer = 2;
         let num_keys = num_signers * keys_per_signer;
         let threshold = (num_keys * 7) / 10;
         let key_pairs = (0..num_signers)
@@ -327,8 +327,12 @@ pub mod test {
             .unwrap()
     }
 
-    pub fn process_inbound_messages<Coordinator: CoordinatorTrait, SignerType: SignerTrait>() {
-        let (mut coordinator, mut signers) = setup::<Coordinator, SignerType>();
+    pub fn process_inbound_messages<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
+        num_signers: u32,
+        keys_per_signer: u32,
+    ) {
+        let (mut coordinator, mut signers) =
+            setup::<Coordinator, SignerType>(num_signers, keys_per_signer);
 
         // We have started a dkg round
         let message = coordinator.start_dkg_round().unwrap();

@@ -752,26 +752,26 @@ pub mod test {
 
     #[test]
     fn process_inbound_messages_v1() {
-        process_inbound_messages::<FireCoordinator<v1::Aggregator>, v1::Signer>();
+        process_inbound_messages::<FireCoordinator<v1::Aggregator>, v1::Signer>(5, 2);
     }
 
     #[test]
     fn process_inbound_messages_v2() {
-        process_inbound_messages::<FireCoordinator<v2::Aggregator>, v2::Signer>();
+        process_inbound_messages::<FireCoordinator<v2::Aggregator>, v2::Signer>(5, 2);
     }
 
     #[test]
-    fn valid_threshold_v1() {
-        valid_threshold::<v1::Aggregator, v1::Signer>();
+    fn all_signers_v1() {
+        all_signers::<v1::Aggregator, v1::Signer>();
     }
 
     #[test]
-    fn valid_threshold_v2() {
-        valid_threshold::<v2::Aggregator, v2::Signer>();
+    fn all_signers_v2() {
+        all_signers::<v2::Aggregator, v2::Signer>();
     }
 
-    fn valid_threshold<Aggregator: AggregatorTrait, Signer: SignerTrait>() {
-        let (mut coordinator, mut signing_rounds) = setup::<FireCoordinator<Aggregator>, Signer>();
+    fn all_signers<Aggregator: AggregatorTrait, Signer: SignerTrait>() {
+        let (mut coordinator, mut signers) = setup::<FireCoordinator<Aggregator>, Signer>(5, 2);
 
         // We have started a dkg round
         let message = coordinator.start_dkg_round().unwrap();
@@ -780,7 +780,7 @@ pub mod test {
 
         // Send the DKG Begin message to all signers and gather responses by sharing with all other signers and coordinator
         let (outbound_messages, operation_results) =
-            feedback_messages(&mut coordinator, &mut signing_rounds, &[message]);
+            feedback_messages(&mut coordinator, &mut signers, &[message]);
         assert!(operation_results.is_empty());
         assert_eq!(coordinator.state, State::DkgEndGather);
 
@@ -794,7 +794,7 @@ pub mod test {
         }
         // Send the DKG Private Begin message to all signers and share their responses with the coordinator and signers
         let (outbound_messages, operation_results) =
-            feedback_messages(&mut coordinator, &mut signing_rounds, &outbound_messages);
+            feedback_messages(&mut coordinator, &mut signers, &outbound_messages);
         assert!(outbound_messages.is_empty());
         assert_eq!(operation_results.len(), 1);
         match operation_results[0] {
@@ -822,7 +822,7 @@ pub mod test {
 
         // Send the message to all signers and gather responses by sharing with all other signers and coordinator
         let (outbound_messages, operation_results) =
-            feedback_messages(&mut coordinator, &mut signing_rounds, &[message]);
+            feedback_messages(&mut coordinator, &mut signers, &[message]);
         assert!(operation_results.is_empty());
         assert_eq!(
             coordinator.state,
@@ -838,7 +838,7 @@ pub mod test {
         }
         // Send the SignatureShareRequest message to all signers and share their responses with the coordinator and signers
         let (outbound_messages, operation_results) =
-            feedback_messages(&mut coordinator, &mut signing_rounds, &outbound_messages);
+            feedback_messages(&mut coordinator, &mut signers, &outbound_messages);
         assert!(outbound_messages.is_empty());
         assert_eq!(operation_results.len(), 1);
         match &operation_results[0] {
@@ -854,5 +854,201 @@ pub mod test {
         }
 
         assert_eq!(coordinator.state, State::Idle);
+    }
+
+    #[test]
+    fn minimum_signers_v1() {
+        minimum_signers::<v1::Aggregator, v1::Signer>();
+    }
+
+    #[test]
+    fn minimum_signers_v2() {
+        minimum_signers::<v2::Aggregator, v2::Signer>();
+    }
+
+    fn minimum_signers<Aggregator: AggregatorTrait, Signer: SignerTrait>() {
+        let num_signers = 5;
+        let keys_per_signer = 2;
+        let (mut coordinator, mut signers) =
+            setup::<FireCoordinator<Aggregator>, Signer>(num_signers, keys_per_signer);
+        let config = coordinator.get_config();
+
+        // We have started a dkg round
+        let message = coordinator.start_dkg_round().unwrap();
+        assert!(coordinator.aggregate_public_key.is_none());
+        assert_eq!(coordinator.state, State::DkgPublicGather);
+
+        // Send the DKG Begin message to all signers and gather responses by sharing with all other signers and coordinator
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinator, &mut signers, &[message]);
+        assert!(operation_results.is_empty());
+        assert_eq!(coordinator.state, State::DkgEndGather);
+
+        // Successfully got an Aggregate Public Key...
+        assert_eq!(outbound_messages.len(), 1);
+        match &outbound_messages[0].msg {
+            Message::DkgPrivateBegin(_) => {}
+            _ => {
+                panic!("Expected DkgPrivateBegin message");
+            }
+        }
+
+        // Send the DKG Private Begin message to all signers and share their responses with the coordinator and signers
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinator, &mut signers, &outbound_messages);
+        assert!(outbound_messages.is_empty());
+        assert_eq!(operation_results.len(), 1);
+        match operation_results[0] {
+            OperationResult::Dkg(point) => {
+                assert_ne!(point, Point::default());
+                assert_eq!(coordinator.aggregate_public_key, Some(point));
+                assert_eq!(coordinator.state, State::Idle);
+            }
+            _ => panic!("Expected Dkg Operation result"),
+        }
+
+        // Figure out how many signers we can remove and still be above the threshold
+        let num_keys = config.num_keys as f64;
+        let threshold = config.threshold as f64;
+        let num_signers_to_remove =
+            ((num_keys - threshold) / keys_per_signer as f64).floor() as usize;
+        for _ in 0..num_signers_to_remove {
+            signers.pop();
+        }
+
+        // Start a signing round
+        let msg = "It was many and many a year ago, in a kingdom by the sea"
+            .as_bytes()
+            .to_vec();
+        let is_taproot = false;
+        let merkle_root = None;
+        let message = coordinator
+            .start_signing_round(&msg, is_taproot, merkle_root)
+            .unwrap();
+        assert_eq!(
+            coordinator.state,
+            State::NonceGather(is_taproot, merkle_root)
+        );
+
+        // Send the message to all signers and gather responses by sharing with all other signers and coordinator
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinator, &mut signers, &[message]);
+        assert!(operation_results.is_empty());
+        assert_eq!(
+            coordinator.state,
+            State::SigShareGather(is_taproot, merkle_root)
+        );
+
+        assert_eq!(outbound_messages.len(), 1);
+        match &outbound_messages[0].msg {
+            Message::SignatureShareRequest(_) => {}
+            _ => {
+                panic!("Expected SignatureShareRequest message");
+            }
+        }
+        // Send the SignatureShareRequest message to all signers and share their responses with the coordinator and signers
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinator, &mut signers, &outbound_messages);
+        assert!(outbound_messages.is_empty());
+        assert_eq!(operation_results.len(), 1);
+        match &operation_results[0] {
+            OperationResult::Sign(sig) => {
+                assert!(sig.verify(
+                    &coordinator
+                        .aggregate_public_key
+                        .expect("No aggregate public key set!"),
+                    &msg
+                ));
+            }
+            _ => panic!("Expected Signature Operation result"),
+        }
+
+        assert_eq!(coordinator.state, State::Idle);
+    }
+
+    #[test]
+    fn insufficient_signers_v1() {
+        insufficient_signers::<v1::Aggregator, v1::Signer>();
+    }
+
+    #[test]
+    fn insufficient_signers_v2() {
+        insufficient_signers::<v2::Aggregator, v2::Signer>();
+    }
+
+    fn insufficient_signers<Aggregator: AggregatorTrait, Signer: SignerTrait>() {
+        let num_signers = 5;
+        let keys_per_signer = 2;
+        let (mut coordinator, mut signers) =
+            setup::<FireCoordinator<Aggregator>, Signer>(num_signers, keys_per_signer);
+        let config = coordinator.get_config();
+
+        // We have started a dkg round
+        let message = coordinator.start_dkg_round().unwrap();
+        assert!(coordinator.aggregate_public_key.is_none());
+        assert_eq!(coordinator.state, State::DkgPublicGather);
+
+        // Send the DKG Begin message to all signers and gather responses by sharing with all other signers and coordinator
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinator, &mut signers, &[message]);
+        assert!(operation_results.is_empty());
+        assert_eq!(coordinator.state, State::DkgEndGather);
+
+        // Successfully got an Aggregate Public Key...
+        assert_eq!(outbound_messages.len(), 1);
+        match &outbound_messages[0].msg {
+            Message::DkgPrivateBegin(_) => {}
+            _ => {
+                panic!("Expected DkgPrivateBegin message");
+            }
+        }
+
+        // Send the DKG Private Begin message to all signers and share their responses with the coordinator and signers
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinator, &mut signers, &outbound_messages);
+        assert!(outbound_messages.is_empty());
+        assert_eq!(operation_results.len(), 1);
+        match operation_results[0] {
+            OperationResult::Dkg(point) => {
+                assert_ne!(point, Point::default());
+                assert_eq!(coordinator.aggregate_public_key, Some(point));
+                assert_eq!(coordinator.state, State::Idle);
+            }
+            _ => panic!("Expected Dkg Operation result"),
+        }
+
+        // Figure out how many signers we can remove and still be above the threshold
+        let num_keys = config.num_keys as f64;
+        let threshold = config.threshold as f64;
+        let num_signers_to_remove =
+            (((num_keys - threshold) / keys_per_signer as f64).floor() + 1 as f64) as usize;
+        for _ in 0..num_signers_to_remove {
+            signers.pop();
+        }
+
+        // Start a signing round
+        let msg = "It was many and many a year ago, in a kingdom by the sea"
+            .as_bytes()
+            .to_vec();
+        let is_taproot = false;
+        let merkle_root = None;
+        let message = coordinator
+            .start_signing_round(&msg, is_taproot, merkle_root)
+            .unwrap();
+        assert_eq!(
+            coordinator.state,
+            State::NonceGather(is_taproot, merkle_root)
+        );
+
+        // Send the message to all signers and gather responses by sharing with all other signers and coordinator
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinator, &mut signers, &[message]);
+        assert!(operation_results.is_empty());
+        assert_eq!(
+            coordinator.state,
+            State::NonceGather(is_taproot, merkle_root)
+        );
+
+        assert_eq!(outbound_messages.len(), 0);
     }
 }

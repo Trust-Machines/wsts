@@ -12,11 +12,11 @@ pub trait StateMachine<S, E> {
 
 /// Result of a DKG or sign operation
 pub enum OperationResult {
-    /// The DKG result
+    /// DKG succeeded with the wrapped public key
     Dkg(Point),
-    /// The sign result
+    /// Sign succeeded with the wrapped Signature
     Sign(Signature),
-    /// The sign taproot result
+    /// Sign taproot succeeded with the wrapped SchnorrProof
     SignTaproot(SchnorrProof),
 }
 
