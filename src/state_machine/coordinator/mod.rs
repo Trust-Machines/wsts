@@ -78,7 +78,7 @@ pub struct Config {
 }
 
 /// Coordinator trait for handling the coordination of DKG and sign messages
-pub trait Coordinator {
+pub trait Coordinator: Clone {
     /// Create a new Coordinator
     fn new(config: Config) -> Self;
 
@@ -367,7 +367,7 @@ pub mod test {
             _ => panic!("Expected Dkg Operation result"),
         }
 
-        // We have started a signing round
+        // Start a signing round
         let msg = "It was many and many a year ago, in a kingdom by the sea"
             .as_bytes()
             .to_vec();

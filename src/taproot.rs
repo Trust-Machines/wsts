@@ -2,7 +2,7 @@ use crate::{common::Signature, compute, field, Point, Scalar, G};
 
 /// A SchnorrProof in BIP-340 format
 #[allow(non_snake_case)]
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SchnorrProof {
     /// The schnorr public commitment (FROST Signature R)
     pub r: field::Element,

@@ -253,6 +253,7 @@ impl Party {
 }
 
 /// The group signature aggregator
+#[derive(Clone, Debug)]
 pub struct Aggregator {
     /// The total number of keys
     pub num_keys: u32,

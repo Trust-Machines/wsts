@@ -19,6 +19,7 @@ use crate::{
 };
 
 /// The coordinator for the FROST algorithm
+#[derive(Clone)]
 pub struct Coordinator<Aggregator: AggregatorTrait> {
     /// common config fields
     config: Config,

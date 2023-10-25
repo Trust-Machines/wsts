@@ -19,6 +19,7 @@ use crate::{
 };
 
 /// The coordinator for the FIRE algorithm
+#[derive(Clone)]
 pub struct Coordinator<Aggregator: AggregatorTrait> {
     /// common config fields
     config: Config,
@@ -1022,33 +1023,85 @@ pub mod test {
         let threshold = config.threshold as f64;
         let num_signers_to_remove =
             (((num_keys - threshold) / keys_per_signer as f64).floor() + 1 as f64) as usize;
+        let mut insufficient_coordinator = coordinator.clone();
+        let mut insufficient_signers = signers.clone();
+
         for _ in 0..num_signers_to_remove {
-            signers.pop();
+            insufficient_signers.pop();
         }
 
-        // Start a signing round
+        // Start a signing round with an insufficient number of signers
         let msg = "It was many and many a year ago, in a kingdom by the sea"
             .as_bytes()
             .to_vec();
         let is_taproot = false;
         let merkle_root = None;
-        let message = coordinator
+        let message = insufficient_coordinator
             .start_signing_round(&msg, is_taproot, merkle_root)
             .unwrap();
         assert_eq!(
-            coordinator.state,
+            insufficient_coordinator.state,
             State::NonceGather(is_taproot, merkle_root)
         );
 
         // Send the message to all signers and gather responses by sharing with all other signers and coordinator
-        let (outbound_messages, operation_results) =
-            feedback_messages(&mut coordinator, &mut signers, &[message]);
+        let (outbound_messages, operation_results) = feedback_messages(
+            &mut insufficient_coordinator,
+            &mut insufficient_signers,
+            &[message],
+        );
         assert!(operation_results.is_empty());
         assert_eq!(
-            coordinator.state,
+            insufficient_coordinator.state,
             State::NonceGather(is_taproot, merkle_root)
         );
 
         assert_eq!(outbound_messages.len(), 0);
+
+        // Start a new signing round with a sufficient number of signers for nonces but not sig shares
+        let mut insufficient_coordinator = coordinator.clone();
+        let mut insufficient_signers = signers.clone();
+
+        let message = insufficient_coordinator
+            .start_signing_round(&msg, is_taproot, merkle_root)
+            .unwrap();
+        assert_eq!(
+            insufficient_coordinator.state,
+            State::NonceGather(is_taproot, merkle_root)
+        );
+
+        // Send the message to all signers and gather responses by sharing with all other signers and insufficient_coordinator
+        let (outbound_messages, operation_results) = feedback_messages(
+            &mut insufficient_coordinator,
+            &mut insufficient_signers,
+            &[message],
+        );
+        assert!(operation_results.is_empty());
+        assert_eq!(
+            insufficient_coordinator.state,
+            State::SigShareGather(is_taproot, merkle_root)
+        );
+
+        assert_eq!(outbound_messages.len(), 1);
+
+        // now remove signers so the number is insufficient
+
+        for _ in 0..num_signers_to_remove {
+            insufficient_signers.pop();
+        }
+
+        // Send the SignatureShareRequest message to all signers and share their responses with the coordinator and signers
+        let (outbound_messages, operation_results) = feedback_messages(
+            &mut insufficient_coordinator,
+            &mut insufficient_signers,
+            &outbound_messages,
+        );
+        assert!(outbound_messages.is_empty());
+        assert!(operation_results.is_empty());
+
+        assert_eq!(
+            insufficient_coordinator.state,
+            State::SigShareGather(is_taproot, merkle_root)
+        );
     }
 }

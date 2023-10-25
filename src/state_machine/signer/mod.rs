@@ -15,7 +15,7 @@ use crate::{
     Compressed, Point, Scalar,
 };
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 /// Signer states
 pub enum State {
     /// The signer is idle
@@ -34,7 +34,7 @@ pub enum State {
     Signed,
 }
 
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error, Clone, Debug)]
 /// The error type for a signer
 pub enum Error {
     /// The party ID was invalid
@@ -58,6 +58,7 @@ pub enum Error {
 }
 
 /// A state machine for a signing round
+#[derive(Clone)]
 pub struct Signer<SignerType: SignerTrait> {
     /// current DKG round ID
     pub dkg_id: u64,
