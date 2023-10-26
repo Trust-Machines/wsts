@@ -2,6 +2,7 @@ use crate::{
     common::MerkleRoot, errors::AggregatorError, net::Packet, state_machine::OperationResult,
     Point, Scalar,
 };
+use std::time::Duration;
 
 #[derive(Clone, Debug, PartialEq)]
 /// Coordinator states
@@ -75,6 +76,48 @@ pub struct Config {
     pub threshold: u32,
     /// private key used to sign network messages
     pub message_private_key: Scalar,
+    /// timeout to gather nonces
+    pub nonce_timeout: Option<Duration>,
+    /// timeout to gather signature shares
+    pub sign_timeout: Option<Duration>,
+}
+
+impl Config {
+    /// Create a new config object with no timeouts
+    pub fn new(
+        num_signers: u32,
+        num_keys: u32,
+        threshold: u32,
+        message_private_key: Scalar,
+    ) -> Self {
+        Config {
+            num_signers,
+            num_keys,
+            threshold,
+            message_private_key,
+            nonce_timeout: None,
+            sign_timeout: None,
+        }
+    }
+
+    /// Create a new config object with the passed timeouts
+    pub fn with_timeouts(
+        num_signers: u32,
+        num_keys: u32,
+        threshold: u32,
+        message_private_key: Scalar,
+        nonce_timeout: Option<Duration>,
+        sign_timeout: Option<Duration>,
+    ) -> Self {
+        Config {
+            num_signers,
+            num_keys,
+            threshold,
+            message_private_key,
+            nonce_timeout,
+            sign_timeout,
+        }
+    }
 }
 
 /// Coordinator trait for handling the coordination of DKG and sign messages
@@ -144,13 +187,7 @@ pub mod test {
 
     pub fn new_coordinator<Coordinator: CoordinatorTrait>() {
         let mut rng = OsRng;
-        let config = Config {
-            num_signers: 10,
-            num_keys: 40,
-            threshold: 28,
-            message_private_key: Scalar::random(&mut rng),
-        };
-
+        let config = Config::new(10, 40, 28, Scalar::random(&mut rng));
         let coordinator = Coordinator::new(config.clone());
 
         assert_eq!(coordinator.get_config().num_signers, config.num_signers);
@@ -165,13 +202,7 @@ pub mod test {
 
     pub fn coordinator_state_machine<Coordinator: CoordinatorTrait + StateMachine<State, Error>>() {
         let mut rng = OsRng;
-        let config = Config {
-            num_signers: 3,
-            num_keys: 3,
-            threshold: 3,
-            message_private_key: Scalar::random(&mut rng),
-        };
-
+        let config = Config::new(3, 3, 3, Scalar::random(&mut rng));
         let mut coordinator = Coordinator::new(config);
         assert!(coordinator.can_move_to(&State::DkgPublicDistribute).is_ok());
         assert!(coordinator.can_move_to(&State::DkgPublicGather).is_err());
@@ -218,12 +249,7 @@ pub mod test {
 
     pub fn start_dkg_round<Coordinator: CoordinatorTrait>() {
         let mut rng = OsRng;
-        let config = Config {
-            num_signers: 10,
-            num_keys: 40,
-            threshold: 28,
-            message_private_key: Scalar::random(&mut rng),
-        };
+        let config = Config::new(10, 40, 28, Scalar::random(&mut rng));
         let mut coordinator = Coordinator::new(config);
         let result = coordinator.start_dkg_round();
 
@@ -295,12 +321,7 @@ pub mod test {
                 )
             })
             .collect::<Vec<Signer<SignerType>>>();
-        let config = Config {
-            num_signers,
-            num_keys,
-            threshold,
-            message_private_key: key_pairs[0].0,
-        };
+        let config = Config::new(num_signers, num_keys, threshold, key_pairs[0].0);
         let coordinator = Coordinator::new(config);
         (coordinator, signers)
     }

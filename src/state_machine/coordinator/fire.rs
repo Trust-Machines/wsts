@@ -1,5 +1,5 @@
 use hashbrown::HashSet;
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, time::Instant};
 use tracing::{debug, info, warn};
 
 use crate::{
@@ -51,9 +51,39 @@ pub struct Coordinator<Aggregator: AggregatorTrait> {
     pub state: State,
     /// Aggregator object
     aggregator: Aggregator,
+    nonce_start: Option<Instant>,
+    sign_start: Option<Instant>,
 }
 
 impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
+    /// Process the message inside the passed packet
+    pub fn process_timeout(&mut self) -> Result<(Option<Packet>, Option<OperationResult>), Error> {
+        let now = Instant::now();
+        match self.state {
+            State::Idle => {}
+            State::DkgPublicDistribute => {}
+            State::DkgPublicGather => {}
+            State::DkgPrivateDistribute => {}
+            State::DkgEndGather => {}
+            State::NonceRequest(_is_taproot, _merkle_root) => {}
+            State::SigShareRequest(_is_taproot, _merkle_root) => {}
+            State::NonceGather(_is_taproot, _merkle_root) => {
+                if let Some(start) = self.nonce_start {
+                    if let Some(timeout) = self.config.nonce_timeout {
+                        if now.duration_since(start) > timeout {}
+                    }
+                }
+            }
+            State::SigShareGather(_is_taproot, _merkle_root) => {
+                if let Some(start) = self.sign_start {
+                    if let Some(timeout) = self.config.sign_timeout {
+                        if now.duration_since(start) > timeout {}
+                    }
+                }
+            }
+        }
+        Ok((None, None))
+    }
     /// Process the message inside the passed packet
     pub fn process_message(
         &mut self,
@@ -277,6 +307,8 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             msg: Message::NonceRequest(nonce_request),
         };
         self.move_to(State::NonceGather(is_taproot, merkle_root))?;
+        self.nonce_start = Some(Instant::now());
+
         Ok(nonce_request_msg)
     }
 
@@ -361,6 +393,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             msg: Message::SignatureShareRequest(sig_share_request),
         };
         self.move_to(State::SigShareGather(is_taproot, merkle_root))?;
+        self.sign_start = Some(Instant::now());
 
         Ok(sig_share_request_msg)
     }
@@ -562,6 +595,8 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
             sign_wait_signer_ids: Default::default(),
             sign_recv_key_ids: Default::default(),
             state: State::Idle,
+            nonce_start: None,
+            sign_start: None,
         }
     }
 
@@ -579,6 +614,15 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
         let mut operation_results = vec![];
         for packet in packets {
             let (outbound_packet, operation_result) = self.process_message(packet)?;
+            if let Some(outbound_packet) = outbound_packet {
+                outbound_packets.push(outbound_packet);
+            }
+            if let Some(operation_result) = operation_result {
+                operation_results.push(operation_result);
+            }
+        }
+        if packets.is_empty() {
+            let (outbound_packet, operation_result) = self.process_timeout()?;
             if let Some(outbound_packet) = outbound_packet {
                 outbound_packets.push(outbound_packet);
             }
@@ -706,12 +750,7 @@ pub mod test {
 
     fn start_public_shares<Aggregator: AggregatorTrait>() {
         let mut rng = OsRng;
-        let config = Config {
-            num_signers: 10,
-            num_keys: 40,
-            threshold: 28,
-            message_private_key: Scalar::random(&mut rng),
-        };
+        let config = Config::new(10, 40, 28, Scalar::random(&mut rng));
         let mut coordinator = FireCoordinator::<Aggregator>::new(config);
 
         coordinator.state = State::DkgPublicDistribute; // Must be in this state before calling start public shares
@@ -735,12 +774,7 @@ pub mod test {
 
     fn start_private_shares<Aggregator: AggregatorTrait>() {
         let mut rng = OsRng;
-        let config = Config {
-            num_signers: 10,
-            num_keys: 40,
-            threshold: 28,
-            message_private_key: Scalar::random(&mut rng),
-        };
+        let config = Config::new(10, 40, 28, Scalar::random(&mut rng));
         let mut coordinator = FireCoordinator::<Aggregator>::new(config);
 
         coordinator.state = State::DkgPrivateDistribute; // Must be in this state before calling start private shares
@@ -1085,7 +1119,6 @@ pub mod test {
         assert_eq!(outbound_messages.len(), 1);
 
         // now remove signers so the number is insufficient
-
         for _ in 0..num_signers_to_remove {
             insufficient_signers.pop();
         }

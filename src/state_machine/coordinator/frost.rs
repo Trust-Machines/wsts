@@ -652,12 +652,7 @@ pub mod test {
 
     fn start_public_shares<Aggregator: AggregatorTrait>() {
         let mut rng = OsRng;
-        let config = Config {
-            num_signers: 10,
-            num_keys: 40,
-            threshold: 28,
-            message_private_key: Scalar::random(&mut rng),
-        };
+        let config = Config::new(10, 40, 28, Scalar::random(&mut rng));
         let mut coordinator = FrostCoordinator::<Aggregator>::new(config);
 
         coordinator.state = State::DkgPublicDistribute; // Must be in this state before calling start public shares
@@ -681,12 +676,7 @@ pub mod test {
 
     fn start_private_shares<Aggregator: AggregatorTrait>() {
         let mut rng = OsRng;
-        let config = Config {
-            num_signers: 10,
-            num_keys: 40,
-            threshold: 28,
-            message_private_key: Scalar::random(&mut rng),
-        };
+        let config = Config::new(10, 40, 28, Scalar::random(&mut rng));
         let mut coordinator = FrostCoordinator::<Aggregator>::new(config);
 
         coordinator.state = State::DkgPrivateDistribute; // Must be in this state before calling start private shares
