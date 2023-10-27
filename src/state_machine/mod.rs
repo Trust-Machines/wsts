@@ -1,6 +1,13 @@
 use hashbrown::HashMap;
+use thiserror::Error;
 
-use crate::{common::Signature, ecdsa, taproot::SchnorrProof, Point};
+use crate::{
+    common::Signature,
+    ecdsa,
+    errors::{AggregatorError, DkgError as DkgCryptoError},
+    taproot::SchnorrProof,
+    Point,
+};
 
 /// A generic state machine
 pub trait StateMachine<S, E> {
@@ -8,6 +15,31 @@ pub trait StateMachine<S, E> {
     fn move_to(&mut self, state: S) -> Result<(), E>;
     /// Check if the state machine can move to a new state
     fn can_move_to(&self, state: &S) -> Result<(), E>;
+}
+
+/// DKG errors
+#[derive(Error, Debug, Clone)]
+pub enum DkgError {
+    /// DKG public timeout
+    #[error("DKG public timeout")]
+    DkgPublicTimeout,
+    /// DKG crypto error
+    #[error("DKG crypto error")]
+    Crypto(#[from] DkgCryptoError),
+}
+
+/// Sign errors
+#[derive(Error, Debug, Clone)]
+pub enum SignError {
+    /// Nonce timeout
+    #[error("Nonce timeout")]
+    NonceTimeout,
+    /// Insufficient signers
+    #[error("Insufficient signers")]
+    InsufficientSigners,
+    /// Signature aggregator error
+    #[error("Signature aggregator error")]
+    Aggregator(#[from] AggregatorError),
 }
 
 /// Result of a DKG or sign operation
@@ -18,6 +50,10 @@ pub enum OperationResult {
     Sign(Signature),
     /// Sign taproot succeeded with the wrapped SchnorrProof
     SignTaproot(SchnorrProof),
+    /// DKG error
+    DkgError(DkgError),
+    /// Sign error
+    SignError(SignError),
 }
 
 #[derive(Default, Clone, Debug)]

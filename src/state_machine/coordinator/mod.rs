@@ -2,6 +2,7 @@ use crate::{
     common::MerkleRoot, errors::AggregatorError, net::Packet, state_machine::OperationResult,
     Point, Scalar,
 };
+use hashbrown::{HashMap, HashSet};
 use std::time::Duration;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -42,6 +43,9 @@ pub enum Error {
     /// A bad sign_iter_id in received message
     #[error("Bad sign_iter_id: got {0} expected {1}")]
     BadSignIterId(u64, u64),
+    /// A malicious signer sent the received message
+    #[error("Malicious signer {0}")]
+    MaliciousSigner(u32),
     /// SignatureAggregator error
     #[error("Aggregator: {0}")]
     Aggregator(AggregatorError),
@@ -80,6 +84,8 @@ pub struct Config {
     pub nonce_timeout: Option<Duration>,
     /// timeout to gather signature shares
     pub sign_timeout: Option<Duration>,
+    /// map of signer_id to controlled key_ids
+    pub signer_key_ids: HashMap<u32, HashSet<u32>>,
 }
 
 impl Config {
@@ -97,6 +103,7 @@ impl Config {
             message_private_key,
             nonce_timeout: None,
             sign_timeout: None,
+            signer_key_ids: Default::default(),
         }
     }
 
@@ -108,6 +115,7 @@ impl Config {
         message_private_key: Scalar,
         nonce_timeout: Option<Duration>,
         sign_timeout: Option<Duration>,
+        signer_key_ids: HashMap<u32, HashSet<u32>>,
     ) -> Self {
         Config {
             num_signers,
@@ -116,6 +124,7 @@ impl Config {
             message_private_key,
             nonce_timeout,
             sign_timeout,
+            signer_key_ids,
         }
     }
 }
@@ -166,9 +175,12 @@ pub mod fire;
 
 #[cfg(test)]
 pub mod test {
-    use hashbrown::HashMap;
+    use hashbrown::{HashMap, HashSet};
     use rand_core::OsRng;
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::{
+        sync::atomic::{AtomicBool, Ordering},
+        time::Duration,
+    };
     use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
     use crate::{
@@ -266,6 +278,15 @@ pub mod test {
         num_signers: u32,
         keys_per_signer: u32,
     ) -> (Coordinator, Vec<Signer<SignerType>>) {
+        setup_with_timeouts::<Coordinator, SignerType>(num_signers, keys_per_signer, None, None)
+    }
+
+    pub fn setup_with_timeouts<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
+        num_signers: u32,
+        keys_per_signer: u32,
+        nonce_timeout: Option<Duration>,
+        sign_timeout: Option<Duration>,
+    ) -> (Coordinator, Vec<Signer<SignerType>>) {
         unsafe {
             if let Ok(false) =
                 LOG_INIT.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
@@ -290,16 +311,20 @@ pub mod test {
         let mut key_id: u32 = 0;
         let mut signer_ids_map = HashMap::new();
         let mut signer_key_ids = HashMap::new();
+        let mut signer_key_ids_set = HashMap::new();
         let mut key_ids_map = HashMap::new();
         for (i, (_private_key, public_key)) in key_pairs.iter().enumerate() {
             let mut key_ids = Vec::new();
+            let mut key_ids_set = HashSet::new();
             for _ in 0..keys_per_signer {
                 key_ids_map.insert(key_id + 1, *public_key);
                 key_ids.push(key_id);
+                key_ids_set.insert(key_id);
                 key_id += 1;
             }
             signer_ids_map.insert(i as u32, *public_key);
             signer_key_ids.insert(i as u32, key_ids);
+            signer_key_ids_set.insert(i as u32, key_ids_set);
         }
         let public_keys = PublicKeys {
             signers: signer_ids_map,
@@ -321,7 +346,15 @@ pub mod test {
                 )
             })
             .collect::<Vec<Signer<SignerType>>>();
-        let config = Config::new(num_signers, num_keys, threshold, key_pairs[0].0);
+        let config = Config::with_timeouts(
+            num_signers,
+            num_keys,
+            threshold,
+            key_pairs[0].0,
+            nonce_timeout,
+            sign_timeout,
+            signer_key_ids_set,
+        );
         let coordinator = Coordinator::new(config);
         (coordinator, signers)
     }

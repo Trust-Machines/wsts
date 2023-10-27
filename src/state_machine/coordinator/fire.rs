@@ -11,7 +11,7 @@ use crate::{
     },
     state_machine::{
         coordinator::{Config, Coordinator as CoordinatorTrait, Error, State},
-        OperationResult, StateMachine,
+        OperationResult, SignError, StateMachine,
     },
     taproot::SchnorrProof,
     traits::Aggregator as AggregatorTrait,
@@ -53,6 +53,8 @@ pub struct Coordinator<Aggregator: AggregatorTrait> {
     aggregator: Aggregator,
     nonce_start: Option<Instant>,
     sign_start: Option<Instant>,
+    malicious_signer_ids: HashSet<u32>,
+    malicious_key_ids: HashSet<u32>,
 }
 
 impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
@@ -70,14 +72,46 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             State::NonceGather(_is_taproot, _merkle_root) => {
                 if let Some(start) = self.nonce_start {
                     if let Some(timeout) = self.config.nonce_timeout {
-                        if now.duration_since(start) > timeout {}
+                        if now.duration_since(start) > timeout {
+                            warn!("Timeout gathering nonces");
+                            return Ok((
+                                None,
+                                Some(OperationResult::SignError(SignError::NonceTimeout)),
+                            ));
+                        }
                     }
                 }
             }
-            State::SigShareGather(_is_taproot, _merkle_root) => {
+            State::SigShareGather(is_taproot, merkle_root) => {
                 if let Some(start) = self.sign_start {
                     if let Some(timeout) = self.config.sign_timeout {
-                        if now.duration_since(start) > timeout {}
+                        if now.duration_since(start) > timeout {
+                            warn!("Timeout gathering signature shares for signing round {} iteration {}", self.current_sign_id, self.current_sign_iter_id);
+                            for signer_id in &self.sign_wait_signer_ids {
+                                warn!("Mark signer {} as malicious", signer_id);
+                                self.malicious_signer_ids.insert(*signer_id);
+                                for key_id in &self.config.signer_key_ids[signer_id] {
+                                    debug!("Mark key {} as malicious", key_id);
+                                    self.malicious_key_ids.insert(*key_id);
+                                }
+                            }
+
+                            if self.config.num_keys - (self.malicious_key_ids.len() as u32)
+                                < self.config.threshold
+                            {
+                                warn!("Too many malicious signers to continue");
+                                return Ok((
+                                    None,
+                                    Some(OperationResult::SignError(
+                                        SignError::InsufficientSigners,
+                                    )),
+                                ));
+                            }
+
+                            self.move_to(State::NonceRequest(is_taproot, merkle_root))?;
+                            let packet = self.request_nonces(is_taproot, merkle_root)?;
+                            return Ok((Some(packet), None));
+                        }
                     }
                 }
             }
@@ -291,8 +325,9 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         self.public_nonces.clear();
         self.nonce_recv_key_ids.clear();
         self.sign_wait_signer_ids.clear();
+        self.current_sign_iter_id = self.current_sign_iter_id.wrapping_add(1);
         info!(
-            "Sign Round {} Nonce round {} Requesting Nonces",
+            "Sign round {} iteration {} Requesting Nonces",
             self.current_sign_id, self.current_sign_iter_id,
         );
         let nonce_request = NonceRequest {
@@ -335,6 +370,21 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 ));
             }
 
+            if self
+                .malicious_signer_ids
+                .contains(&nonce_response.signer_id)
+            {
+                info!(
+                    "Sign round {} iteration {} received malicious NonceResponse from signer {} ({}/{})",
+                    nonce_response.sign_id,
+                    nonce_response.sign_iter_id,
+                    nonce_response.signer_id,
+                    self.nonce_recv_key_ids.len(),
+                    self.config.threshold,
+                );
+                return Err(Error::MaliciousSigner(nonce_response.signer_id));
+            }
+
             self.public_nonces
                 .insert(nonce_response.signer_id, nonce_response.clone());
             self.sign_wait_signer_ids.insert(nonce_response.signer_id);
@@ -344,7 +394,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 self.nonce_recv_key_ids.insert(*key_id);
             }
             info!(
-                "Sign round {} nonce round {} received NonceResponse from signer {} ({}/{})",
+                "Sign round {} iteration {} received NonceResponse from signer {} ({}/{})",
                 nonce_response.sign_id,
                 nonce_response.sign_iter_id,
                 nonce_response.signer_id,
@@ -546,8 +596,10 @@ impl<Aggregator: AggregatorTrait> StateMachine<State, Error> for Coordinator<Agg
             }
             State::DkgPrivateDistribute => prev_state == &State::DkgPublicGather,
             State::DkgEndGather => prev_state == &State::DkgPrivateDistribute,
-            State::NonceRequest(_, _) => {
-                prev_state == &State::Idle || prev_state == &State::DkgEndGather
+            State::NonceRequest(is_taproot, merkle_root) => {
+                prev_state == &State::Idle
+                    || prev_state == &State::DkgEndGather
+                    || prev_state == &State::SigShareGather(*is_taproot, *merkle_root)
             }
             State::NonceGather(is_taproot, merkle_root) => {
                 prev_state == &State::NonceRequest(*is_taproot, *merkle_root)
@@ -597,6 +649,8 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
             state: State::Idle,
             nonce_start: None,
             sign_start: None,
+            malicious_signer_ids: Default::default(),
+            malicious_key_ids: Default::default(),
         }
     }
 
@@ -685,6 +739,8 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
         self.nonce_recv_key_ids.clear();
         self.sign_recv_key_ids.clear();
         self.sign_wait_signer_ids.clear();
+        self.nonce_start = None;
+        self.sign_start = None;
     }
 }
 
@@ -697,16 +753,17 @@ pub mod test {
                 fire::Coordinator as FireCoordinator,
                 test::{
                     coordinator_state_machine, feedback_messages, new_coordinator,
-                    process_inbound_messages, setup, start_dkg_round,
+                    process_inbound_messages, setup, setup_with_timeouts, start_dkg_round,
                 },
                 Config, Coordinator as CoordinatorTrait, State,
             },
-            OperationResult,
+            OperationResult, SignError,
         },
         traits::{Aggregator as AggregatorTrait, Signer as SignerTrait},
         v1, v2, Point, Scalar,
     };
     use rand_core::OsRng;
+    use std::{thread, time::Duration};
 
     #[test]
     fn new_coordinator_v1() {
@@ -1015,7 +1072,12 @@ pub mod test {
         let num_signers = 5;
         let keys_per_signer = 2;
         let (mut coordinator, mut signers) =
-            setup::<FireCoordinator<Aggregator>, Signer>(num_signers, keys_per_signer);
+            setup_with_timeouts::<FireCoordinator<Aggregator>, Signer>(
+                num_signers,
+                keys_per_signer,
+                Some(Duration::from_millis(128)),
+                Some(Duration::from_millis(128)),
+            );
         let config = coordinator.get_config();
 
         // We have started a dkg round
@@ -1092,6 +1154,27 @@ pub mod test {
 
         assert!(outbound_messages.is_empty());
 
+        // Sleep long enough to hit the timeout
+        thread::sleep(Duration::from_millis(256));
+
+        let (outbound_messages, operation_results) = insufficient_coordinator
+            .process_inbound_messages(&[])
+            .unwrap();
+
+        assert!(outbound_messages.is_empty());
+        assert_eq!(operation_results.len(), 1);
+        assert_eq!(
+            insufficient_coordinator.state,
+            State::NonceGather(is_taproot, merkle_root)
+        );
+        match &operation_results[0] {
+            OperationResult::SignError(sign_error) => match sign_error {
+                SignError::NonceTimeout => {}
+                _ => panic!("Expected SignError::NonceTimeout"),
+            },
+            _ => panic!("Expected OperationResult::SignError"),
+        }
+
         // Start a new signing round with a sufficient number of signers for nonces but not sig shares
         let mut insufficient_coordinator = coordinator.clone();
         let mut insufficient_signers = signers.clone();
@@ -1118,9 +1201,10 @@ pub mod test {
 
         assert_eq!(outbound_messages.len(), 1);
 
+        let mut malicious = Vec::new();
         // now remove signers so the number is insufficient
         for _ in 0..num_signers_to_remove {
-            insufficient_signers.pop();
+            malicious.push(insufficient_signers.pop());
         }
 
         // Send the SignatureShareRequest message to all signers and share their responses with the coordinator and signers
@@ -1135,6 +1219,34 @@ pub mod test {
         assert_eq!(
             insufficient_coordinator.state,
             State::SigShareGather(is_taproot, merkle_root)
+        );
+
+        // Sleep long enough to hit the timeout
+        thread::sleep(Duration::from_millis(256));
+
+        let (outbound_messages, operation_results) = insufficient_coordinator
+            .process_inbound_messages(&[])
+            .unwrap();
+
+        assert_eq!(outbound_messages.len(), 1);
+        assert_eq!(operation_results.len(), 0);
+        assert_eq!(
+            insufficient_coordinator.state,
+            State::NonceGather(is_taproot, merkle_root)
+        );
+
+        // Send the NonceRequest message to all signers and share their responses with the coordinator and signers
+        let (outbound_messages, operation_results) = feedback_messages(
+            &mut insufficient_coordinator,
+            &mut insufficient_signers,
+            &outbound_messages,
+        );
+        assert!(outbound_messages.is_empty());
+        assert!(operation_results.is_empty());
+
+        assert_eq!(
+            insufficient_coordinator.state,
+            State::NonceGather(is_taproot, merkle_root)
         );
     }
 }
