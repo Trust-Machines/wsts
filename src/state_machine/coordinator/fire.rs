@@ -373,7 +373,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 .malicious_signer_ids
                 .contains(&nonce_response.signer_id)
             {
-                info!(
+                warn!(
                     "Sign round {} iteration {} received malicious NonceResponse from signer {} ({}/{})",
                     nonce_response.sign_id,
                     nonce_response.sign_iter_id,
@@ -381,7 +381,8 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                     self.nonce_recv_key_ids.len(),
                     self.config.threshold,
                 );
-                return Err(Error::MaliciousSigner(nonce_response.signer_id));
+                //return Err(Error::MaliciousSigner(nonce_response.signer_id));
+                return Ok(());
             }
 
             self.public_nonces
@@ -1202,7 +1203,7 @@ pub mod test {
         let mut malicious = Vec::new();
         // now remove signers so the number is insufficient
         for _ in 0..num_signers_to_remove {
-            malicious.push(insufficient_signers.pop());
+            malicious.push(insufficient_signers.pop().unwrap());
         }
 
         // Send the SignatureShareRequest message to all signers and share their responses with the coordinator and signers
@@ -1233,7 +1234,31 @@ pub mod test {
             State::NonceGather(is_taproot, merkle_root)
         );
 
+        // put the malicious signers back in
+        while !malicious.is_empty() {
+            insufficient_signers.push(malicious.pop().unwrap());
+        }
+
         // Send the NonceRequest message to all signers and share their responses with the coordinator and signers
+        let (outbound_messages, operation_results) = feedback_messages(
+            &mut insufficient_coordinator,
+            &mut insufficient_signers,
+            &outbound_messages,
+        );
+        assert_eq!(outbound_messages.len(), 1);
+        assert_eq!(operation_results.len(), 0);
+
+        assert_eq!(
+            insufficient_coordinator.state,
+            State::SigShareGather(is_taproot, merkle_root)
+        );
+
+        // again remove signers so the number is insufficient
+        for _ in 0..num_signers_to_remove {
+            malicious.push(insufficient_signers.pop().unwrap());
+        }
+
+        // Send the SignatureShareRequest message to all signers and share their responses with the coordinator and signers
         let (outbound_messages, operation_results) = feedback_messages(
             &mut insufficient_coordinator,
             &mut insufficient_signers,
@@ -1244,7 +1269,28 @@ pub mod test {
 
         assert_eq!(
             insufficient_coordinator.state,
-            State::NonceGather(is_taproot, merkle_root)
+            State::SigShareGather(is_taproot, merkle_root)
         );
+
+        // Sleep long enough to hit the timeout
+        thread::sleep(Duration::from_millis(256));
+
+        let (outbound_messages, operation_results) = insufficient_coordinator
+            .process_inbound_messages(&[])
+            .unwrap();
+
+        assert_eq!(outbound_messages.len(), 0);
+        assert_eq!(operation_results.len(), 1);
+        assert_eq!(
+            insufficient_coordinator.state,
+            State::SigShareGather(is_taproot, merkle_root)
+        );
+        match &operation_results[0] {
+            OperationResult::SignError(sign_error) => match sign_error {
+                SignError::InsufficientSigners => {}
+                _ => panic!("Expected SignError::InsufficientSigners"),
+            },
+            _ => panic!("Expected OperationResult::SignError"),
+        }
     }
 }
