@@ -54,7 +54,6 @@ pub struct Coordinator<Aggregator: AggregatorTrait> {
     nonce_start: Option<Instant>,
     sign_start: Option<Instant>,
     malicious_signer_ids: HashSet<u32>,
-    malicious_key_ids: HashSet<u32>,
 }
 
 impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
@@ -90,16 +89,16 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                             for signer_id in &self.sign_wait_signer_ids {
                                 warn!("Mark signer {} as malicious", signer_id);
                                 self.malicious_signer_ids.insert(*signer_id);
-                                for key_id in &self.config.signer_key_ids[signer_id] {
-                                    debug!("Mark key {} as malicious", key_id);
-                                    self.malicious_key_ids.insert(*key_id);
-                                }
                             }
 
-                            if self.config.num_keys - (self.malicious_key_ids.len() as u32)
-                                < self.config.threshold
-                            {
-                                warn!("Too many malicious signers to continue");
+                            let num_malicious_keys: u32 = self
+                                .malicious_signer_ids
+                                .iter()
+                                .map(|signer_id| self.config.signer_key_ids[signer_id].len() as u32)
+                                .sum();
+
+                            if self.config.num_keys - num_malicious_keys < self.config.threshold {
+                                warn!("Insufficient non-malicious signers to continue");
                                 return Ok((
                                     None,
                                     Some(OperationResult::SignError(
@@ -650,7 +649,6 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
             nonce_start: None,
             sign_start: None,
             malicious_signer_ids: Default::default(),
-            malicious_key_ids: Default::default(),
         }
     }
 
