@@ -73,8 +73,8 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                     if let Some(timeout) = self.config.nonce_timeout {
                         if now.duration_since(start) > timeout {
                             error!("Timeout gathering nonces for signing round {} iteration {}, unable to continue", self.current_sign_id, self.current_sign_iter_id);
-                            let recv = self.sign_wait_signer_ids.iter().map(|id| *id).collect();
-                            let mal = self.malicious_signer_ids.iter().map(|id| *id).collect();
+                            let recv = self.sign_wait_signer_ids.iter().copied().collect();
+                            let mal = self.malicious_signer_ids.iter().copied().collect();
                             return Ok((
                                 None,
                                 Some(OperationResult::SignError(SignError::NonceTimeout(
@@ -103,7 +103,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
 
                             if self.config.num_keys - num_malicious_keys < self.config.threshold {
                                 error!("Insufficient non-malicious signers, unable to continue");
-                                let mal = self.malicious_signer_ids.iter().map(|id| *id).collect();
+                                let mal = self.malicious_signer_ids.iter().copied().collect();
                                 return Ok((
                                     None,
                                     Some(OperationResult::SignError(
