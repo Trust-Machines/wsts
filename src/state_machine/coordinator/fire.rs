@@ -1,6 +1,6 @@
 use hashbrown::HashSet;
 use std::{collections::BTreeMap, time::Instant};
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::{
     common::{MerkleRoot, PolyCommitment, PublicNonce, Signature, SignatureShare},
@@ -72,10 +72,14 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 if let Some(start) = self.nonce_start {
                     if let Some(timeout) = self.config.nonce_timeout {
                         if now.duration_since(start) > timeout {
-                            warn!("Timeout gathering nonces");
+                            error!("Timeout gathering nonces for signing round {} iteration {}, unable to continue", self.current_sign_id, self.current_sign_iter_id);
+                            let recv = self.sign_wait_signer_ids.iter().map(|id| *id).collect();
+                            let mal = self.malicious_signer_ids.iter().map(|id| *id).collect();
                             return Ok((
                                 None,
-                                Some(OperationResult::SignError(SignError::NonceTimeout)),
+                                Some(OperationResult::SignError(SignError::NonceTimeout(
+                                    recv, mal,
+                                ))),
                             ));
                         }
                     }
@@ -98,11 +102,12 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                                 .sum();
 
                             if self.config.num_keys - num_malicious_keys < self.config.threshold {
-                                warn!("Insufficient non-malicious signers to continue");
+                                error!("Insufficient non-malicious signers, unable to continue");
+                                let mal = self.malicious_signer_ids.iter().map(|id| *id).collect();
                                 return Ok((
                                     None,
                                     Some(OperationResult::SignError(
-                                        SignError::InsufficientSigners,
+                                        SignError::InsufficientSigners(mal),
                                     )),
                                 ));
                             }
@@ -1168,7 +1173,7 @@ pub mod test {
         );
         match &operation_results[0] {
             OperationResult::SignError(sign_error) => match sign_error {
-                SignError::NonceTimeout => {}
+                SignError::NonceTimeout(_, _) => {}
                 _ => panic!("Expected SignError::NonceTimeout"),
             },
             _ => panic!("Expected OperationResult::SignError"),
@@ -1287,7 +1292,7 @@ pub mod test {
         );
         match &operation_results[0] {
             OperationResult::SignError(sign_error) => match sign_error {
-                SignError::InsufficientSigners => {}
+                SignError::InsufficientSigners(_) => {}
                 _ => panic!("Expected SignError::InsufficientSigners"),
             },
             _ => panic!("Expected OperationResult::SignError"),

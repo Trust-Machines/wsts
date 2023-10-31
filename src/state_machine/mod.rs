@@ -21,8 +21,11 @@ pub trait StateMachine<S, E> {
 #[derive(Error, Debug, Clone)]
 pub enum DkgError {
     /// DKG public timeout
-    #[error("DKG public timeout")]
-    DkgPublicTimeout,
+    #[error("DKG public timeout, waiting for {0:?}")]
+    DkgPublicTimeout(Vec<u32>),
+    /// DKG end timeout
+    #[error("DKG end timeout, waiting for {0:?}")]
+    DkgEndTimeout(Vec<u32>),
     /// DKG crypto error
     #[error("DKG crypto error")]
     Crypto(#[from] DkgCryptoError),
@@ -32,11 +35,11 @@ pub enum DkgError {
 #[derive(Error, Debug, Clone)]
 pub enum SignError {
     /// Nonce timeout
-    #[error("Nonce timeout")]
-    NonceTimeout,
+    #[error("Nonce timeout, valid responses from {0:?}, signers {1:?} are malicious")]
+    NonceTimeout(Vec<u32>, Vec<u32>),
     /// Insufficient signers
-    #[error("Insufficient signers")]
-    InsufficientSigners,
+    #[error("Insufficient signers, {0:?} are malicious")]
+    InsufficientSigners(Vec<u32>),
     /// Signature aggregator error
     #[error("Signature aggregator error")]
     Aggregator(#[from] AggregatorError),
