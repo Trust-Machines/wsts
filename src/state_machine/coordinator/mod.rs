@@ -113,6 +113,7 @@ impl Config {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     /// Create a new config object with the passed timeouts
     pub fn with_timeouts(
         num_signers: u32,
