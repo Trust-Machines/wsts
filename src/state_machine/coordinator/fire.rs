@@ -1079,6 +1079,8 @@ pub mod test {
             setup_with_timeouts::<FireCoordinator<Aggregator>, Signer>(
                 num_signers,
                 keys_per_signer,
+                None,
+                None,
                 Some(Duration::from_millis(128)),
                 Some(Duration::from_millis(128)),
             );

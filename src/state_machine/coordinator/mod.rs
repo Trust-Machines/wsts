@@ -80,6 +80,10 @@ pub struct Config {
     pub threshold: u32,
     /// private key used to sign network messages
     pub message_private_key: Scalar,
+    /// timeout to gather DkgPublicShares messages
+    pub dkg_public_timeout: Option<Duration>,
+    /// timeout to gather DkgEnd messages
+    pub dkg_end_timeout: Option<Duration>,
     /// timeout to gather nonces
     pub nonce_timeout: Option<Duration>,
     /// timeout to gather signature shares
@@ -101,6 +105,8 @@ impl Config {
             num_keys,
             threshold,
             message_private_key,
+            dkg_public_timeout: None,
+            dkg_end_timeout: None,
             nonce_timeout: None,
             sign_timeout: None,
             signer_key_ids: Default::default(),
@@ -113,6 +119,8 @@ impl Config {
         num_keys: u32,
         threshold: u32,
         message_private_key: Scalar,
+        dkg_public_timeout: Option<Duration>,
+        dkg_end_timeout: Option<Duration>,
         nonce_timeout: Option<Duration>,
         sign_timeout: Option<Duration>,
         signer_key_ids: HashMap<u32, HashSet<u32>>,
@@ -122,6 +130,8 @@ impl Config {
             num_keys,
             threshold,
             message_private_key,
+            dkg_public_timeout,
+            dkg_end_timeout,
             nonce_timeout,
             sign_timeout,
             signer_key_ids,
@@ -278,12 +288,21 @@ pub mod test {
         num_signers: u32,
         keys_per_signer: u32,
     ) -> (Coordinator, Vec<Signer<SignerType>>) {
-        setup_with_timeouts::<Coordinator, SignerType>(num_signers, keys_per_signer, None, None)
+        setup_with_timeouts::<Coordinator, SignerType>(
+            num_signers,
+            keys_per_signer,
+            None,
+            None,
+            None,
+            None,
+        )
     }
 
     pub fn setup_with_timeouts<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
         num_signers: u32,
         keys_per_signer: u32,
+        dkg_public_timeout: Option<Duration>,
+        dkg_end_timeout: Option<Duration>,
         nonce_timeout: Option<Duration>,
         sign_timeout: Option<Duration>,
     ) -> (Coordinator, Vec<Signer<SignerType>>) {
@@ -351,6 +370,8 @@ pub mod test {
             num_keys,
             threshold,
             key_pairs[0].0,
+            dkg_public_timeout,
+            dkg_end_timeout,
             nonce_timeout,
             sign_timeout,
             signer_key_ids_set,
