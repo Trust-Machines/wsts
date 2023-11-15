@@ -11,7 +11,7 @@ use crate::{
     },
     state_machine::{
         coordinator::{Config, Coordinator as CoordinatorTrait, Error, State},
-        OperationResult, SignError, StateMachine,
+        DkgError, OperationResult, SignError, StateMachine,
     },
     taproot::SchnorrProof,
     traits::Aggregator as AggregatorTrait,
@@ -52,6 +52,8 @@ pub struct Coordinator<Aggregator: AggregatorTrait> {
     /// Aggregator object
     aggregator: Aggregator,
     nonce_start: Option<Instant>,
+    dkg_public_start: Option<Instant>,
+    dkg_end_start: Option<Instant>,
     sign_start: Option<Instant>,
     malicious_signer_ids: HashSet<u32>,
 }
@@ -63,9 +65,35 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         match self.state {
             State::Idle => {}
             State::DkgPublicDistribute => {}
-            State::DkgPublicGather => {}
+            State::DkgPublicGather => {
+                if let Some(start) = self.dkg_public_start {
+                    if let Some(timeout) = self.config.dkg_public_timeout {
+                        if now.duration_since(start) > timeout {
+                            error!("Timeout gathering DkgPublicShares for dkg round {} signing round {} iteration {}, unable to continue", self.current_dkg_id, self.current_sign_id, self.current_sign_iter_id);
+                            let wait = self.dkg_wait_signer_ids.iter().copied().collect();
+                            return Ok((
+                                None,
+                                Some(OperationResult::DkgError(DkgError::DkgPublicTimeout(wait))),
+                            ));
+                        }
+                    }
+                }
+            }
             State::DkgPrivateDistribute => {}
-            State::DkgEndGather => {}
+            State::DkgEndGather => {
+                if let Some(start) = self.dkg_end_start {
+                    if let Some(timeout) = self.config.dkg_end_timeout {
+                        if now.duration_since(start) > timeout {
+                            error!("Timeout gathering DkgEnd for dkg round {} signing round {} iteration {}, unable to continue", self.current_dkg_id, self.current_sign_id, self.current_sign_iter_id);
+                            let wait = self.dkg_wait_signer_ids.iter().copied().collect();
+                            return Ok((
+                                None,
+                                Some(OperationResult::DkgError(DkgError::DkgEndTimeout(wait))),
+                            ));
+                        }
+                    }
+                }
+            }
             State::NonceRequest(_is_taproot, _merkle_root) => {}
             State::SigShareRequest(_is_taproot, _merkle_root) => {}
             State::NonceGather(_is_taproot, _merkle_root) => {
@@ -238,6 +266,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         };
 
         self.move_to(State::DkgPublicGather)?;
+        self.dkg_public_start = Some(Instant::now());
         Ok(dkg_begin_packet)
     }
 
@@ -258,6 +287,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             msg: Message::DkgPrivateBegin(dkg_begin),
         };
         self.move_to(State::DkgEndGather)?;
+        self.dkg_end_start = Some(Instant::now());
         Ok(dkg_private_begin_msg)
     }
 
@@ -652,6 +682,8 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
             sign_wait_signer_ids: Default::default(),
             sign_recv_key_ids: Default::default(),
             state: State::Idle,
+            dkg_public_start: None,
+            dkg_end_start: None,
             nonce_start: None,
             sign_start: None,
             malicious_signer_ids: Default::default(),
@@ -761,7 +793,7 @@ pub mod test {
                 },
                 Config, Coordinator as CoordinatorTrait, State,
             },
-            OperationResult, SignError,
+            DkgError, OperationResult, SignError,
         },
         traits::{Aggregator as AggregatorTrait, Signer as SignerTrait},
         v1, v2, Point, Scalar,
@@ -857,16 +889,188 @@ pub mod test {
     }
 
     #[test]
-    fn all_signers_v1() {
-        all_signers::<v1::Aggregator, v1::Signer>();
+    fn all_signers_dkg_v1() {
+        all_signers_dkg::<v1::Aggregator, v1::Signer>();
     }
 
     #[test]
-    fn all_signers_v2() {
-        all_signers::<v2::Aggregator, v2::Signer>();
+    fn all_signers_dkg_v2() {
+        all_signers_dkg::<v2::Aggregator, v2::Signer>();
     }
 
-    fn all_signers<Aggregator: AggregatorTrait, Signer: SignerTrait>() {
+    fn all_signers_dkg<Aggregator: AggregatorTrait, Signer: SignerTrait>() {
+        let (mut coordinator, mut signers) = setup::<FireCoordinator<Aggregator>, Signer>(5, 2);
+
+        // We have started a dkg round
+        let message = coordinator.start_dkg_round().unwrap();
+        assert!(coordinator.aggregate_public_key.is_none());
+        assert_eq!(coordinator.state, State::DkgPublicGather);
+
+        // Send the DKG Begin message to all signers and gather responses by sharing with all other signers and coordinator
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinator, &mut signers, &[message]);
+        assert!(operation_results.is_empty());
+        assert_eq!(coordinator.state, State::DkgEndGather);
+
+        // Successfully got an Aggregate Public Key...
+        assert_eq!(outbound_messages.len(), 1);
+        match &outbound_messages[0].msg {
+            Message::DkgPrivateBegin(_) => {}
+            _ => {
+                panic!("Expected DkgPrivateBegin message");
+            }
+        }
+        // Send the DKG Private Begin message to all signers and share their responses with the coordinator and signers
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinator, &mut signers, &outbound_messages);
+        assert!(outbound_messages.is_empty());
+        assert_eq!(operation_results.len(), 1);
+        match operation_results[0] {
+            OperationResult::Dkg(point) => {
+                assert_ne!(point, Point::default());
+                assert_eq!(coordinator.aggregate_public_key, Some(point));
+                assert_eq!(coordinator.state, State::Idle);
+            }
+            _ => panic!("Expected Dkg Operation result"),
+        }
+    }
+
+    #[test]
+    fn insufficient_signers_dkg_v1() {
+        insufficient_signers_dkg::<v1::Aggregator, v1::Signer>();
+    }
+
+    #[test]
+    fn insufficient_signers_dkg_v2() {
+        insufficient_signers_dkg::<v2::Aggregator, v2::Signer>();
+    }
+
+    fn insufficient_signers_dkg<Aggregator: AggregatorTrait, Signer: SignerTrait>() {
+        let timeout = Duration::from_millis(128);
+        let expire = Duration::from_millis(256);
+        let num_signers = 5;
+        let keys_per_signer = 2;
+        let (mut coordinator, signers) = setup_with_timeouts::<FireCoordinator<Aggregator>, Signer>(
+            num_signers,
+            keys_per_signer,
+            Some(timeout),
+            Some(timeout),
+            Some(timeout),
+            Some(timeout),
+        );
+
+        // Start a DKG round where we will not allow all signers to recv DkgBegin, so they will not respond with DkgPublicShares
+        let message = coordinator.start_dkg_round().unwrap();
+        assert!(coordinator.aggregate_public_key.is_none());
+        assert_eq!(coordinator.state, State::DkgPublicGather);
+
+        // Only need to remove one signer for DKG
+        let num_signers_to_remove = 1;
+
+        let mut insufficient_coordinator = coordinator.clone();
+        let mut insufficient_signers = signers.clone();
+
+        for _ in 0..num_signers_to_remove {
+            insufficient_signers.pop();
+        }
+
+        // Send the DKG Begin message to insufficient signers and gather responses by sharing with signers and coordinator
+        let (outbound_messages, operation_results) = feedback_messages(
+            &mut insufficient_coordinator,
+            &mut insufficient_signers,
+            &[message.clone()],
+        );
+
+        // Failed to get an aggregate public key
+        assert_eq!(outbound_messages.len(), 0);
+        assert_eq!(operation_results.len(), 0);
+        assert_eq!(insufficient_coordinator.state, State::DkgPublicGather);
+
+        // Sleep long enough to hit the timeout
+        thread::sleep(expire);
+
+        let (outbound_messages, operation_results) = insufficient_coordinator
+            .process_inbound_messages(&[])
+            .unwrap();
+
+        assert!(outbound_messages.is_empty());
+        assert_eq!(operation_results.len(), 1);
+        assert_eq!(insufficient_coordinator.state, State::DkgPublicGather,);
+        match &operation_results[0] {
+            OperationResult::DkgError(dkg_error) => match dkg_error {
+                DkgError::DkgPublicTimeout(_) => {}
+                _ => panic!("Expected DkgError::DkgPublicTimeout"),
+            },
+            _ => panic!("Expected OperationResult::DkgError"),
+        }
+
+        // Run DKG again with fresh coordinator and signers, this time allow gathering DkgPublicShares but timeout getting DkgEnd
+        let mut insufficient_coordinator = coordinator.clone();
+        let mut insufficient_signers = signers.clone();
+
+        // Send the DKG Begin message to all signers and gather responses by sharing with all other signers and coordinator
+        let (outbound_messages, operation_results) = feedback_messages(
+            &mut insufficient_coordinator,
+            &mut insufficient_signers,
+            &[message],
+        );
+        assert!(operation_results.is_empty());
+        assert_eq!(insufficient_coordinator.state, State::DkgEndGather);
+
+        // Successfully got an Aggregate Public Key...
+        assert_eq!(outbound_messages.len(), 1);
+        match &outbound_messages[0].msg {
+            Message::DkgPrivateBegin(_) => {}
+            _ => {
+                panic!("Expected DkgPrivateBegin message");
+            }
+        }
+
+        // now remove signers so the set is insufficient
+        for _ in 0..num_signers_to_remove {
+            insufficient_signers.pop();
+        }
+
+        // Send the DKG Private Begin message to insufficient signers and share their responses with the coordinator and signers
+        let (outbound_messages, operation_results) = feedback_messages(
+            &mut insufficient_coordinator,
+            &mut insufficient_signers,
+            &outbound_messages,
+        );
+        assert!(outbound_messages.is_empty());
+        assert_eq!(operation_results.len(), 0);
+        assert_eq!(insufficient_coordinator.state, State::DkgEndGather,);
+
+        // Sleep long enough to hit the timeout
+        thread::sleep(expire);
+
+        let (outbound_messages, operation_results) = insufficient_coordinator
+            .process_inbound_messages(&[])
+            .unwrap();
+
+        assert!(outbound_messages.is_empty());
+        assert_eq!(operation_results.len(), 1);
+        assert_eq!(insufficient_coordinator.state, State::DkgEndGather,);
+        match &operation_results[0] {
+            OperationResult::DkgError(dkg_error) => match dkg_error {
+                DkgError::DkgEndTimeout(_) => {}
+                _ => panic!("Expected DkgError::DkgEndTimeout"),
+            },
+            _ => panic!("Expected OperationResult::DkgError"),
+        }
+    }
+
+    #[test]
+    fn all_signers_sign_v1() {
+        all_signers_sign::<v1::Aggregator, v1::Signer>();
+    }
+
+    #[test]
+    fn all_signers_sign_v2() {
+        all_signers_sign::<v2::Aggregator, v2::Signer>();
+    }
+
+    fn all_signers_sign<Aggregator: AggregatorTrait, Signer: SignerTrait>() {
         let (mut coordinator, mut signers) = setup::<FireCoordinator<Aggregator>, Signer>(5, 2);
 
         // We have started a dkg round
@@ -953,16 +1157,16 @@ pub mod test {
     }
 
     #[test]
-    fn minimum_signers_v1() {
-        minimum_signers::<v1::Aggregator, v1::Signer>();
+    fn minimum_signers_sign_v1() {
+        minimum_signers_sign::<v1::Aggregator, v1::Signer>();
     }
 
     #[test]
-    fn minimum_signers_v2() {
-        minimum_signers::<v2::Aggregator, v2::Signer>();
+    fn minimum_signers_sign_v2() {
+        minimum_signers_sign::<v2::Aggregator, v2::Signer>();
     }
 
-    fn minimum_signers<Aggregator: AggregatorTrait, Signer: SignerTrait>() {
+    fn minimum_signers_sign<Aggregator: AggregatorTrait, Signer: SignerTrait>() {
         let num_signers = 5;
         let keys_per_signer = 2;
         let (mut coordinator, mut signers) =
@@ -1063,16 +1267,16 @@ pub mod test {
     }
 
     #[test]
-    fn insufficient_signers_v1() {
-        insufficient_signers::<v1::Aggregator, v1::Signer>();
+    fn insufficient_signers_sign_v1() {
+        insufficient_signers_sign::<v1::Aggregator, v1::Signer>();
     }
 
     #[test]
-    fn insufficient_signers_v2() {
-        insufficient_signers::<v2::Aggregator, v2::Signer>();
+    fn insufficient_signers_sign_v2() {
+        insufficient_signers_sign::<v2::Aggregator, v2::Signer>();
     }
 
-    fn insufficient_signers<Aggregator: AggregatorTrait, Signer: SignerTrait>() {
+    fn insufficient_signers_sign<Aggregator: AggregatorTrait, Signer: SignerTrait>() {
         let num_signers = 5;
         let keys_per_signer = 2;
         let (mut coordinator, mut signers) =
