@@ -711,15 +711,15 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
                 operation_results.push(operation_result);
             }
         }
-        if packets.is_empty() {
-            let (outbound_packet, operation_result) = self.process_timeout()?;
-            if let Some(outbound_packet) = outbound_packet {
-                outbound_packets.push(outbound_packet);
-            }
-            if let Some(operation_result) = operation_result {
-                operation_results.push(operation_result);
-            }
+
+        let (outbound_packet, operation_result) = self.process_timeout()?;
+        if let Some(outbound_packet) = outbound_packet {
+            outbound_packets.push(outbound_packet);
         }
+        if let Some(operation_result) = operation_result {
+            operation_results.push(operation_result);
+        }
+
         Ok((outbound_packets, operation_results))
     }
 
