@@ -124,6 +124,7 @@ pub struct SignatureShare {
     pub key_ids: Vec<u32>,
 }
 
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[allow(non_snake_case)]
 /// An aggregated group signature
 pub struct Signature {
