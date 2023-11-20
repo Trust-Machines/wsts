@@ -1,14 +1,8 @@
-use p256k1::{
-    field,
-    point::{Point, G},
-    scalar::Scalar,
-};
-
-use crate::{common::Signature, compute};
+use crate::{common::Signature, compute, field, Point, Scalar, G};
 
 /// A SchnorrProof in BIP-340 format
 #[allow(non_snake_case)]
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SchnorrProof {
     /// The schnorr public commitment (FROST Signature R)
     pub r: field::Element,
@@ -150,7 +144,7 @@ mod test {
 
     #[test]
     #[allow(non_snake_case)]
-    fn test_taproot_sign_verify_v1() {
+    fn taproot_sign_verify_v1_with_merkle_root() {
         let script = "OP_1".as_bytes();
         let merkle_root = compute::merkle_root(script);
 
@@ -159,7 +153,7 @@ mod test {
 
     #[test]
     #[allow(non_snake_case)]
-    fn test_taproot_sign_verify_v1_no_merkle_root() {
+    fn taproot_sign_verify_v1_no_merkle_root() {
         taproot_sign_verify_v1(None);
     }
 
@@ -211,7 +205,7 @@ mod test {
 
     #[test]
     #[allow(non_snake_case)]
-    fn test_taproot_sign_verify_v2() {
+    fn taproot_sign_verify_v2_with_merkle_root() {
         let script = "OP_1".as_bytes();
         let merkle_root = compute::merkle_root(script);
 
@@ -220,7 +214,7 @@ mod test {
 
     #[test]
     #[allow(non_snake_case)]
-    fn test_taproot_sign_verify_v2_no_merkle_root() {
+    fn taproot_sign_verify_v2_no_merkle_root() {
         taproot_sign_verify_v2(None);
     }
 

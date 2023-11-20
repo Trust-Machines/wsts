@@ -1,15 +1,15 @@
 use hashbrown::HashMap;
-use p256k1::{point::Point, scalar::Scalar};
 use rand_core::{CryptoRng, RngCore};
 
 use crate::{
     common::{MerkleRoot, PolyCommitment, PublicNonce, Signature, SignatureShare},
     errors::{AggregatorError, DkgError},
     taproot::SchnorrProof,
+    Point, Scalar,
 };
 
 /// A trait which provides a common `Signer` interface for `v1` and `v2`
-pub trait Signer {
+pub trait Signer: Clone {
     /// Create a new `Signer`
     fn new<RNG: RngCore + CryptoRng>(
         party_id: u32,
@@ -77,7 +77,7 @@ pub trait Signer {
 }
 
 /// A trait which provides a common `Aggregator` interface for `v1` and `v2`
-pub trait Aggregator {
+pub trait Aggregator: Clone {
     /// Construct an Aggregator with the passed parameters
     fn new(num_keys: u32, threshold: u32) -> Self;
 

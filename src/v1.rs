@@ -1,9 +1,5 @@
 use hashbrown::HashMap;
 use num_traits::{One, Zero};
-use p256k1::{
-    point::{Point, G},
-    scalar::Scalar,
-};
 use polynomial::Polynomial;
 use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
@@ -16,6 +12,7 @@ use crate::{
     taproot::SchnorrProof,
     traits,
     vss::VSS,
+    Point, Scalar, G,
 };
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -231,6 +228,7 @@ impl Party {
 }
 
 /// The group signature aggregator
+#[derive(Clone, Debug)]
 pub struct Aggregator {
     /// The total number of keys
     pub num_keys: u32,

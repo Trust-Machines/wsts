@@ -1,6 +1,7 @@
-use p256k1::scalar::Scalar;
 use polynomial::Polynomial;
 use rand_core::{CryptoRng, RngCore};
+
+use crate::Scalar;
 
 /// A verifiable secret share algorithm
 pub struct VSS {}

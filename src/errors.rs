@@ -1,5 +1,6 @@
-use p256k1::{point::Error as PointError, scalar::Scalar};
 use thiserror::Error;
+
+use crate::{PointError, Scalar};
 
 #[derive(Error, Debug, Clone)]
 /// Errors which can happen during distributed key generation

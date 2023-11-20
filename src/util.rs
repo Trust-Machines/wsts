@@ -1,7 +1,8 @@
 use aes_gcm::{aead::Aead, Aes256Gcm, Error as AesGcmError, KeyInit, Nonce};
-use p256k1::{point::Point, scalar::Scalar};
 use rand_core::{CryptoRng, RngCore};
 use sha2::{Digest, Sha256};
+
+use crate::{Point, Scalar};
 
 /// Size of the AES-GCM nonce
 pub const AES_GCM_NONCE_SIZE: usize = 12;
@@ -66,10 +67,10 @@ pub fn decrypt(key: &[u8; 32], data: &[u8]) -> Result<Vec<u8>, AesGcmError> {
 
 #[cfg(test)]
 mod test {
-    use p256k1::{point::Point, scalar::Scalar};
     use rand_core::OsRng;
 
     use super::*;
+    use crate::{Point, Scalar};
 
     #[test]
     #[allow(non_snake_case)]
