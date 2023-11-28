@@ -4,7 +4,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     common::{MerkleRoot, PolyCommitment, PublicNonce, SignatureShare},
-    ecdsa, Scalar,
+    curve::{ecdsa, scalar::Scalar},
 };
 
 /// Trait to encapsulate sign/verify, users only need to impl hash

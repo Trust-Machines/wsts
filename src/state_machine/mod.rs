@@ -3,10 +3,9 @@ use thiserror::Error;
 
 use crate::{
     common::Signature,
-    ecdsa,
+    curve::{ecdsa, point::Point},
     errors::{AggregatorError, DkgError as DkgCryptoError},
     taproot::SchnorrProof,
-    Point,
 };
 
 /// A generic state machine

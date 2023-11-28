@@ -3,9 +3,9 @@ use rand_core::{CryptoRng, RngCore};
 
 use crate::{
     common::{MerkleRoot, PolyCommitment, PublicNonce, Signature, SignatureShare},
+    curve::{point::Point, scalar::Scalar},
     errors::{AggregatorError, DkgError},
     taproot::SchnorrProof,
-    Point, Scalar,
 };
 
 /// A trait which provides a common `Signer` interface for `v1` and `v2`

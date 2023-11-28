@@ -5,6 +5,10 @@ use tracing::{debug, info, trace, warn};
 
 use crate::{
     common::{PolyCommitment, PublicNonce},
+    curve::{
+        point::{Compressed, Point},
+        scalar::Scalar,
+    },
     net::{
         DkgBegin, DkgEnd, DkgPrivateShares, DkgPublicShares, DkgStatus, Message, NonceRequest,
         NonceResponse, Packet, Signable, SignatureShareRequest, SignatureShareResponse,
@@ -12,7 +16,6 @@ use crate::{
     state_machine::{PublicKeys, StateMachine},
     traits::Signer as SignerTrait,
     util::{decrypt, encrypt, make_shared_secret},
-    Compressed, Point, Scalar,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -579,11 +582,12 @@ pub mod test {
 
     use crate::{
         common::PolyCommitment,
+        curve::scalar::Scalar,
         net::{DkgPublicShares, DkgStatus, Message},
         schnorr::ID,
         state_machine::signer::{Signer, State as SignerState},
         traits::Signer as SignerTrait,
-        v1, v2, Scalar,
+        v1, v2,
     };
 
     #[test]

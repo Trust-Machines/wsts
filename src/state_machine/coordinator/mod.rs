@@ -1,6 +1,9 @@
 use crate::{
-    common::MerkleRoot, errors::AggregatorError, net::Packet, state_machine::OperationResult,
-    Point, Scalar,
+    common::MerkleRoot,
+    curve::{point::Point, scalar::Scalar},
+    errors::AggregatorError,
+    net::Packet,
+    state_machine::OperationResult,
 };
 use hashbrown::{HashMap, HashSet};
 use std::time::Duration;
@@ -195,7 +198,7 @@ pub mod test {
     use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
     use crate::{
-        ecdsa,
+        curve::{ecdsa, point::Point, scalar::Scalar},
         net::{Message, Packet},
         state_machine::{
             coordinator::{Config, Coordinator as CoordinatorTrait, Error, State},
@@ -203,7 +206,6 @@ pub mod test {
             OperationResult, PublicKeys, StateMachine,
         },
         traits::Signer as SignerTrait,
-        Point, Scalar,
     };
 
     static mut LOG_INIT: AtomicBool = AtomicBool::new(false);

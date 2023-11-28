@@ -7,12 +7,15 @@ use serde::{Deserialize, Serialize};
 use crate::{
     common::{Nonce, PolyCommitment, PublicNonce, Signature, SignatureShare},
     compute,
+    curve::{
+        point::{Point, G},
+        scalar::Scalar,
+    },
     errors::{AggregatorError, DkgError},
     schnorr::ID,
     taproot::SchnorrProof,
     traits,
     vss::VSS,
-    Point, Scalar, G,
 };
 
 /// A map of private keys indexed by key ID

@@ -5,6 +5,7 @@ use tracing::{debug, info};
 use crate::{
     common::{MerkleRoot, PolyCommitment, PublicNonce, Signature, SignatureShare},
     compute,
+    curve::point::Point,
     net::{
         DkgBegin, DkgPublicShares, Message, NonceRequest, NonceResponse, Packet, Signable,
         SignatureShareRequest,
@@ -15,7 +16,6 @@ use crate::{
     },
     taproot::SchnorrProof,
     traits::Aggregator as AggregatorTrait,
-    Point,
 };
 
 /// The coordinator for the FROST algorithm
@@ -596,6 +596,7 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
 #[cfg(test)]
 pub mod test {
     use crate::{
+        curve::scalar::Scalar,
         net::Message,
         state_machine::coordinator::{
             frost::Coordinator as FrostCoordinator,
@@ -606,7 +607,7 @@ pub mod test {
             Config, Coordinator as CoordinatorTrait, State,
         },
         traits::Aggregator as AggregatorTrait,
-        v1, v2, Scalar,
+        v1, v2,
     };
     use rand_core::OsRng;
 
