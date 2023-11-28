@@ -120,7 +120,7 @@ pub struct SignatureShare {
 
 #[allow(non_snake_case)]
 /// An aggregated group signature
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct Signature {
     /// The sum of the public nonces with commitments to the signed message
     pub R: Point,
