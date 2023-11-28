@@ -2,7 +2,7 @@ use aes_gcm::{aead::Aead, Aes256Gcm, Error as AesGcmError, KeyInit, Nonce};
 use rand_core::{CryptoRng, RngCore};
 use sha2::{Digest, Sha256};
 
-use crate::{Point, Scalar};
+use crate::curve::{point::Point, scalar::Scalar};
 
 /// Size of the AES-GCM nonce
 pub const AES_GCM_NONCE_SIZE: usize = 12;

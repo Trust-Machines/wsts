@@ -5,6 +5,7 @@ use tracing::{debug, info};
 use crate::{
     common::{MerkleRoot, PolyCommitment, PublicNonce, Signature, SignatureShare},
     compute,
+    curve::point::Point,
     net::{
         DkgBegin, DkgPublicShares, Message, NonceRequest, NonceResponse, Packet, Signable,
         SignatureShareRequest,
@@ -15,7 +16,6 @@ use crate::{
     },
     taproot::SchnorrProof,
     traits::Aggregator as AggregatorTrait,
-    Point,
 };
 
 /// The coordinator for the FROST algorithm

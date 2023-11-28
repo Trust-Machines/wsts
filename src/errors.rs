@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::{PointError, Scalar};
+use crate::curve::{point::Error as PointError, scalar::Scalar};
 
 #[derive(Error, Debug, Clone)]
 /// Errors which can happen during distributed key generation

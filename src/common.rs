@@ -7,7 +7,15 @@ use num_traits::{One, Zero};
 use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
-use crate::{compute::challenge, schnorr::ID, MultiMult, Point, Scalar, G};
+use crate::{
+    compute::challenge,
+    curve::{
+        point::{Point, G},
+        scalar::Scalar,
+        traits::MultiMult,
+    },
+    schnorr::ID,
+};
 
 /// A merkle root is a 256 bit hash
 pub type MerkleRoot = [u8; 32];

@@ -30,9 +30,4 @@ pub mod v2;
 /// Shamir secret sharing, using in distributed key generation
 pub mod vss;
 
-pub use p256k1::{
-    ecdsa, field,
-    point::{Compressed, Error as PointError, Point, G, N},
-    scalar::{Error as ScalarError, Scalar},
-    traits::MultiMult,
-};
+pub use p256k1 as curve;

@@ -1,6 +1,9 @@
 use crate::{
-    common::MerkleRoot, errors::AggregatorError, net::Packet, state_machine::OperationResult,
-    Point, Scalar,
+    common::MerkleRoot,
+    curve::{point::Point, scalar::Scalar},
+    errors::AggregatorError,
+    net::Packet,
+    state_machine::OperationResult,
 };
 use hashbrown::{HashMap, HashSet};
 use std::time::Duration;

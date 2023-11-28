@@ -2,7 +2,13 @@ use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::{util::hash_to_scalar, Point, Scalar, G};
+use crate::{
+    curve::{
+        point::{Point, G},
+        scalar::Scalar,
+    },
+    util::hash_to_scalar,
+};
 
 #[allow(non_snake_case)]
 #[derive(Clone, Debug, Deserialize, Serialize)]

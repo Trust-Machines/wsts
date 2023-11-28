@@ -1,4 +1,12 @@
-use crate::{common::Signature, compute, field, Point, Scalar, G};
+use crate::{
+    common::Signature,
+    compute,
+    curve::{
+        field,
+        point::{Point, G},
+        scalar::Scalar,
+    },
+};
 
 /// A SchnorrProof in BIP-340 format
 #[allow(non_snake_case)]
