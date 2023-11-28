@@ -596,6 +596,7 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
 #[cfg(test)]
 pub mod test {
     use crate::{
+        curve::scalar::Scalar,
         net::Message,
         state_machine::coordinator::{
             frost::Coordinator as FrostCoordinator,
@@ -606,7 +607,7 @@ pub mod test {
             Config, Coordinator as CoordinatorTrait, State,
         },
         traits::Aggregator as AggregatorTrait,
-        v1, v2, Scalar,
+        v1, v2,
     };
     use rand_core::OsRng;
 

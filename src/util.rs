@@ -70,7 +70,7 @@ mod test {
     use rand_core::OsRng;
 
     use super::*;
-    use crate::{Point, Scalar};
+    use crate::curve::{point::Point, scalar::Scalar};
 
     #[test]
     #[allow(non_snake_case)]

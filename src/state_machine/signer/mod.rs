@@ -582,11 +582,12 @@ pub mod test {
 
     use crate::{
         common::PolyCommitment,
+        curve::scalar::Scalar,
         net::{DkgPublicShares, DkgStatus, Message},
         schnorr::ID,
         state_machine::signer::{Signer, State as SignerState},
         traits::Signer as SignerTrait,
-        v1, v2, Scalar,
+        v1, v2,
     };
 
     #[test]

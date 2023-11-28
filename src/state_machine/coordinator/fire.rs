@@ -783,6 +783,7 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
 #[cfg(test)]
 pub mod test {
     use crate::{
+        curve::{point::Point, scalar::Scalar},
         net::Message,
         state_machine::{
             coordinator::{
@@ -796,7 +797,7 @@ pub mod test {
             DkgError, OperationResult, SignError,
         },
         traits::{Aggregator as AggregatorTrait, Signer as SignerTrait},
-        v1, v2, Point, Scalar,
+        v1, v2,
     };
     use rand_core::OsRng;
     use std::{thread, time::Duration};
