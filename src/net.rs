@@ -1,10 +1,12 @@
 use hashbrown::HashMap;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use tracing::warn;
 
 use crate::{
     common::{MerkleRoot, PolyCommitment, PublicNonce, SignatureShare},
     curve::{ecdsa, scalar::Scalar},
+    state_machine::PublicKeys,
 };
 
 /// Trait to encapsulate sign/verify, users only need to impl hash
@@ -167,6 +169,12 @@ pub struct NonceRequest {
     pub sign_id: u64,
     /// Signing round iteration ID
     pub sign_iter_id: u64,
+    /// The message to sign
+    pub message: Vec<u8>,
+    /// Whether to make a taproot signature
+    pub is_taproot: bool,
+    /// Taproot merkle root
+    pub merkle_root: Option<MerkleRoot>,
 }
 
 impl Signable for NonceRequest {
@@ -175,6 +183,11 @@ impl Signable for NonceRequest {
         hasher.update(self.dkg_id.to_be_bytes());
         hasher.update(self.sign_id.to_be_bytes());
         hasher.update(self.sign_iter_id.to_be_bytes());
+        hasher.update(self.message.as_slice());
+        hasher.update((self.is_taproot as u16).to_be_bytes());
+        if let Some(merkle_root) = self.merkle_root {
+            hasher.update(merkle_root);
+        }
     }
 }
 
@@ -288,4 +301,443 @@ pub struct Packet {
     pub msg: Message,
     /// The bytes of the signature
     pub sig: Vec<u8>,
+}
+
+impl Packet {
+    /// This function verifies the packet's signature, returning true if the signature is valid,
+    /// i.e. is appropriately signed by either the provided coordinator or one of the provided signer public keys
+    pub fn verify(
+        &self,
+        signers_public_keys: &PublicKeys,
+        coordinator_public_key: &ecdsa::PublicKey,
+    ) -> bool {
+        match &self.msg {
+            Message::DkgBegin(msg) | Message::DkgPrivateBegin(msg) => {
+                if !msg.verify(&self.sig, coordinator_public_key) {
+                    warn!("Received a DkgPrivateBegin message with an invalid signature.");
+                    return false;
+                }
+            }
+            Message::DkgEnd(msg) => {
+                if let Some(public_key) = signers_public_keys.signers.get(&msg.signer_id) {
+                    if !msg.verify(&self.sig, public_key) {
+                        warn!("Received a DkgPublicEnd message with an invalid signature.");
+                        return false;
+                    }
+                } else {
+                    warn!(
+                        "Received a DkgPublicEnd message with an unknown id: {}",
+                        msg.signer_id
+                    );
+                    return false;
+                }
+            }
+            Message::DkgPublicShares(msg) => {
+                if let Some(public_key) = signers_public_keys.signers.get(&msg.signer_id) {
+                    if !msg.verify(&self.sig, public_key) {
+                        warn!("Received a DkgPublicShares message with an invalid signature.");
+                        return false;
+                    }
+                } else {
+                    warn!(
+                        "Received a DkgPublicShares message with an unknown id: {}",
+                        msg.signer_id
+                    );
+                    return false;
+                }
+            }
+            Message::DkgPrivateShares(msg) => {
+                // Private shares have key IDs from [0, N) to reference IDs from [1, N]
+                // in Frost V4 to enable easy indexing hence ID + 1
+                // TODO: Once Frost V5 is released, this off by one adjustment will no longer be required
+                if let Some(public_key) = signers_public_keys.signers.get(&msg.signer_id) {
+                    if !msg.verify(&self.sig, public_key) {
+                        warn!("Received a DkgPrivateShares message with an invalid signature from signer_id {} key {}", msg.signer_id, &public_key);
+                        return false;
+                    }
+                } else {
+                    warn!(
+                        "Received a DkgPrivateShares message with an unknown id: {}",
+                        msg.signer_id
+                    );
+                    return false;
+                }
+            }
+            Message::NonceRequest(msg) => {
+                if !msg.verify(&self.sig, coordinator_public_key) {
+                    warn!("Received a NonceRequest message with an invalid signature.");
+                    return false;
+                }
+            }
+            Message::NonceResponse(msg) => {
+                if let Some(public_key) = signers_public_keys.signers.get(&msg.signer_id) {
+                    if !msg.verify(&self.sig, public_key) {
+                        warn!("Received a NonceResponse message with an invalid signature.");
+                        return false;
+                    }
+                } else {
+                    warn!(
+                        "Received a NonceResponse message with an unknown id: {}",
+                        msg.signer_id
+                    );
+                    return false;
+                }
+            }
+            Message::SignatureShareRequest(msg) => {
+                if !msg.verify(&self.sig, coordinator_public_key) {
+                    warn!("Received a SignatureShareRequest message with an invalid signature.");
+                    return false;
+                }
+            }
+            Message::SignatureShareResponse(msg) => {
+                if let Some(public_key) = signers_public_keys.signers.get(&msg.signer_id) {
+                    if !msg.verify(&self.sig, public_key) {
+                        warn!(
+                            "Received a SignatureShareResponse message with an invalid signature."
+                        );
+                        return false;
+                    }
+                } else {
+                    warn!(
+                        "Received a SignatureShareResponse message with an unknown id: {}",
+                        msg.signer_id
+                    );
+                    return false;
+                }
+            }
+        }
+        true
+    }
+}
+
+#[cfg(test)]
+
+mod test {
+    use crate::{schnorr::ID, state_machine::PublicKeys};
+    use hashbrown::HashMap;
+    use p256k1::{ecdsa, scalar::Scalar};
+    use rand_core::OsRng;
+
+    use super::*;
+
+    /// Test config for verifying messages
+    pub struct TestConfig {
+        coordinator_private_key: Scalar,
+        coordinator_public_key: ecdsa::PublicKey,
+        signer_private_key: Scalar,
+        public_keys: PublicKeys,
+    }
+
+    impl Default for TestConfig {
+        fn default() -> Self {
+            let mut rng = OsRng;
+            let signer_private_key = Scalar::random(&mut rng);
+            let signer_public_key = ecdsa::PublicKey::new(&signer_private_key).unwrap();
+            let mut signer_ids_map = HashMap::new();
+            let mut key_ids_map = HashMap::new();
+            signer_ids_map.insert(0, signer_public_key);
+            key_ids_map.insert(1, signer_public_key);
+            let public_keys = PublicKeys {
+                signers: signer_ids_map,
+                key_ids: key_ids_map,
+            };
+            let coordinator_private_key = Scalar::random(&mut rng);
+            let coordinator_public_key = ecdsa::PublicKey::new(&coordinator_private_key).unwrap();
+            Self {
+                coordinator_private_key,
+                coordinator_public_key,
+                signer_private_key,
+                public_keys,
+            }
+        }
+    }
+    #[test]
+    fn dkg_begin_verify_msg() {
+        let test_config = TestConfig::default();
+        let dkg_begin = DkgBegin { dkg_id: 0 };
+        let msg = Message::DkgBegin(dkg_begin.clone());
+        let coordinator_packet_dkg_begin = Packet {
+            sig: dkg_begin
+                .sign(&test_config.coordinator_private_key)
+                .expect("Failed to sign"),
+            msg: msg.clone(),
+        };
+        let signer_packet_dkg_begin = Packet {
+            sig: dkg_begin
+                .sign(&test_config.signer_private_key)
+                .expect("Failed to sign"),
+            msg,
+        };
+
+        assert!(coordinator_packet_dkg_begin.verify(
+            &test_config.public_keys,
+            &test_config.coordinator_public_key
+        ));
+        assert!(!signer_packet_dkg_begin.verify(
+            &test_config.public_keys,
+            &test_config.coordinator_public_key
+        ));
+
+        let msg = Message::DkgPrivateBegin(dkg_begin.clone());
+        let coordinator_packet_dkg_private_begin = Packet {
+            sig: dkg_begin
+                .sign(&test_config.coordinator_private_key)
+                .expect("Failed to sign"),
+            msg: msg.clone(),
+        };
+        let signer_packet_dkg_private_begin = Packet {
+            sig: dkg_begin
+                .sign(&test_config.signer_private_key)
+                .expect("Failed to sign"),
+            msg,
+        };
+
+        assert!(coordinator_packet_dkg_private_begin.verify(
+            &test_config.public_keys,
+            &test_config.coordinator_public_key
+        ));
+        assert!(!signer_packet_dkg_private_begin.verify(
+            &test_config.public_keys,
+            &test_config.coordinator_public_key
+        ));
+    }
+
+    #[test]
+    fn dkg_public_shares_verify_msg() {
+        let mut rng = OsRng;
+        let test_config = TestConfig::default();
+        let public_shares = DkgPublicShares {
+            dkg_id: 0,
+            signer_id: 0,
+            comms: vec![(
+                0,
+                PolyCommitment {
+                    id: ID::new(&Scalar::new(), &Scalar::new(), &mut rng),
+                    poly: vec![],
+                },
+            )],
+        };
+        let msg = Message::DkgPublicShares(public_shares.clone());
+        let coordinator_packet_dkg_public_shares = Packet {
+            sig: public_shares
+                .sign(&test_config.coordinator_private_key)
+                .expect("Failed to sign"),
+            msg: msg.clone(),
+        };
+        let signer_packet_dkg_public_shares = Packet {
+            sig: public_shares
+                .sign(&test_config.signer_private_key)
+                .expect("Failed to sign"),
+            msg,
+        };
+
+        assert!(!coordinator_packet_dkg_public_shares.verify(
+            &test_config.public_keys,
+            &test_config.coordinator_public_key
+        ));
+        assert!(signer_packet_dkg_public_shares.verify(
+            &test_config.public_keys,
+            &test_config.coordinator_public_key
+        ));
+    }
+
+    #[test]
+    fn dkg_private_shares_verify_msg() {
+        let test_config = TestConfig::default();
+        let private_shares = DkgPrivateShares {
+            dkg_id: 0,
+            signer_id: 0,
+            shares: vec![(0, HashMap::new())],
+        };
+        let msg = Message::DkgPrivateShares(private_shares.clone());
+        let coordinator_packet_dkg_private_shares = Packet {
+            sig: private_shares
+                .sign(&test_config.coordinator_private_key)
+                .expect("Failed to sign"),
+            msg: msg.clone(),
+        };
+        let signer_packet_dkg_private_shares = Packet {
+            sig: private_shares
+                .sign(&test_config.signer_private_key)
+                .expect("Failed to sign"),
+            msg,
+        };
+
+        assert!(!coordinator_packet_dkg_private_shares.verify(
+            &test_config.public_keys,
+            &test_config.coordinator_public_key
+        ));
+        assert!(signer_packet_dkg_private_shares.verify(
+            &test_config.public_keys,
+            &test_config.coordinator_public_key
+        ));
+    }
+
+    #[test]
+    fn dkg_end_verify_msg() {
+        let test_config = TestConfig::default();
+        let dkg_end = DkgEnd {
+            dkg_id: 0,
+            signer_id: 0,
+            status: DkgStatus::Success,
+        };
+        let msg = Message::DkgEnd(dkg_end.clone());
+
+        let coordinator_packet_dkg_end = Packet {
+            sig: dkg_end
+                .sign(&test_config.coordinator_private_key)
+                .expect("Failed to sign"),
+            msg: msg.clone(),
+        };
+        let signer_packet_dkg_end = Packet {
+            sig: dkg_end
+                .sign(&test_config.signer_private_key)
+                .expect("Failed to sign"),
+            msg,
+        };
+        assert!(!coordinator_packet_dkg_end.verify(
+            &test_config.public_keys,
+            &test_config.coordinator_public_key
+        ));
+        assert!(signer_packet_dkg_end.verify(
+            &test_config.public_keys,
+            &test_config.coordinator_public_key
+        ));
+    }
+    #[test]
+    fn nonce_request_verify_msg() {
+        let test_config = TestConfig::default();
+        let nonce_request = NonceRequest {
+            dkg_id: 0,
+            sign_id: 0,
+            sign_iter_id: 0,
+            message: vec![],
+            is_taproot: false,
+            merkle_root: None,
+        };
+        let msg = Message::NonceRequest(nonce_request.clone());
+        let coordinator_packet_nonce_request = Packet {
+            sig: nonce_request
+                .sign(&test_config.coordinator_private_key)
+                .expect("Failed to sign"),
+            msg: msg.clone(),
+        };
+        let signer_packet_nonce_request = Packet {
+            sig: nonce_request
+                .sign(&test_config.signer_private_key)
+                .expect("Failed to sign"),
+            msg,
+        };
+        assert!(coordinator_packet_nonce_request.verify(
+            &test_config.public_keys,
+            &test_config.coordinator_public_key
+        ));
+        assert!(!signer_packet_nonce_request.verify(
+            &test_config.public_keys,
+            &test_config.coordinator_public_key
+        ));
+    }
+    #[test]
+    fn nonce_response_verify_msg() {
+        let test_config = TestConfig::default();
+
+        let nonce_response = NonceResponse {
+            dkg_id: 0,
+            sign_id: 0,
+            sign_iter_id: 0,
+            signer_id: 0,
+            key_ids: vec![],
+            nonces: vec![],
+        };
+        let msg = Message::NonceResponse(nonce_response.clone());
+        let coordinator_packet_nonce_response = Packet {
+            sig: nonce_response
+                .sign(&test_config.coordinator_private_key)
+                .expect("Failed to sign"),
+            msg: msg.clone(),
+        };
+        let signer_packet_nonce_response = Packet {
+            sig: nonce_response
+                .sign(&test_config.signer_private_key)
+                .expect("Failed to sign"),
+            msg,
+        };
+        assert!(!coordinator_packet_nonce_response.verify(
+            &test_config.public_keys,
+            &test_config.coordinator_public_key
+        ));
+        assert!(signer_packet_nonce_response.verify(
+            &test_config.public_keys,
+            &test_config.coordinator_public_key
+        ));
+    }
+
+    #[test]
+    fn signature_share_request_verify_msg() {
+        let test_config = TestConfig::default();
+        let signature_share_request = SignatureShareRequest {
+            dkg_id: 0,
+            sign_id: 0,
+            sign_iter_id: 0,
+            nonce_responses: vec![],
+            message: vec![],
+            is_taproot: false,
+            merkle_root: None,
+        };
+        let msg = Message::SignatureShareRequest(signature_share_request.clone());
+        let coordinator_packet_signature_share_request = Packet {
+            sig: signature_share_request
+                .sign(&test_config.coordinator_private_key)
+                .expect("Failed to sign"),
+            msg: msg.clone(),
+        };
+        let signer_packet_signature_share_request = Packet {
+            sig: signature_share_request
+                .sign(&test_config.signer_private_key)
+                .expect("Failed to sign"),
+            msg,
+        };
+        assert!(coordinator_packet_signature_share_request.verify(
+            &test_config.public_keys,
+            &test_config.coordinator_public_key
+        ));
+        assert!(!signer_packet_signature_share_request.verify(
+            &test_config.public_keys,
+            &test_config.coordinator_public_key
+        ));
+    }
+
+    #[test]
+    fn signature_share_response_verify_msg() {
+        let test_config = TestConfig::default();
+
+        let signature_share_response = SignatureShareResponse {
+            dkg_id: 0,
+            sign_id: 0,
+            sign_iter_id: 0,
+            signer_id: 0,
+            signature_shares: vec![],
+        };
+        let msg = Message::SignatureShareResponse(signature_share_response.clone());
+        let coordinator_packet_signature_share_response = Packet {
+            sig: signature_share_response
+                .sign(&test_config.coordinator_private_key)
+                .expect("Failed to sign"),
+            msg: msg.clone(),
+        };
+        let signer_packet_signature_share_response = Packet {
+            sig: signature_share_response
+                .sign(&test_config.signer_private_key)
+                .expect("Failed to sign"),
+            msg,
+        };
+        assert!(!coordinator_packet_signature_share_response.verify(
+            &test_config.public_keys,
+            &test_config.coordinator_public_key
+        ));
+        assert!(signer_packet_signature_share_response.verify(
+            &test_config.public_keys,
+            &test_config.coordinator_public_key
+        ));
+    }
 }

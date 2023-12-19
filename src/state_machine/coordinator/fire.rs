@@ -368,6 +368,9 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             dkg_id: self.current_dkg_id,
             sign_id: self.current_sign_id,
             sign_iter_id: self.current_sign_iter_id,
+            message: self.message.clone(),
+            is_taproot,
+            merkle_root,
         };
         let nonce_request_msg = Packet {
             sig: nonce_request
@@ -1329,7 +1332,7 @@ pub mod test {
         let num_keys = config.num_keys as f64;
         let threshold = config.threshold as f64;
         let num_signers_to_remove =
-            (((num_keys - threshold) / keys_per_signer as f64).floor() + 1 as f64) as usize;
+            (((num_keys - threshold) / keys_per_signer as f64).floor() + 1_f64) as usize;
         let mut insufficient_coordinator = coordinator.clone();
         let mut insufficient_signers = signers.clone();
 
@@ -1447,8 +1450,8 @@ pub mod test {
         );
 
         // put the malicious signers back in
-        while !malicious.is_empty() {
-            insufficient_signers.push(malicious.pop().unwrap());
+        while let Some(element) = malicious.pop() {
+            insufficient_signers.push(element);
         }
 
         // Send the NonceRequest message to all signers and share their responses with the coordinator and signers
