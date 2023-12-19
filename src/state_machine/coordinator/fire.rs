@@ -158,8 +158,27 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         loop {
             match self.state {
                 State::Idle => {
-                    // do nothing
-                    // We are the coordinator and should be the only thing triggering messages right now
+                    // Did we receive a coordinator message?
+                    if let Message::DkgBegin(dkg_begin) = &packet.msg {
+                        // Set the current sign id to one before the current message to ensure
+                        // that we start the next round at the correct id. (Do this rather
+                        // then overwriting afterwards to ensure logging is accurate)
+                        self.current_dkg_id = dkg_begin.dkg_id.wrapping_sub(1);
+                        let packet = self.start_dkg_round()?;
+                        return Ok((Some(packet), None));
+                    } else if let Message::NonceRequest(nonce_request) = &packet.msg {
+                        // Set the current sign id to one before the current message to ensure
+                        // that we start the next round at the correct id. (Do this rather
+                        // then overwriting afterwards to ensure logging is accurate)
+                        self.current_sign_id = nonce_request.sign_id.wrapping_sub(1);
+                        self.current_sign_iter_id = nonce_request.sign_iter_id;
+                        let packet = self.start_signing_round(
+                            nonce_request.message.as_slice(),
+                            nonce_request.is_taproot,
+                            nonce_request.merkle_root,
+                        )?;
+                        return Ok((Some(packet), None));
+                    }
                     return Ok((None, None));
                 }
                 State::DkgPublicDistribute => {
