@@ -290,7 +290,7 @@ pub mod test {
     pub fn setup<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
         num_signers: u32,
         keys_per_signer: u32,
-    ) -> (Coordinator, Vec<Signer<SignerType>>) {
+    ) -> (Vec<Coordinator>, Vec<Signer<SignerType>>) {
         setup_with_timeouts::<Coordinator, SignerType>(
             num_signers,
             keys_per_signer,
@@ -308,7 +308,7 @@ pub mod test {
         dkg_end_timeout: Option<Duration>,
         nonce_timeout: Option<Duration>,
         sign_timeout: Option<Duration>,
-    ) -> (Coordinator, Vec<Signer<SignerType>>) {
+    ) -> (Vec<Coordinator>, Vec<Signer<SignerType>>) {
         unsafe {
             if let Ok(false) =
                 LOG_INIT.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
@@ -368,24 +368,29 @@ pub mod test {
                 )
             })
             .collect::<Vec<Signer<SignerType>>>();
-        let config = Config::with_timeouts(
-            num_signers,
-            num_keys,
-            threshold,
-            key_pairs[0].0,
-            dkg_public_timeout,
-            dkg_end_timeout,
-            nonce_timeout,
-            sign_timeout,
-            signer_key_ids_set,
-        );
-        let coordinator = Coordinator::new(config);
-        (coordinator, signers)
+        let coordinators = key_pairs
+            .into_iter()
+            .map(|(private_key, _public_key)| {
+                let config = Config::with_timeouts(
+                    num_signers,
+                    num_keys,
+                    threshold,
+                    private_key,
+                    dkg_public_timeout,
+                    dkg_end_timeout,
+                    nonce_timeout,
+                    sign_timeout,
+                    signer_key_ids_set.clone(),
+                );
+                Coordinator::new(config)
+            })
+            .collect::<Vec<Coordinator>>();
+        (coordinators, signers)
     }
 
-    /// Helper function for feeding messages back from the processor into the signing rounds and coordinator
+    /// Helper function for feeding messages back from the processor into the signing rounds and coordinators
     pub fn feedback_messages<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
-        coordinator: &mut Coordinator,
+        coordinators: &mut Vec<Coordinator>,
         signers: &mut Vec<Signer<SignerType>>,
         messages: &[Packet],
     ) -> (Vec<Packet>, Vec<OperationResult>) {
@@ -400,28 +405,51 @@ pub mod test {
             let outbound_messages = signer.process_inbound_messages(&feedback_messages).unwrap();
             inbound_messages.extend(outbound_messages);
         }
-        coordinator
-            .process_inbound_messages(&inbound_messages)
-            .unwrap()
+        for coordinator in coordinators.as_mut_slice() {
+            // Process all coordinator messages, but don't bother with propogating these results
+            let _ = coordinator.process_inbound_messages(messages).unwrap();
+        }
+        let mut results = vec![];
+        let mut messages = vec![];
+        for (i, coordinator) in coordinators.iter_mut().enumerate() {
+            let (outbound_messages, outbound_results) = coordinator
+                .process_inbound_messages(&inbound_messages)
+                .unwrap();
+            // Only propogate a single coordinator's messages and results
+            if i == 0 {
+                messages.extend(outbound_messages);
+                results.extend(outbound_results);
+            }
+        }
+        (messages, results)
     }
 
     pub fn process_inbound_messages<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
         num_signers: u32,
         keys_per_signer: u32,
     ) {
-        let (mut coordinator, mut signers) =
+        let (mut coordinators, mut signers) =
             setup::<Coordinator, SignerType>(num_signers, keys_per_signer);
 
         // We have started a dkg round
-        let message = coordinator.start_dkg_round().unwrap();
-        assert!(coordinator.get_aggregate_public_key().is_none());
-        assert_eq!(coordinator.get_state(), State::DkgPublicGather);
+        let message = coordinators.first_mut().unwrap().start_dkg_round().unwrap();
+        assert!(coordinators
+            .first_mut()
+            .unwrap()
+            .get_aggregate_public_key()
+            .is_none());
+        assert_eq!(
+            coordinators.first_mut().unwrap().get_state(),
+            State::DkgPublicGather
+        );
 
         // Send the DKG Begin message to all signers and gather responses by sharing with all other signers and coordinator
         let (outbound_messages, operation_results) =
-            feedback_messages(&mut coordinator, &mut signers, &[message]);
+            feedback_messages(&mut coordinators, &mut signers, &[message]);
         assert!(operation_results.is_empty());
-        assert_eq!(coordinator.get_state(), State::DkgEndGather);
+        for coordinator in coordinators.iter() {
+            assert_eq!(coordinator.get_state(), State::DkgEndGather);
+        }
 
         // Successfully got an Aggregate Public Key...
         assert_eq!(outbound_messages.len(), 1);
@@ -433,14 +461,16 @@ pub mod test {
         }
         // Send the DKG Private Begin message to all signers and share their responses with the coordinator and signers
         let (outbound_messages, operation_results) =
-            feedback_messages(&mut coordinator, &mut signers, &outbound_messages);
+            feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
         assert!(outbound_messages.is_empty());
         assert_eq!(operation_results.len(), 1);
         match operation_results[0] {
             OperationResult::Dkg(point) => {
                 assert_ne!(point, Point::default());
-                assert_eq!(coordinator.get_aggregate_public_key(), Some(point));
-                assert_eq!(coordinator.get_state(), State::Idle);
+                for coordinator in coordinators.iter() {
+                    assert_eq!(coordinator.get_aggregate_public_key(), Some(point));
+                    assert_eq!(coordinator.get_state(), State::Idle);
+                }
             }
             _ => panic!("Expected Dkg Operation result"),
         }
@@ -451,20 +481,22 @@ pub mod test {
             .to_vec();
         let is_taproot = false;
         let merkle_root = None;
-        let message = coordinator
+        let message = coordinators
+            .first_mut()
+            .unwrap()
             .start_signing_round(&msg, is_taproot, merkle_root)
             .unwrap();
         assert_eq!(
-            coordinator.get_state(),
+            coordinators.first_mut().unwrap().get_state(),
             State::NonceGather(is_taproot, merkle_root)
         );
 
         // Send the message to all signers and gather responses by sharing with all other signers and coordinator
         let (outbound_messages, operation_results) =
-            feedback_messages(&mut coordinator, &mut signers, &[message]);
+            feedback_messages(&mut coordinators, &mut signers, &[message]);
         assert!(operation_results.is_empty());
         assert_eq!(
-            coordinator.get_state(),
+            coordinators.first_mut().unwrap().get_state(),
             State::SigShareGather(is_taproot, merkle_root)
         );
 
@@ -477,21 +509,22 @@ pub mod test {
         }
         // Send the SignatureShareRequest message to all signers and share their responses with the coordinator and signers
         let (outbound_messages, operation_results) =
-            feedback_messages(&mut coordinator, &mut signers, &outbound_messages);
+            feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
         assert!(outbound_messages.is_empty());
         assert_eq!(operation_results.len(), 1);
         match &operation_results[0] {
             OperationResult::Sign(sig) => {
-                assert!(sig.verify(
-                    &coordinator
-                        .get_aggregate_public_key()
-                        .expect("No aggregate public key set!"),
-                    &msg
-                ));
+                for coordinator in coordinators.iter() {
+                    assert!(sig.verify(
+                        &coordinator
+                            .get_aggregate_public_key()
+                            .expect("No aggregate public key set!"),
+                        &msg
+                    ));
+                    assert_eq!(coordinator.get_state(), State::Idle);
+                }
             }
             _ => panic!("Expected Signature Operation result"),
         }
-
-        assert_eq!(coordinator.get_state(), State::Idle);
     }
 }
