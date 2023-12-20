@@ -72,8 +72,8 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                             // check dkg_threshold to determine if we can continue
                             let dkg_size = self
                                 .dkg_public_shares
-                                .iter()
-                                .map(|(_id, shares)| shares.comms.len() as u32)
+                                .values()
+                                .map(|shares| shares.comms.len() as u32)
                                 .sum();
                             if self.config.dkg_threshold > dkg_size {
                                 error!("Timeout gathering DkgPublicShares for dkg round {} signing round {} iteration {}, dkg_threshold not met ({}/{}), unable to continue", self.current_dkg_id, self.current_sign_id, self.current_sign_iter_id, dkg_size, self.config.dkg_threshold);
