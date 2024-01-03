@@ -1007,7 +1007,7 @@ pub mod test {
     fn insufficient_signers_dkg<Aggregator: AggregatorTrait, Signer: SignerTrait>() {
         let timeout = Duration::from_millis(256);
         let expire = Duration::from_millis(384);
-        let num_signers = 5;
+        let num_signers = 10;
         let keys_per_signer = 2;
         let (mut coordinators, signers) = setup_with_timeouts::<FireCoordinator<Aggregator>, Signer>(
             num_signers,
@@ -1023,8 +1023,8 @@ pub mod test {
         assert!(coordinators.first().unwrap().aggregate_public_key.is_none());
         assert_eq!(coordinators.first().unwrap().state, State::DkgPublicGather);
 
-        // Only need to remove one signer for DKG
-        let num_signers_to_remove = 1;
+        // DKG threshold is 9/10, so need to remove 2
+        let num_signers_to_remove = 2;
 
         let mut insufficient_coordinators = coordinators.clone();
         let mut insufficient_signers = signers.clone();
