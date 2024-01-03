@@ -306,7 +306,8 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
 
     /// Ask signers to send DKG private shares
     pub fn start_private_shares(&mut self) -> Result<Packet, Error> {
-        self.dkg_wait_signer_ids = (0..self.config.num_signers).collect();
+        // only wait for signers that returned DkgPublicShares
+        self.dkg_wait_signer_ids = self.dkg_public_shares.keys().cloned().collect::<HashSet<u32>>();
         info!(
             "DKG Round {}: Starting Private Share Distribution",
             self.current_dkg_id
