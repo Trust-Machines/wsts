@@ -316,9 +316,15 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             "DKG Round {}: Starting Private Share Distribution",
             self.current_dkg_id
         );
+        let active_key_ids = self
+            .dkg_public_shares
+            .keys()
+            .flat_map(|signer_id| self.config.signer_key_ids[signer_id].clone())
+            .collect::<Vec<u32>>();
+
         let dkg_begin = DkgPrivateBegin {
             dkg_id: self.current_dkg_id,
-            key_ids: (0..self.config.num_keys).collect(),
+            key_ids: active_key_ids,
         };
         let dkg_private_begin_msg = Packet {
             sig: dkg_begin
