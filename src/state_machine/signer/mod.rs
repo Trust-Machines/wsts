@@ -10,8 +10,9 @@ use crate::{
         scalar::Scalar,
     },
     net::{
-        DkgBegin, DkgEnd, DkgPrivateShares, DkgPublicShares, DkgStatus, Message, NonceRequest,
-        NonceResponse, Packet, Signable, SignatureShareRequest, SignatureShareResponse,
+        DkgBegin, DkgEnd, DkgPrivateBegin, DkgPrivateShares, DkgPublicShares, DkgStatus, Message,
+        NonceRequest, NonceResponse, Packet, Signable, SignatureShareRequest,
+        SignatureShareResponse,
     },
     state_machine::{PublicKeys, StateMachine},
     traits::Signer as SignerTrait,
@@ -158,9 +159,13 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             for out in outbounds {
                 let msg = Packet {
                     sig: match &out {
-                        Message::DkgBegin(msg) | Message::DkgPrivateBegin(msg) => msg
+                        Message::DkgBegin(msg) => msg
                             .sign(&self.network_private_key)
                             .expect("failed to sign DkgBegin")
+                            .to_vec(),
+                        Message::DkgPrivateBegin(msg) => msg
+                            .sign(&self.network_private_key)
+                            .expect("failed to sign DkgPrivateBegin")
                             .to_vec(),
                         Message::DkgEnd(msg) => msg
                             .sign(&self.network_private_key)
@@ -203,7 +208,9 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
     pub fn process(&mut self, message: &Message) -> Result<Vec<Message>, Error> {
         let out_msgs = match message {
             Message::DkgBegin(dkg_begin) => self.dkg_begin(dkg_begin),
-            Message::DkgPrivateBegin(_) => self.dkg_private_begin(),
+            Message::DkgPrivateBegin(dkg_private_begin) => {
+                self.dkg_private_begin(dkg_private_begin)
+            }
             Message::DkgPublicShares(dkg_public_shares) => self.dkg_public_share(dkg_public_shares),
             Message::DkgPrivateShares(dkg_private_shares) => {
                 self.dkg_private_shares(dkg_private_shares)
@@ -428,7 +435,10 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         Ok(msgs)
     }
 
-    fn dkg_private_begin(&mut self) -> Result<Vec<Message>, Error> {
+    fn dkg_private_begin(
+        &mut self,
+        dkg_private_begin: &DkgPrivateBegin,
+    ) -> Result<Vec<Message>, Error> {
         let mut rng = OsRng;
         let mut msgs = vec![];
         let mut private_shares = DkgPrivateShares {
@@ -436,6 +446,11 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             signer_id: self.signer_id,
             shares: Vec::new(),
         };
+        let active_key_ids = dkg_private_begin
+            .key_ids
+            .iter()
+            .cloned()
+            .collect::<HashSet<u32>>();
         info!(
             "Signer {} sending DkgPrivateShares for round {}",
             self.signer.get_id(),
@@ -456,15 +471,18 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             let mut encrypted_shares = HashMap::new();
 
             for (dst_key_id, private_share) in shares {
-                debug!("encrypting dkg private share for key_id {}", dst_key_id + 1);
-                let compressed =
-                    Compressed::from(self.public_keys.key_ids[&(dst_key_id + 1)].to_bytes());
-                let dst_public_key = Point::try_from(&compressed).unwrap();
-                let shared_secret = make_shared_secret(&self.network_private_key, &dst_public_key);
-                let encrypted_share =
-                    encrypt(&shared_secret, &private_share.to_bytes(), &mut rng).unwrap();
+                if active_key_ids.contains(dst_key_id) {
+                    debug!("encrypting dkg private share for key_id {}", dst_key_id + 1);
+                    let compressed =
+                        Compressed::from(self.public_keys.key_ids[&(dst_key_id + 1)].to_bytes());
+                    let dst_public_key = Point::try_from(&compressed).unwrap();
+                    let shared_secret =
+                        make_shared_secret(&self.network_private_key, &dst_public_key);
+                    let encrypted_share =
+                        encrypt(&shared_secret, &private_share.to_bytes(), &mut rng).unwrap();
 
-                encrypted_shares.insert(*dst_key_id, encrypted_share);
+                    encrypted_shares.insert(*dst_key_id, encrypted_share);
+                }
             }
 
             private_shares.shares.push((*key_id, encrypted_shares));

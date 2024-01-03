@@ -7,8 +7,8 @@ use crate::{
     compute,
     curve::point::Point,
     net::{
-        DkgBegin, DkgPublicShares, Message, NonceRequest, NonceResponse, Packet, Signable,
-        SignatureShareRequest,
+        DkgBegin, DkgPrivateBegin, DkgPublicShares, Message, NonceRequest, NonceResponse, Packet,
+        Signable, SignatureShareRequest,
     },
     state_machine::{
         coordinator::{Config, Coordinator as CoordinatorTrait, Error, State},
@@ -86,6 +86,9 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                                 ));
                             } else {
                                 // we hit the timeout but met the threshold, continue
+                                self.public_shares_gathered()?;
+                                let packet = self.start_private_shares()?;
+                                return Ok((Some(packet), None));
                             }
                         }
                     }
@@ -308,8 +311,9 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             "DKG Round {}: Starting Private Share Distribution",
             self.current_dkg_id
         );
-        let dkg_begin = DkgBegin {
+        let dkg_begin = DkgPrivateBegin {
             dkg_id: self.current_dkg_id,
+            key_ids: (0..self.config.num_keys).collect(),
         };
         let dkg_private_begin_msg = Packet {
             sig: dkg_begin
@@ -347,16 +351,21 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         }
 
         if self.dkg_wait_signer_ids.is_empty() {
-            // Calculate the aggregate public key
-            let key = self
-                .party_polynomials
-                .iter()
-                .fold(Point::default(), |s, (_, comm)| s + comm.poly[0]);
-
-            info!("Aggregate public key: {}", key);
-            self.aggregate_public_key = Some(key);
-            self.move_to(State::DkgPrivateDistribute)?;
+            self.public_shares_gathered()?;
         }
+        Ok(())
+    }
+
+    fn public_shares_gathered(&mut self) -> Result<(), Error> {
+        // Calculate the aggregate public key
+        let key = self
+            .party_polynomials
+            .iter()
+            .fold(Point::default(), |s, (_, comm)| s + comm.poly[0]);
+
+        info!("Aggregate public key: {}", key);
+        self.aggregate_public_key = Some(key);
+        self.move_to(State::DkgPrivateDistribute)?;
         Ok(())
     }
 
