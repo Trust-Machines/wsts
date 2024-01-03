@@ -81,6 +81,8 @@ pub struct Config {
     pub num_keys: u32,
     /// threshold of keys needed to form a valid signature
     pub threshold: u32,
+    /// threshold of keys needed to complete DKG (must be >= threshold)
+    pub dkg_threshold: u32,
     /// private key used to sign network messages
     pub message_private_key: Scalar,
     /// timeout to gather DkgPublicShares messages
@@ -107,6 +109,7 @@ impl Config {
             num_signers,
             num_keys,
             threshold,
+            dkg_threshold: num_keys,
             message_private_key,
             dkg_public_timeout: None,
             dkg_end_timeout: None,
@@ -122,6 +125,7 @@ impl Config {
         num_signers: u32,
         num_keys: u32,
         threshold: u32,
+        dkg_threshold: u32,
         message_private_key: Scalar,
         dkg_public_timeout: Option<Duration>,
         dkg_end_timeout: Option<Duration>,
@@ -133,6 +137,7 @@ impl Config {
             num_signers,
             num_keys,
             threshold,
+            dkg_threshold,
             message_private_key,
             dkg_public_timeout,
             dkg_end_timeout,
@@ -323,6 +328,7 @@ pub mod test {
         let mut rng = OsRng;
         let num_keys = num_signers * keys_per_signer;
         let threshold = (num_keys * 7) / 10;
+        let dkg_threshold = (num_keys * 9) / 10;
         let key_pairs = (0..num_signers)
             .map(|_| {
                 let private_key = Scalar::random(&mut rng);
@@ -375,6 +381,7 @@ pub mod test {
                     num_signers,
                     num_keys,
                     threshold,
+                    dkg_threshold,
                     private_key,
                     dkg_public_timeout,
                     dkg_end_timeout,

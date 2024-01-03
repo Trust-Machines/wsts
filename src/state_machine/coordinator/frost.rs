@@ -7,8 +7,8 @@ use crate::{
     compute,
     curve::point::Point,
     net::{
-        DkgBegin, DkgPublicShares, Message, NonceRequest, NonceResponse, Packet, Signable,
-        SignatureShareRequest,
+        DkgBegin, DkgPrivateBegin, DkgPublicShares, Message, NonceRequest, NonceResponse, Packet,
+        Signable, SignatureShareRequest,
     },
     state_machine::{
         coordinator::{Config, Coordinator as CoordinatorTrait, Error, State},
@@ -189,8 +189,9 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             "DKG Round {}: Starting Private Share Distribution",
             self.current_dkg_id
         );
-        let dkg_begin = DkgBegin {
+        let dkg_begin = DkgPrivateBegin {
             dkg_id: self.current_dkg_id,
+            key_ids: (0..self.config.num_keys).collect(),
         };
         let dkg_private_begin_msg = Packet {
             sig: dkg_begin.sign(&self.config.message_private_key).expect(""),

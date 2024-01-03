@@ -60,7 +60,7 @@ pub enum Message {
     /// Send DKG public shares
     DkgPublicShares(DkgPublicShares),
     /// Tell signers to send DKG private shares
-    DkgPrivateBegin(DkgBegin),
+    DkgPrivateBegin(DkgPrivateBegin),
     /// Send DKG private shares
     DkgPrivateShares(DkgPrivateShares),
     /// Tell coordinator that DKG is complete
@@ -110,6 +110,25 @@ impl Signable for DkgPublicShares {
             for a in &comm.poly {
                 hasher.update(a.compress().as_bytes());
             }
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+/// DKG private begin message from signer to all signers and coordinator
+pub struct DkgPrivateBegin {
+    /// DKG round ID
+    pub dkg_id: u64,
+    /// Key IDs who responded in time for this DKG round
+    pub key_ids: Vec<u32>,
+}
+
+impl Signable for DkgPrivateBegin {
+    fn hash(&self, hasher: &mut Sha256) {
+        hasher.update("DKG_PRIVATE_SHARES".as_bytes());
+        hasher.update(self.dkg_id.to_be_bytes());
+        for key_id in &self.key_ids {
+            hasher.update(key_id.to_be_bytes());
         }
     }
 }
@@ -312,7 +331,13 @@ impl Packet {
         coordinator_public_key: &ecdsa::PublicKey,
     ) -> bool {
         match &self.msg {
-            Message::DkgBegin(msg) | Message::DkgPrivateBegin(msg) => {
+            Message::DkgBegin(msg) => {
+                if !msg.verify(&self.sig, coordinator_public_key) {
+                    warn!("Received a DkgBegin message with an invalid signature.");
+                    return false;
+                }
+            }
+            Message::DkgPrivateBegin(msg) => {
                 if !msg.verify(&self.sig, coordinator_public_key) {
                     warn!("Received a DkgPrivateBegin message with an invalid signature.");
                     return false;
@@ -455,6 +480,10 @@ mod test {
     fn dkg_begin_verify_msg() {
         let test_config = TestConfig::default();
         let dkg_begin = DkgBegin { dkg_id: 0 };
+        let dkg_private_begin = DkgPrivateBegin {
+            dkg_id: 0,
+            key_ids: Default::default(),
+        };
         let msg = Message::DkgBegin(dkg_begin.clone());
         let coordinator_packet_dkg_begin = Packet {
             sig: dkg_begin
@@ -478,15 +507,15 @@ mod test {
             &test_config.coordinator_public_key
         ));
 
-        let msg = Message::DkgPrivateBegin(dkg_begin.clone());
+        let msg = Message::DkgPrivateBegin(dkg_private_begin.clone());
         let coordinator_packet_dkg_private_begin = Packet {
-            sig: dkg_begin
+            sig: dkg_private_begin
                 .sign(&test_config.coordinator_private_key)
                 .expect("Failed to sign"),
             msg: msg.clone(),
         };
         let signer_packet_dkg_private_begin = Packet {
-            sig: dkg_begin
+            sig: dkg_private_begin
                 .sign(&test_config.signer_private_key)
                 .expect("Failed to sign"),
             msg,
