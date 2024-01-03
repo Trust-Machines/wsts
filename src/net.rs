@@ -333,7 +333,7 @@ impl Packet {
         match &self.msg {
             Message::DkgBegin(msg) => {
                 if !msg.verify(&self.sig, coordinator_public_key) {
-                    warn!("Received a DkgPrivateBegin message with an invalid signature.");
+                    warn!("Received a DkgBegin message with an invalid signature.");
                     return false;
                 }
             }

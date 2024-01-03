@@ -86,6 +86,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                                 ));
                             } else {
                                 // we hit the timeout but met the threshold, continue
+                                warn!("Timeout gathering DkgPublicShares for dkg round {} signing round {} iteration {}, dkg_threshold was met ({}/{}), ", self.current_dkg_id, self.current_sign_id, self.current_sign_iter_id, dkg_size, self.config.dkg_threshold);
                                 self.public_shares_gathered()?;
                                 let packet = self.start_private_shares()?;
                                 return Ok((Some(packet), None));
