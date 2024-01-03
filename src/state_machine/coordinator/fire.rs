@@ -995,6 +995,132 @@ pub mod test {
     }
 
     #[test]
+    fn minimum_signers_dkg_v1() {
+        minimum_signers_dkg::<v1::Aggregator, v1::Signer>();
+    }
+
+    #[test]
+    fn minimum_signers_dkg_v2() {
+        minimum_signers_dkg::<v2::Aggregator, v2::Signer>();
+    }
+
+    fn minimum_signers_dkg<Aggregator: AggregatorTrait, Signer: SignerTrait>() {
+        let timeout = Duration::from_millis(256);
+        let expire = Duration::from_millis(384);
+        let num_signers = 10;
+        let keys_per_signer = 2;
+        let (mut coordinators, signers) = setup_with_timeouts::<FireCoordinator<Aggregator>, Signer>(
+            num_signers,
+            keys_per_signer,
+            Some(timeout),
+            Some(timeout),
+            Some(timeout),
+            Some(timeout),
+        );
+
+        // Start a DKG round where we will not allow all signers to recv DkgBegin, so they will not respond with DkgPublicShares
+        let message = coordinators.first_mut().unwrap().start_dkg_round().unwrap();
+        assert!(coordinators.first().unwrap().aggregate_public_key.is_none());
+        assert_eq!(coordinators.first().unwrap().state, State::DkgPublicGather);
+
+        // DKG threshold is 9/10, so need to remove 1
+        let num_signers_to_remove = 1;
+
+        let mut minimum_coordinators = coordinators.clone();
+        let mut minimum_signers = signers.clone();
+
+        for _ in 0..num_signers_to_remove {
+            minimum_signers.pop();
+        }
+
+        // Send the DKG Begin message to minimum signers and gather responses by sharing with signers and coordinator
+        let (outbound_messages, operation_results) = feedback_messages(
+            &mut minimum_coordinators,
+            &mut minimum_signers,
+            &[message.clone()],
+        );
+
+        // Sleep long enough to hit the timeout
+        thread::sleep(expire);
+
+        let (outbound_messages, operation_results) = minimum_coordinators
+            .first_mut()
+            .unwrap()
+            .process_inbound_messages(&[])
+            .unwrap();
+
+        assert_eq!(outbound_messages.len(), 1);
+        assert_eq!(operation_results.len(), 0);
+        assert_eq!(
+            minimum_coordinators.first().unwrap().state,
+            State::DkgEndGather,
+        );
+
+        // Run DKG again with fresh coordinator and signers, this time allow gathering DkgPublicShares but timeout getting DkgEnd
+        let mut minimum_coordinator = coordinators.clone();
+        let mut minimum_signers = signers.clone();
+
+        // Send the DKG Begin message to all signers and gather responses by sharing with all other signers and coordinator
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut minimum_coordinator, &mut minimum_signers, &[message]);
+        assert!(operation_results.is_empty());
+        assert_eq!(
+            minimum_coordinator.first().unwrap().state,
+            State::DkgEndGather
+        );
+
+        // Successfully got an Aggregate Public Key...
+        assert_eq!(outbound_messages.len(), 1);
+        match &outbound_messages[0].msg {
+            Message::DkgPrivateBegin(_) => {}
+            _ => {
+                panic!("Expected DkgPrivateBegin message");
+            }
+        }
+
+        // now remove signers so the set is minimum
+        for _ in 0..num_signers_to_remove {
+            minimum_signers.pop();
+        }
+
+        // Send the DKG Private Begin message to minimum signers and share their responses with the coordinator and signers
+        let (outbound_messages, operation_results) = feedback_messages(
+            &mut minimum_coordinator,
+            &mut minimum_signers,
+            &outbound_messages,
+        );
+        assert!(outbound_messages.is_empty());
+        assert_eq!(operation_results.len(), 0);
+        assert_eq!(
+            minimum_coordinator.first().unwrap().state,
+            State::DkgEndGather,
+        );
+
+        // Sleep long enough to hit the timeout
+        thread::sleep(expire);
+
+        let (outbound_messages, operation_results) = minimum_coordinator
+            .first_mut()
+            .unwrap()
+            .process_inbound_messages(&[])
+            .unwrap();
+
+        assert!(outbound_messages.is_empty());
+        assert_eq!(operation_results.len(), 1);
+        assert_eq!(
+            minimum_coordinator.first().unwrap().state,
+            State::DkgEndGather,
+        );
+        match &operation_results[0] {
+            OperationResult::DkgError(dkg_error) => match dkg_error {
+                DkgError::DkgEndTimeout(_) => {}
+                _ => panic!("Expected DkgError::DkgEndTimeout"),
+            },
+            _ => panic!("Expected OperationResult::DkgError"),
+        }
+    }
+
+    #[test]
     fn insufficient_signers_dkg_v1() {
         insufficient_signers_dkg::<v1::Aggregator, v1::Signer>();
     }
