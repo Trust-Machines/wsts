@@ -1006,8 +1006,8 @@ pub mod test {
     }
 
     fn minimum_signers_dkg<Aggregator: AggregatorTrait, Signer: SignerTrait>() {
-        let timeout = Duration::from_millis(256);
-        let expire = Duration::from_millis(384);
+        let timeout = Duration::from_millis(1024);
+        let expire = Duration::from_millis(1280);
         let num_signers = 10;
         let keys_per_signer = 2;
         let (mut coordinators, signers) = setup_with_timeouts::<FireCoordinator<Aggregator>, Signer>(
@@ -1139,8 +1139,8 @@ pub mod test {
     }
 
     fn insufficient_signers_dkg<Aggregator: AggregatorTrait, Signer: SignerTrait>() {
-        let timeout = Duration::from_millis(256);
-        let expire = Duration::from_millis(384);
+        let timeout = Duration::from_millis(1024);
+        let expire = Duration::from_millis(1280);
         let num_signers = 10;
         let keys_per_signer = 2;
         let (mut coordinators, signers) = setup_with_timeouts::<FireCoordinator<Aggregator>, Signer>(
