@@ -1040,6 +1040,13 @@ pub mod test {
             &[message.clone()],
         );
 
+        assert_eq!(outbound_messages.len(), 0);
+        assert_eq!(operation_results.len(), 0);
+        assert_eq!(
+            minimum_coordinators.first().unwrap().state,
+            State::DkgPublicGather,
+        );
+
         // Sleep long enough to hit the timeout
         thread::sleep(expire);
 
