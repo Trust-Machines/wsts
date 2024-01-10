@@ -20,7 +20,7 @@ use crate::{
 /// A merkle root is a 256 bit hash
 pub type MerkleRoot = [u8; 32];
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 /// A commitment to a polynonial, with a Schnorr proof of ownership bound to the ID
 pub struct PolyCommitment {
     /// The party ID with a schnorr proof
@@ -115,7 +115,7 @@ impl Display for PublicNonce {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 /// A share of the party signature with related values
 pub struct SignatureShare {
     /// The ID of the party
