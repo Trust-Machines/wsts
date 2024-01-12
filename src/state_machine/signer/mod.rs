@@ -167,6 +167,10 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                             .sign(&self.network_private_key)
                             .expect("failed to sign DkgPrivateBegin")
                             .to_vec(),
+                        Message::DkgEndBegin(msg) => msg
+                            .sign(&self.network_private_key)
+                            .expect("failed to sign DkgEndBegin")
+                            .to_vec(),
                         Message::DkgEnd(msg) => msg
                             .sign(&self.network_private_key)
                             .expect("failed to sign DkgEnd")

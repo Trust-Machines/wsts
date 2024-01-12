@@ -63,6 +63,8 @@ pub enum Message {
     DkgPrivateBegin(DkgPrivateBegin),
     /// Send DKG private shares
     DkgPrivateShares(DkgPrivateShares),
+    /// Tell signers to compute shares and send DKG end
+    DkgEndBegin(DkgEndBegin),
     /// Tell coordinator that DKG is complete
     DkgEnd(DkgEnd),
     /// Tell signers to send signing nonces
@@ -125,7 +127,7 @@ pub struct DkgPrivateBegin {
 
 impl Signable for DkgPrivateBegin {
     fn hash(&self, hasher: &mut Sha256) {
-        hasher.update("DKG_PRIVATE_SHARES".as_bytes());
+        hasher.update("DKG_PRIVATE_BEGIN".as_bytes());
         hasher.update(self.dkg_id.to_be_bytes());
         for key_id in &self.key_ids {
             hasher.update(key_id.to_be_bytes());
@@ -156,6 +158,25 @@ impl Signable for DkgPrivateShares {
                 hasher.update(dst_id.to_be_bytes());
                 hasher.update(&share[&dst_id]);
             }
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+/// DKG end begin message from signer to all signers and coordinator
+pub struct DkgEndBegin {
+    /// DKG round ID
+    pub dkg_id: u64,
+    /// Key IDs who responded in time for this DKG round
+    pub key_ids: Vec<u32>,
+}
+
+impl Signable for DkgEndBegin {
+    fn hash(&self, hasher: &mut Sha256) {
+        hasher.update("DKG_END_BEGIN".as_bytes());
+        hasher.update(self.dkg_id.to_be_bytes());
+        for key_id in &self.key_ids {
+            hasher.update(key_id.to_be_bytes());
         }
     }
 }
@@ -340,6 +361,12 @@ impl Packet {
             Message::DkgPrivateBegin(msg) => {
                 if !msg.verify(&self.sig, coordinator_public_key) {
                     warn!("Received a DkgPrivateBegin message with an invalid signature.");
+                    return false;
+                }
+            }
+            Message::DkgEndBegin(msg) => {
+                if !msg.verify(&self.sig, coordinator_public_key) {
+                    warn!("Received a DkgEndBegin message with an invalid signature.");
                     return false;
                 }
             }
