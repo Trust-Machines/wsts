@@ -13,12 +13,16 @@ use std::time::Duration;
 pub enum State {
     /// The coordinator is idle
     Idle,
-    /// The coordinator is distributing public shares
+    /// The coordinator is asking signers to send public shares
     DkgPublicDistribute,
     /// The coordinator is gathering public shares
     DkgPublicGather,
-    /// The coordinator is distributing private shares
+    /// The coordinator is asking signers to send private shares
     DkgPrivateDistribute,
+    /// The coordinator is gathering private shares
+    DkgPrivateGather,
+    /// The coordinator is asking signers to compute shares and send end
+    DkgEndDistribute,
     /// The coordinator is gathering DKG End messages
     DkgEndGather,
     /// The coordinator is requesting nonces
@@ -239,6 +243,8 @@ pub mod test {
         assert!(coordinator
             .can_move_to(&State::DkgPrivateDistribute)
             .is_err());
+        assert!(coordinator.can_move_to(&State::DkgPrivateGather).is_err());
+        assert!(coordinator.can_move_to(&State::DkgEndDistribute).is_err());
         assert!(coordinator.can_move_to(&State::DkgEndGather).is_err());
         assert!(coordinator.can_move_to(&State::Idle).is_ok());
 
@@ -250,15 +256,21 @@ pub mod test {
         assert!(coordinator
             .can_move_to(&State::DkgPrivateDistribute)
             .is_err());
+        assert!(coordinator.can_move_to(&State::DkgPrivateGather).is_err());
+        assert!(coordinator.can_move_to(&State::DkgEndDistribute).is_err());
         assert!(coordinator.can_move_to(&State::DkgEndGather).is_err());
         assert!(coordinator.can_move_to(&State::Idle).is_ok());
 
         coordinator.move_to(State::DkgPublicGather).unwrap();
-        assert!(coordinator.can_move_to(&State::DkgPublicDistribute).is_ok());
+        assert!(coordinator
+            .can_move_to(&State::DkgPublicDistribute)
+            .is_err());
         assert!(coordinator.can_move_to(&State::DkgPublicGather).is_ok());
         assert!(coordinator
             .can_move_to(&State::DkgPrivateDistribute)
             .is_ok());
+        assert!(coordinator.can_move_to(&State::DkgPrivateGather).is_err());
+        assert!(coordinator.can_move_to(&State::DkgEndDistribute).is_err());
         assert!(coordinator.can_move_to(&State::DkgEndGather).is_err());
         assert!(coordinator.can_move_to(&State::Idle).is_ok());
 
@@ -270,11 +282,29 @@ pub mod test {
         assert!(coordinator
             .can_move_to(&State::DkgPrivateDistribute)
             .is_err());
-        assert!(coordinator.can_move_to(&State::DkgEndGather).is_ok());
+        assert!(coordinator.can_move_to(&State::DkgPrivateGather).is_ok());
+        assert!(coordinator.can_move_to(&State::DkgEndDistribute).is_err());
+        assert!(coordinator.can_move_to(&State::DkgEndGather).is_err());
         assert!(coordinator.can_move_to(&State::Idle).is_ok());
 
+        coordinator.move_to(State::DkgPrivateGather).unwrap();
+        assert!(coordinator
+            .can_move_to(&State::DkgPublicDistribute)
+            .is_err());
+        assert!(coordinator.can_move_to(&State::DkgPublicGather).is_err());
+        assert!(coordinator
+            .can_move_to(&State::DkgPrivateDistribute)
+            .is_err());
+        assert!(coordinator.can_move_to(&State::DkgPrivateGather).is_ok());
+        assert!(coordinator.can_move_to(&State::DkgEndDistribute).is_ok());
+        assert!(coordinator.can_move_to(&State::DkgEndGather).is_err());
+        assert!(coordinator.can_move_to(&State::Idle).is_ok());
+
+        coordinator.move_to(State::DkgEndDistribute).unwrap();
+        assert!(coordinator.can_move_to(&State::DkgEndGather).is_ok());
+
         coordinator.move_to(State::DkgEndGather).unwrap();
-        assert!(coordinator.can_move_to(&State::DkgPublicDistribute).is_ok());
+        assert!(coordinator.can_move_to(&State::Idle).is_ok());
     }
 
     pub fn start_dkg_round<Coordinator: CoordinatorTrait>() {
