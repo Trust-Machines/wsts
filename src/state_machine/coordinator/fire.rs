@@ -18,6 +18,19 @@ use crate::{
     traits::Aggregator as AggregatorTrait,
 };
 
+#[derive(Clone, Default)]
+/// The Nonce response information for a sign round over specific message bytes
+pub struct ResponseInfo {
+    /// the nonce response of a signer id
+    pub public_nonces: BTreeMap<u32, NonceResponse>,
+    /// which key_ids we've received nonces for this iteration
+    pub nonce_recv_key_ids: HashSet<u32>,
+    /// which key_ids we're received sig shares for this iteration
+    pub sign_recv_key_ids: HashSet<u32>,
+    /// which signer_ids we're expecting sig shares from this iteration
+    pub sign_wait_signer_ids: HashSet<u32>,
+}
+
 /// The coordinator for the FIRE algorithm
 #[derive(Clone)]
 pub struct Coordinator<Aggregator: AggregatorTrait> {
@@ -33,20 +46,14 @@ pub struct Coordinator<Aggregator: AggregatorTrait> {
     dkg_private_shares: BTreeMap<u32, DkgPrivateShares>,
     dkg_end_messages: BTreeMap<u32, DkgEnd>,
     party_polynomials: HashMap<u32, PolyCommitment>,
-    public_nonces: BTreeMap<u32, NonceResponse>,
     signature_shares: BTreeMap<u32, Vec<SignatureShare>>,
+    message_nonces: BTreeMap<Vec<u8>, ResponseInfo>,
     /// aggregate public key
     pub aggregate_public_key: Option<Point>,
     signature: Option<Signature>,
     schnorr_proof: Option<SchnorrProof>,
     /// which signers we're currently waiting on for DKG
     pub dkg_wait_signer_ids: HashSet<u32>,
-    /// which key_ids we've received nonces for this iteration
-    pub nonce_recv_key_ids: HashSet<u32>,
-    /// which signer_ids we're expecting sig shares from this iteration
-    pub sign_wait_signer_ids: HashSet<u32>,
-    /// which key_ids we're received sig shares for this iteration
-    pub sign_recv_key_ids: HashSet<u32>,
     /// the bytes that we're signing
     pub message: Vec<u8>,
     /// current state of the state machine
@@ -145,7 +152,14 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                     if let Some(timeout) = self.config.nonce_timeout {
                         if now.duration_since(start) > timeout {
                             error!("Timeout gathering nonces for signing round {} iteration {}, unable to continue", self.current_sign_id, self.current_sign_iter_id);
-                            let recv = self.sign_wait_signer_ids.iter().copied().collect();
+                            let recv = self
+                                .message_nonces
+                                .get(&self.message)
+                                .ok_or(Error::MissingMessageNonceInfo)?
+                                .sign_wait_signer_ids
+                                .iter()
+                                .copied()
+                                .collect();
                             let mal = self.malicious_signer_ids.iter().copied().collect();
                             return Ok((
                                 None,
@@ -162,7 +176,12 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                     if let Some(timeout) = self.config.sign_timeout {
                         if now.duration_since(start) > timeout {
                             warn!("Timeout gathering signature shares for signing round {} iteration {}", self.current_sign_id, self.current_sign_iter_id);
-                            for signer_id in &self.sign_wait_signer_ids {
+                            for signer_id in &self
+                                .message_nonces
+                                .get(&self.message)
+                                .ok_or(Error::MissingMessageNonceInfo)?
+                                .sign_wait_signer_ids
+                            {
                                 warn!("Mark signer {} as malicious", signer_id);
                                 self.malicious_signer_ids.insert(*signer_id);
                             }
@@ -528,9 +547,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         is_taproot: bool,
         merkle_root: Option<MerkleRoot>,
     ) -> Result<Packet, Error> {
-        self.public_nonces.clear();
-        self.nonce_recv_key_ids.clear();
-        self.sign_wait_signer_ids.clear();
+        self.message_nonces.clear();
         self.current_sign_iter_id = self.current_sign_iter_id.wrapping_add(1);
         info!(
             "Sign round {} iteration {} Requesting Nonces",
@@ -584,39 +601,51 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 .contains(&nonce_response.signer_id)
             {
                 warn!(
-                    "Sign round {} iteration {} received malicious NonceResponse from signer {} ({}/{})",
-                    nonce_response.sign_id,
-                    nonce_response.sign_iter_id,
-                    nonce_response.signer_id,
-                    self.nonce_recv_key_ids.len(),
-                    self.config.threshold,
+                    "Sign round {} iteration {} received malicious NonceResponse from signer {})",
+                    nonce_response.sign_id, nonce_response.sign_iter_id, nonce_response.signer_id,
                 );
                 //return Err(Error::MaliciousSigner(nonce_response.signer_id));
                 return Ok(());
             }
 
-            self.public_nonces
+            let nonce_info = self
+                .message_nonces
+                .entry(nonce_response.message.clone())
+                .or_default();
+            nonce_info
+                .public_nonces
                 .insert(nonce_response.signer_id, nonce_response.clone());
-            self.sign_wait_signer_ids.insert(nonce_response.signer_id);
 
             for key_id in &nonce_response.key_ids {
-                // XXX TODO chech that this key_id belongs to this signer
-                self.nonce_recv_key_ids.insert(*key_id);
+                if let Some(key_ids) = self.config.signer_key_ids.get(&nonce_response.signer_id) {
+                    if key_ids.contains(key_id) {
+                        nonce_info.nonce_recv_key_ids.insert(*key_id);
+                    } else {
+                        //TODO: should we mark this signer as malicious?
+                        debug!("Key id {} not in signer key ids {:?}", key_id, key_ids);
+                    }
+                }
             }
+            nonce_info
+                .sign_wait_signer_ids
+                .insert(nonce_response.signer_id);
+            // Because of entry call, it is safe to unwrap here
             info!(
                 "Sign round {} iteration {} received NonceResponse from signer {} ({}/{})",
                 nonce_response.sign_id,
                 nonce_response.sign_iter_id,
                 nonce_response.signer_id,
-                self.nonce_recv_key_ids.len(),
+                nonce_info.nonce_recv_key_ids.len(),
                 self.config.threshold,
             );
-        }
-        if self.nonce_recv_key_ids.len() >= self.config.threshold as usize {
-            let aggregate_nonce = self.compute_aggregate_nonce();
-            info!("Aggregate nonce: {}", aggregate_nonce);
+            if nonce_info.nonce_recv_key_ids.len() >= self.config.threshold as usize {
+                // We have a winning message!
+                self.message = nonce_response.message.clone();
+                let aggregate_nonce = self.compute_aggregate_nonce();
+                info!("Aggregate nonce: {}", aggregate_nonce);
 
-            self.move_to(State::SigShareRequest(is_taproot, merkle_root))?;
+                self.move_to(State::SigShareRequest(is_taproot, merkle_root))?;
+            }
         }
         Ok(())
     }
@@ -627,12 +656,14 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         merkle_root: Option<MerkleRoot>,
     ) -> Result<Packet, Error> {
         self.signature_shares.clear();
-        self.sign_recv_key_ids.clear();
         info!(
             "Sign Round {} Requesting Signature Shares",
             self.current_sign_id,
         );
         let nonce_responses = self
+            .message_nonces
+            .get(&self.message)
+            .ok_or(Error::MissingMessageNonceInfo)?
             .public_nonces
             .values()
             .cloned()
@@ -681,15 +712,17 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 sig_share_response.signer_id,
                 sig_share_response.signature_shares.clone(),
             );
-            if self
+            let response_info = self.message_nonces.entry(self.message.clone()).or_default();
+            if response_info
                 .sign_wait_signer_ids
                 .contains(&sig_share_response.signer_id)
             {
-                self.sign_wait_signer_ids
+                response_info
+                    .sign_wait_signer_ids
                     .remove(&sig_share_response.signer_id);
                 for sig_share in &sig_share_response.signature_shares {
                     for key_id in &sig_share.key_ids {
-                        self.sign_recv_key_ids.insert(*key_id);
+                        response_info.sign_recv_key_ids.insert(*key_id);
                     }
                 }
 
@@ -697,9 +730,9 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                     "Sign round {} SignatureShareResponse from signer {} ({}/{} key_ids). Waiting on {:?}",
                     sig_share_response.sign_id,
                     sig_share_response.signer_id,
-                    self.sign_recv_key_ids.len(),
-                    self.nonce_recv_key_ids.len(),
-                    self.sign_wait_signer_ids
+                    response_info.sign_recv_key_ids.len(),
+                    response_info.nonce_recv_key_ids.len(),
+                    response_info.sign_wait_signer_ids
                 );
             } else {
                 warn!(
@@ -708,9 +741,13 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 );
             }
         }
-        if self.sign_wait_signer_ids.is_empty() {
+        let message_nonce = self
+            .message_nonces
+            .get(&self.message)
+            .ok_or(Error::MissingMessageNonceInfo)?;
+        if message_nonce.sign_wait_signer_ids.is_empty() {
             // Calculate the aggregate signature
-            let nonce_responses = self
+            let nonce_responses = message_nonce
                 .public_nonces
                 .values()
                 .cloned()
@@ -726,7 +763,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 .flat_map(|nr| nr.key_ids.clone())
                 .collect::<Vec<u32>>();
 
-            let shares = &self
+            let shares = message_nonce
                 .public_nonces
                 .iter()
                 .flat_map(|(i, _)| self.signature_shares[i].clone())
@@ -746,7 +783,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 let schnorr_proof = self.aggregator.sign_taproot(
                     &self.message,
                     &nonces,
-                    shares,
+                    &shares,
                     &key_ids,
                     merkle_root,
                 )?;
@@ -755,7 +792,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             } else {
                 let signature = self
                     .aggregator
-                    .sign(&self.message, &nonces, shares, &key_ids)?;
+                    .sign(&self.message, &nonces, &shares, &key_ids)?;
                 info!("Signature ({}, {})", signature.R, signature.z);
                 self.signature = Some(signature);
             }
@@ -768,15 +805,21 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
     #[allow(non_snake_case)]
     fn compute_aggregate_nonce(&self) -> Point {
         // XXX this needs to be key_ids for v1 and signer_ids for v2
-        let party_ids = self
-            .public_nonces
+        let public_nonces = self
+            .message_nonces
+            .get(&self.message)
+            .cloned()
+            .unwrap_or_default()
+            .public_nonces;
+        let party_ids = public_nonces
             .values()
-            .flat_map(|pn| pn.key_ids.clone())
+            .cloned()
+            .flat_map(|pn| pn.key_ids)
             .collect::<Vec<u32>>();
-        let nonces = self
-            .public_nonces
+        let nonces = public_nonces
             .values()
-            .flat_map(|pn| pn.nonces.clone())
+            .cloned()
+            .flat_map(|pn| pn.nonces)
             .collect::<Vec<PublicNonce>>();
         let (_, R) = compute::intermediate(&self.message, &party_ids, &nonces);
 
@@ -861,16 +904,13 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
             dkg_private_shares: Default::default(),
             dkg_end_messages: Default::default(),
             party_polynomials: Default::default(),
-            public_nonces: Default::default(),
+            message_nonces: Default::default(),
             signature_shares: Default::default(),
             aggregate_public_key: None,
             signature: None,
             schnorr_proof: None,
             message: Default::default(),
             dkg_wait_signer_ids: Default::default(),
-            nonce_recv_key_ids: Default::default(),
-            sign_wait_signer_ids: Default::default(),
-            sign_recv_key_ids: Default::default(),
             state: State::Idle,
             dkg_public_start: None,
             dkg_private_start: None,
@@ -924,6 +964,11 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
         self.aggregate_public_key = aggregate_public_key;
     }
 
+    /// Retrieve the current message bytes being signed
+    fn get_message(&self) -> Vec<u8> {
+        self.message.clone()
+    }
+
     /// Retrive the current state
     fn get_state(&self) -> State {
         self.state.clone()
@@ -962,12 +1007,9 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
         self.dkg_private_shares.clear();
         self.dkg_end_messages.clear();
         self.party_polynomials.clear();
-        self.public_nonces.clear();
+        self.message_nonces.clear();
         self.signature_shares.clear();
         self.dkg_wait_signer_ids.clear();
-        self.nonce_recv_key_ids.clear();
-        self.sign_recv_key_ids.clear();
-        self.sign_wait_signer_ids.clear();
         self.nonce_start = None;
         self.sign_start = None;
     }
@@ -1880,6 +1922,146 @@ pub mod test {
                 _ => panic!("Expected SignError::InsufficientSigners"),
             },
             _ => panic!("Expected OperationResult::SignError"),
+        }
+    }
+
+    #[test]
+    fn multiple_nonce_request_messages_sign_v1() {
+        multiple_nonce_request_messages::<v1::Aggregator, v1::Signer>();
+    }
+
+    #[test]
+    fn multiple_nonce_request_messages_sign_v2() {
+        multiple_nonce_request_messages::<v2::Aggregator, v2::Signer>();
+    }
+
+    fn multiple_nonce_request_messages<Aggregator: AggregatorTrait, Signer: SignerTrait>() {
+        let num_signers = 12;
+        let keys_per_signer = 1;
+        let (mut coordinators, mut signers) =
+            setup::<FireCoordinator<Aggregator>, Signer>(num_signers, keys_per_signer);
+
+        // We have started a dkg round
+        let message = coordinators.first_mut().unwrap().start_dkg_round().unwrap();
+        assert!(coordinators.first().unwrap().aggregate_public_key.is_none());
+        assert_eq!(coordinators.first().unwrap().state, State::DkgPublicGather);
+
+        // Send the DKG Begin message to all signers and gather responses by sharing with all other signers and coordinator
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &[message]);
+        assert!(operation_results.is_empty());
+        for coordinator in &coordinators {
+            assert_eq!(coordinator.state, State::DkgEndGather);
+        }
+
+        // Successfully got an Aggregate Public Key...
+        assert_eq!(outbound_messages.len(), 1);
+        match &outbound_messages[0].msg {
+            Message::DkgPrivateBegin(_) => {}
+            _ => {
+                panic!("Expected DkgPrivateBegin message");
+            }
+        }
+
+        // Send the DKG Private Begin message to all signers and share their responses with the coordinator and signers
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
+        assert!(outbound_messages.is_empty());
+        assert_eq!(operation_results.len(), 1);
+        match operation_results[0] {
+            OperationResult::Dkg(point) => {
+                assert_ne!(point, Point::default());
+                for coordinator in &coordinators {
+                    assert_eq!(coordinator.aggregate_public_key, Some(point));
+                    assert_eq!(coordinator.state, State::Idle);
+                }
+            }
+            _ => panic!("Expected Dkg Operation result"),
+        }
+
+        // Start a signing round
+        let orig_msg = "It was many and many a year ago, in a kingdom by the sea"
+            .as_bytes()
+            .to_vec();
+        let is_taproot = false;
+        let merkle_root = None;
+        let message = coordinators
+            .first_mut()
+            .unwrap()
+            .start_signing_round(&orig_msg, is_taproot, merkle_root)
+            .unwrap();
+
+        let mut alt_packet = message.clone();
+        assert_eq!(
+            coordinators.first().unwrap().state,
+            State::NonceGather(is_taproot, merkle_root)
+        );
+
+        // Send the original message to the first 1/4 of the signers and gather responses by sharing with the rest of the signers and the coordinators
+        let signers_len = signers.len();
+        let (outbound_messages, operation_results) = feedback_messages(
+            &mut coordinators,
+            &mut signers[0..signers_len / 4],
+            &[message],
+        );
+
+        let alt_message = "It was many and many a year ago, in a kingdom by the hill"
+            .as_bytes()
+            .to_vec();
+        match &mut alt_packet.msg {
+            Message::NonceRequest(nonce_request) => {
+                nonce_request.message = alt_message.clone();
+            }
+            _ => panic!("Expected NonceRequest message"),
+        };
+
+        // Send the alternative message to the last 3/4 of signers and gather responses by sharing with the rest of the signers and the coordinators
+        let (alt_outbound_messages, alt_operation_results) = feedback_messages(
+            &mut coordinators,
+            &mut signers[signers_len / 4..],
+            &[alt_packet],
+        );
+
+        assert!(operation_results.is_empty());
+        assert!(alt_operation_results.is_empty());
+        for coordinator in &coordinators {
+            assert_eq!(
+                coordinator.state,
+                State::SigShareGather(is_taproot, merkle_root)
+            );
+        }
+        // Assert that the first 1/4 signers did not receive a result
+        assert!(outbound_messages.is_empty());
+        assert_eq!(alt_outbound_messages.len(), 1);
+        match &alt_outbound_messages[0].msg {
+            Message::SignatureShareRequest(_) => {}
+            _ => {
+                panic!("Expected SignatureShareRequest message");
+            }
+        }
+
+        // Send the SignatureShareRequest message to all signers and share their responses with the coordinator and signers
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &alt_outbound_messages);
+        assert!(outbound_messages.is_empty());
+        assert_eq!(operation_results.len(), 1);
+        match &operation_results[0] {
+            OperationResult::Sign(sig) => {
+                // Verify that the winning message was the alternative message that had majority vote
+                assert!(sig.verify(
+                    &coordinators
+                        .first()
+                        .unwrap()
+                        .aggregate_public_key
+                        .expect("No aggregate public key set!"),
+                    &alt_message
+                ));
+            }
+            _ => panic!("Expected Signature Operation result"),
+        }
+
+        for coordinator in &coordinators {
+            assert_eq!(coordinator.state, State::Idle);
         }
     }
 }

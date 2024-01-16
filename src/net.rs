@@ -258,6 +258,8 @@ pub struct NonceResponse {
     pub key_ids: Vec<u32>,
     /// Public nonces
     pub nonces: Vec<PublicNonce>,
+    /// Bytes being signed
+    pub message: Vec<u8>,
 }
 
 impl Signable for NonceResponse {
@@ -276,6 +278,8 @@ impl Signable for NonceResponse {
             hasher.update(nonce.D.compress().as_bytes());
             hasher.update(nonce.E.compress().as_bytes());
         }
+
+        hasher.update(self.message.as_slice());
     }
 }
 
@@ -717,6 +721,7 @@ mod test {
             signer_id: 0,
             key_ids: vec![],
             nonces: vec![],
+            message: vec![],
         };
         let msg = Message::NonceResponse(nonce_response.clone());
         let coordinator_packet_nonce_response = Packet {
