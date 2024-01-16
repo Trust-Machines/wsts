@@ -121,6 +121,8 @@ impl Signable for DkgPublicShares {
 pub struct DkgPrivateBegin {
     /// DKG round ID
     pub dkg_id: u64,
+    /// Signer IDs who responded in time for this DKG round
+    pub signer_ids: Vec<u32>,
     /// Key IDs who responded in time for this DKG round
     pub key_ids: Vec<u32>,
 }
@@ -131,6 +133,9 @@ impl Signable for DkgPrivateBegin {
         hasher.update(self.dkg_id.to_be_bytes());
         for key_id in &self.key_ids {
             hasher.update(key_id.to_be_bytes());
+        }
+        for signer_id in &self.signer_ids {
+            hasher.update(signer_id.to_be_bytes());
         }
     }
 }
@@ -167,6 +172,8 @@ impl Signable for DkgPrivateShares {
 pub struct DkgEndBegin {
     /// DKG round ID
     pub dkg_id: u64,
+    /// Signer IDs who responded in time for this DKG round
+    pub signer_ids: Vec<u32>,
     /// Key IDs who responded in time for this DKG round
     pub key_ids: Vec<u32>,
 }
@@ -177,6 +184,9 @@ impl Signable for DkgEndBegin {
         hasher.update(self.dkg_id.to_be_bytes());
         for key_id in &self.key_ids {
             hasher.update(key_id.to_be_bytes());
+        }
+        for signer_id in &self.signer_ids {
+            hasher.update(signer_id.to_be_bytes());
         }
     }
 }
@@ -510,6 +520,7 @@ mod test {
         let dkg_private_begin = DkgPrivateBegin {
             dkg_id: 0,
             key_ids: Default::default(),
+            signer_ids: Default::default(),
         };
         let msg = Message::DkgBegin(dkg_begin.clone());
         let coordinator_packet_dkg_begin = Packet {

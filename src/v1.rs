@@ -3,6 +3,7 @@ use num_traits::{One, Zero};
 use polynomial::Polynomial;
 use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
+use tracing::info;
 
 use crate::{
     common::{CheckPrivateShares, Nonce, PolyCommitment, PublicNonce, Signature, SignatureShare},
@@ -104,7 +105,7 @@ impl Party {
     /// Get the shares of this party's private polynomial for all parties
     pub fn get_shares(&self) -> HashMap<u32, Scalar> {
         let mut shares = HashMap::new();
-        for i in 0..self.n {
+        for i in 1..self.n + 1 {
             shares.insert(i, self.f.eval(compute::id(i)));
         }
         shares
@@ -114,12 +115,12 @@ impl Party {
     pub fn compute_secret(
         &mut self,
         shares: HashMap<u32, Scalar>,
-        comms: &[PolyCommitment],
+        polys: &HashMap<u32, PolyCommitment>,
     ) -> Result<(), DkgError> {
         let mut missing_shares = Vec::new();
-        for i in 0..self.n {
-            if shares.get(&i).is_none() {
-                missing_shares.push(i);
+        for i in polys.keys() {
+            if shares.get(i).is_none() {
+                missing_shares.push(*i);
             }
         }
         if !missing_shares.is_empty() {
@@ -132,7 +133,7 @@ impl Party {
         let bad_ids: Vec<u32> = shares
             .keys()
             .cloned()
-            .filter(|i| !comms[usize::try_from(*i).unwrap()].verify())
+            .filter(|i| !polys[i].verify())
             .collect();
         if !bad_ids.is_empty() {
             return Err(DkgError::BadIds(bad_ids));
@@ -141,13 +142,13 @@ impl Party {
 
         // building a vector of scalars and points from public poly evaluations and expected values takes too much memory
         // instead make an object which implements p256k1 MultiMult trait, using the existing powers of x and shares
-        let mut check_shares = CheckPrivateShares::new(self.id(), &shares, comms);
+        let mut check_shares = CheckPrivateShares::new(self.id(), &shares, polys.clone());
 
         // if the batch verify fails then check them one by one and find the bad ones
         if Point::multimult_trait(&mut check_shares)? != Point::zero() {
             let mut bad_shares = Vec::new();
             for (i, s) in shares.iter() {
-                let comm = &comms[usize::try_from(*i).unwrap()];
+                let comm = &polys[i];
                 if s * G != compute::poly(&self.id(), &comm.poly)? {
                     bad_shares.push(*i);
                 }
@@ -156,7 +157,7 @@ impl Party {
         }
 
         for (i, s) in shares.iter() {
-            let comm = &comms[usize::try_from(*i).unwrap()];
+            let comm = &polys[i];
 
             self.private_key += s;
             self.group_key += comm.poly[0];
@@ -322,14 +323,14 @@ impl traits::Aggregator for Aggregator {
     }
 
     /// Initialize the Aggregator polynomial
-    fn init(&mut self, comms: Vec<PolyCommitment>) -> Result<(), AggregatorError> {
+    fn init(&mut self, comms: &HashMap<u32, PolyCommitment>) -> Result<(), AggregatorError> {
         let len = self.num_keys.try_into().unwrap();
         if comms.len() != len {
             return Err(AggregatorError::BadPolyCommitmentLen(len, comms.len()));
         }
 
         let mut bad_poly_commitments = Vec::new();
-        for comm in &comms {
+        for (_id, comm) in comms {
             if !comm.verify() {
                 bad_poly_commitments.push(comm.id.id);
             }
@@ -342,7 +343,7 @@ impl traits::Aggregator for Aggregator {
 
         for i in 0..poly.capacity() {
             poly.push(Point::zero());
-            for p in &comms {
+            for (_, p) in comms {
                 poly[i] += &p.poly[i];
             }
         }
@@ -518,13 +519,15 @@ impl traits::Signer for Signer {
     fn compute_secrets(
         &mut self,
         private_shares: &HashMap<u32, HashMap<u32, Scalar>>,
-        polys: &[PolyCommitment],
+        polys: &HashMap<u32, PolyCommitment>,
     ) -> Result<(), HashMap<u32, DkgError>> {
+        println!("compute_secrets {}", self.get_id());
         let mut dkg_errors = HashMap::new();
         for party in &mut self.parties {
             // go through the shares, looking for this party's
             let mut key_shares = HashMap::with_capacity(polys.len());
             for (signer_id, signer_shares) in private_shares.iter() {
+                println!("{signer_id} {}", party.id);
                 key_shares.insert(*signer_id, signer_shares[&party.id]);
             }
             if let Err(e) = party.compute_secret(key_shares, polys) {
@@ -597,10 +600,11 @@ pub mod test_helpers {
     pub fn dkg<RNG: RngCore + CryptoRng>(
         signers: &mut [v1::Signer],
         rng: &mut RNG,
-    ) -> Result<Vec<PolyCommitment>, HashMap<u32, DkgError>> {
-        let comms: Vec<PolyCommitment> = signers
+    ) -> Result<HashMap<u32, PolyCommitment>, HashMap<u32, DkgError>> {
+        let comms: HashMap<u32, PolyCommitment> = signers
             .iter()
             .flat_map(|s| s.get_poly_commitments(rng))
+            .map(|comm| (comm.id.id.get_u32(), comm))
             .collect();
 
         let mut private_shares = HashMap::new();
@@ -709,10 +713,10 @@ mod tests {
         let N: u32 = 10;
         let T: u32 = 7;
         let signer_ids: Vec<Vec<u32>> = [
-            [0, 1, 2].to_vec(),
-            [3, 4].to_vec(),
-            [5, 6, 7].to_vec(),
-            [8, 9].to_vec(),
+            [1, 2, 3].to_vec(),
+            [4, 5].to_vec(),
+            [6, 7, 8].to_vec(),
+            [9, 10].to_vec(),
         ]
         .to_vec();
         let mut signers: Vec<v1::Signer> = signer_ids
@@ -732,7 +736,7 @@ mod tests {
         {
             let mut signers = [signers[0].clone(), signers[1].clone(), signers[3].clone()].to_vec();
             let mut sig_agg = v1::Aggregator::new(N, T);
-            sig_agg.init(comms.clone()).expect("aggregator init failed");
+            sig_agg.init(&comms).expect("aggregator init failed");
 
             let (nonces, sig_shares) = v1::test_helpers::sign(msg, &mut signers, &mut rng);
             if let Err(e) = sig_agg.sign(msg, &nonces, &sig_shares, &[]) {

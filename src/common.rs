@@ -171,7 +171,7 @@ pub mod test_helpers {
 /// These evaluations take the form of s * G == \Sum{k=0}{T+1}(a_k * x^k) where the a vals are the coeffs of the polys
 /// There is 1 share per poly, N polys, and each poly is degree T-1 (so T coeffs)
 /// First we evaluate each poly, then we subtract each s * G
-pub struct CheckPrivateShares<'a> {
+pub struct CheckPrivateShares {
     /// number of keys
     n: u32,
     /// threshold, where the degree of each poly is (t-1)
@@ -181,16 +181,25 @@ pub struct CheckPrivateShares<'a> {
     /// Negated DKG private shares for the receiving key ID, indexed by sending key ID
     pub neg_shares: HashMap<u32, Scalar>,
     /// Polynomial commitments for each key ID
-    polys: &'a [PolyCommitment],
+    polys: HashMap<u32, PolyCommitment>,
 }
 
-impl<'a> CheckPrivateShares<'a> {
+impl CheckPrivateShares {
     /// Construct a new CheckPrivateShares object
-    pub fn new(id: Scalar, shares: &HashMap<u32, Scalar>, polys: &'a [PolyCommitment]) -> Self {
+    pub fn new(
+        id: Scalar,
+        shares: &HashMap<u32, Scalar>,
+        polys: HashMap<u32, PolyCommitment>,
+    ) -> Self {
+        let mut l: usize = 0;
+        for (_id, comm) in &polys {
+            l = comm.poly.len();
+            break;
+        }
         let n: u32 = shares.len().try_into().unwrap();
-        let t: u32 = polys[0].poly.len().try_into().unwrap();
+        let t: u32 = l.try_into().unwrap();
         let x = id;
-        let mut powers = Vec::with_capacity(polys[0].poly.len());
+        let mut powers = Vec::with_capacity(l);
         let mut pow = Scalar::one();
 
         for _ in 0..t {
@@ -213,27 +222,29 @@ impl<'a> CheckPrivateShares<'a> {
     }
 }
 
-impl<'a> MultiMult for CheckPrivateShares<'a> {
+impl MultiMult for CheckPrivateShares {
     /// The first n*t scalars will be powers, the last n will be the negation of shares
     fn get_scalar(&self, i: usize) -> &Scalar {
+        println!("get_scalar({})", i);
         let h: u32 = i.try_into().unwrap();
         let u: usize = self.t.try_into().unwrap();
         if h < self.n * self.t {
             &self.powers[i % u]
         } else {
-            &self.neg_shares[&(h - (self.t * self.n))]
+            &self.neg_shares[&(h - (self.t * self.n) + 1)]
         }
     }
 
     /// The first n*t points will be poly coeffs, the last n will be G
     fn get_point(&self, i: usize) -> &Point {
+        println!("get_point({})", i);
         let h: u32 = i.try_into().unwrap();
         let u: usize = self.t.try_into().unwrap();
         if h < self.n * self.t {
             let j = i / u;
             let k = i % u;
 
-            &self.polys[j].poly[k]
+            &self.polys[&((j + 1) as u32)].poly[k]
         } else {
             &G
         }

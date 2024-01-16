@@ -86,10 +86,11 @@ pub mod test_helpers {
     pub fn dkg<RNG: RngCore + CryptoRng, Signer: traits::Signer>(
         signers: &mut [Signer],
         rng: &mut RNG,
-    ) -> Result<Vec<PolyCommitment>, HashMap<u32, DkgError>> {
-        let A: Vec<PolyCommitment> = signers
+    ) -> Result<HashMap<u32, PolyCommitment>, HashMap<u32, DkgError>> {
+        let polys: HashMap<u32, PolyCommitment> = signers
             .iter()
             .flat_map(|s| s.get_poly_commitments(rng))
+            .map(|comm| (comm.id.id.get_u32(), comm))
             .collect();
 
         let mut private_shares = HashMap::new();
@@ -101,13 +102,13 @@ pub mod test_helpers {
 
         let mut secret_errors = HashMap::new();
         for signer in signers.iter_mut() {
-            if let Err(signer_secret_errors) = signer.compute_secrets(&private_shares, &A) {
+            if let Err(signer_secret_errors) = signer.compute_secrets(&private_shares, &polys) {
                 secret_errors.extend(signer_secret_errors.into_iter());
             }
         }
 
         if secret_errors.is_empty() {
-            Ok(A)
+            Ok(polys)
         } else {
             Err(secret_errors)
         }
@@ -186,8 +187,8 @@ mod test {
             .map(|(id, ids)| v1::Signer::new(id.try_into().unwrap(), ids, N, T, &mut rng))
             .collect();
 
-        let A = match test_helpers::dkg(&mut signers, &mut rng) {
-            Ok(A) => A,
+        let polys = match test_helpers::dkg(&mut signers, &mut rng) {
+            Ok(polys) => polys,
             Err(secret_errors) => {
                 panic!("Got secret errors from DKG: {:?}", secret_errors);
             }
@@ -195,7 +196,7 @@ mod test {
 
         let mut S = [signers[0].clone(), signers[1].clone(), signers[3].clone()].to_vec();
         let mut sig_agg = v1::Aggregator::new(N, T);
-        sig_agg.init(A.clone()).expect("aggregator init failed");
+        sig_agg.init(&polys).expect("aggregator init failed");
         let tweaked_public_key = compute::tweaked_public_key(&sig_agg.poly[0], merkle_root);
         let (nonces, sig_shares) = test_helpers::sign(msg, &mut S, &mut rng, merkle_root);
         let proof = match sig_agg.sign_taproot(msg, &nonces, &sig_shares, &[], merkle_root) {
@@ -248,8 +249,8 @@ mod test {
             .map(|(id, ids)| v2::Signer::new(id.try_into().unwrap(), ids, Np, Nk, T, &mut rng))
             .collect();
 
-        let A = match test_helpers::dkg(&mut signers, &mut rng) {
-            Ok(A) => A,
+        let polys = match test_helpers::dkg(&mut signers, &mut rng) {
+            Ok(polys) => polys,
             Err(secret_errors) => {
                 panic!("Got secret errors from DKG: {:?}", secret_errors);
             }
@@ -258,7 +259,7 @@ mod test {
         let mut S = [signers[0].clone(), signers[1].clone(), signers[3].clone()].to_vec();
         let key_ids = S.iter().flat_map(|s| s.get_key_ids()).collect::<Vec<u32>>();
         let mut sig_agg = v2::Aggregator::new(Nk, T);
-        sig_agg.init(A.clone()).expect("aggregator init failed");
+        sig_agg.init(&polys).expect("aggregator init failed");
         let tweaked_public_key = compute::tweaked_public_key(&sig_agg.poly[0], merkle_root);
         let (nonces, sig_shares) = test_helpers::sign(msg, &mut S, &mut rng, merkle_root);
         let proof = match sig_agg.sign_taproot(msg, &nonces, &sig_shares, &key_ids, merkle_root) {

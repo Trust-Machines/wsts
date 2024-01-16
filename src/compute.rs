@@ -114,7 +114,7 @@ pub fn aggregate_nonce(
 
 /// Compute a one-based Scalar from a zero-based integer
 pub fn id(i: u32) -> Scalar {
-    Scalar::from(i + 1)
+    Scalar::from(i)
 }
 
 /// Evaluate the public polynomial `f` at scalar `x` using multi-exponentiation

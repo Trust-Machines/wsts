@@ -1,4 +1,4 @@
-use hashbrown::HashSet;
+use hashbrown::{HashMap, HashSet};
 use std::{collections::BTreeMap, time::Instant};
 use tracing::{debug, error, info, warn};
 
@@ -32,7 +32,7 @@ pub struct Coordinator<Aggregator: AggregatorTrait> {
     dkg_public_shares: BTreeMap<u32, DkgPublicShares>,
     dkg_private_shares: BTreeMap<u32, DkgPrivateShares>,
     dkg_end_messages: BTreeMap<u32, DkgEnd>,
-    party_polynomials: BTreeMap<u32, PolyCommitment>,
+    party_polynomials: HashMap<u32, PolyCommitment>,
     public_nonces: BTreeMap<u32, NonceResponse>,
     signature_shares: BTreeMap<u32, Vec<SignatureShare>>,
     /// aggregate public key
@@ -353,6 +353,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         let dkg_begin = DkgPrivateBegin {
             dkg_id: self.current_dkg_id,
             key_ids: active_key_ids,
+            signer_ids: self.dkg_public_shares.keys().cloned().collect(),
         };
         let dkg_private_begin_msg = Packet {
             sig: dkg_begin
@@ -378,7 +379,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             self.current_dkg_id
         );
         let active_key_ids = self
-            .dkg_public_shares
+            .dkg_private_shares
             .keys()
             .flat_map(|signer_id| self.config.signer_key_ids[signer_id].clone())
             .collect::<Vec<u32>>();
@@ -386,6 +387,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         let dkg_end_begin = DkgEndBegin {
             dkg_id: self.current_dkg_id,
             key_ids: active_key_ids,
+            signer_ids: self.dkg_private_shares.keys().cloned().collect(),
         };
         let dkg_end_begin_msg = Packet {
             sig: dkg_end_begin
@@ -695,8 +697,6 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         }
         if self.sign_wait_signer_ids.is_empty() {
             // Calculate the aggregate signature
-            let polys: Vec<PolyCommitment> = self.party_polynomials.values().cloned().collect();
-
             let nonce_responses = self
                 .public_nonces
                 .values()
@@ -726,7 +726,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 shares.len()
             );
 
-            self.aggregator.init(polys)?;
+            self.aggregator.init(&self.party_polynomials)?;
 
             if is_taproot {
                 let schnorr_proof = self.aggregator.sign_taproot(
@@ -1052,7 +1052,7 @@ pub mod test {
 
         let message = coordinator.start_private_shares().unwrap();
         assert!(matches!(message.msg, Message::DkgPrivateBegin(_)));
-        assert_eq!(coordinator.get_state(), State::DkgEndGather);
+        assert_eq!(coordinator.get_state(), State::DkgPrivateGather);
         assert_eq!(coordinator.current_dkg_id, 0);
     }
 

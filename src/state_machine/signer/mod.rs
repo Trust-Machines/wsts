@@ -10,8 +10,8 @@ use crate::{
         scalar::Scalar,
     },
     net::{
-        DkgBegin, DkgEnd, DkgPrivateBegin, DkgPrivateShares, DkgPublicShares, DkgStatus, Message,
-        NonceRequest, NonceResponse, Packet, Signable, SignatureShareRequest,
+        DkgBegin, DkgEnd, DkgEndBegin, DkgPrivateBegin, DkgPrivateShares, DkgPublicShares,
+        DkgStatus, Message, NonceRequest, NonceResponse, Packet, Signable, SignatureShareRequest,
         SignatureShareResponse,
     },
     state_machine::{PublicKeys, StateMachine},
@@ -83,7 +83,7 @@ pub struct Signer<SignerType: SignerTrait> {
     /// the current state
     pub state: State,
     /// map of party_id to the polynomial commitment for that party
-    pub commitments: BTreeMap<u32, PolyCommitment>,
+    pub commitments: HashMap<u32, PolyCommitment>,
     /// map of decrypted DKG private shares
     pub decrypted_shares: HashMap<u32, HashMap<u32, Scalar>>,
     /// invalid private shares
@@ -94,6 +94,10 @@ pub struct Signer<SignerType: SignerTrait> {
     pub network_private_key: Scalar,
     /// the public keys for all signers and coordinator
     pub public_keys: PublicKeys,
+    dkg_public_shares: BTreeMap<u32, DkgPublicShares>,
+    dkg_private_shares: BTreeMap<u32, DkgPublicShares>,
+    dkg_private_begin_msg: Option<DkgPrivateBegin>,
+    dkg_end_begin_msg: Option<DkgEndBegin>,
 }
 
 impl<SignerType: SignerTrait> Signer<SignerType> {
@@ -131,12 +135,16 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             signer,
             signer_id,
             state: State::Idle,
-            commitments: BTreeMap::new(),
+            commitments: Default::default(),
             decrypted_shares: HashMap::new(),
             invalid_private_shares: Vec::new(),
             public_nonces: vec![],
             network_private_key,
             public_keys,
+            dkg_public_shares: Default::default(),
+            dkg_private_shares: Default::default(),
+            dkg_private_begin_msg: Default::default(),
+            dkg_end_begin_msg: Default::default(),
         }
     }
 
@@ -147,6 +155,10 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         self.invalid_private_shares.clear();
         self.public_nonces.clear();
         self.signer.reset_polys(rng);
+        self.dkg_public_shares.clear();
+        self.dkg_private_shares.clear();
+        self.dkg_private_begin_msg = None;
+        self.dkg_end_begin_msg = None;
     }
 
     ///
@@ -215,6 +227,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             Message::DkgPrivateBegin(dkg_private_begin) => {
                 self.dkg_private_begin(dkg_private_begin)
             }
+            Message::DkgEndBegin(dkg_end_begin) => self.dkg_end_begin(dkg_end_begin),
             Message::DkgPublicShares(dkg_public_shares) => self.dkg_public_share(dkg_public_shares),
             Message::DkgPrivateShares(dkg_private_shares) => {
                 self.dkg_private_shares(dkg_private_shares)
@@ -228,13 +241,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
 
         match out_msgs {
             Ok(mut out) => {
-                if self.public_shares_done() {
-                    debug!(
-                        "public_shares_done==true. commitments {}",
-                        self.commitments.len()
-                    );
-                    self.move_to(State::DkgPrivateDistribute)?;
-                } else if self.can_dkg_end() {
+                if self.can_dkg_end() {
                     debug!(
                         "can_dkg_end==true. shares {} commitments {}",
                         self.decrypted_shares.len(),
@@ -252,10 +259,17 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
 
     /// DKG is done so compute secrets
     pub fn dkg_ended(&mut self) -> Result<Message, Error> {
-        let polys: Vec<PolyCommitment> = self.commitments.clone().into_values().collect();
+        for (_signer_id, shares) in &self.dkg_public_shares {
+            for (party_id, comm) in shares.comms.iter() {
+                self.commitments.insert(*party_id, comm.clone());
+            }
+        }
 
         let dkg_end = if self.invalid_private_shares.is_empty() {
-            match self.signer.compute_secrets(&self.decrypted_shares, &polys) {
+            match self
+                .signer
+                .compute_secrets(&self.decrypted_shares, &self.commitments)
+            {
                 Ok(()) => DkgEnd {
                     dkg_id: self.dkg_id,
                     signer_id: self.signer_id,
@@ -304,7 +318,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             self.decrypted_shares.len()
         );
         self.state == State::DkgPrivateGather
-            && self.commitments.len() == usize::try_from(self.signer.get_num_parties()).unwrap()
+            //&& self.commitments.len() == usize::try_from(self.signer.get_num_parties()).unwrap()
             && self.decrypted_shares.len()
                 == usize::try_from(self.signer.get_num_parties()).unwrap()
     }
@@ -455,6 +469,10 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             .iter()
             .cloned()
             .collect::<HashSet<u32>>();
+
+        self.dkg_private_begin_msg = Some(dkg_private_begin.clone());
+        self.move_to(State::DkgPrivateDistribute)?;
+
         info!(
             "Signer {} sending DkgPrivateShares for round {}",
             self.signer.get_id(),
@@ -499,14 +517,25 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         Ok(msgs)
     }
 
+    fn dkg_end_begin(&mut self, dkg_end_begin: &DkgEndBegin) -> Result<Vec<Message>, Error> {
+        let msgs = vec![];
+
+        self.dkg_end_begin_msg = Some(dkg_end_begin.clone());
+
+        info!(
+            "Signer {} received DkgEndBegin for round {}",
+            self.signer.get_id(),
+            self.dkg_id,
+        );
+
+        Ok(msgs)
+    }
+
     /// handle incoming DkgPublicShares
     pub fn dkg_public_share(
         &mut self,
         dkg_public_shares: &DkgPublicShares,
     ) -> Result<Vec<Message>, Error> {
-        for (party_id, comm) in &dkg_public_shares.comms {
-            self.commitments.insert(*party_id, comm.clone());
-        }
         debug!(
             "received DkgPublicShares from signer {} {}/{}",
             dkg_public_shares.signer_id,
