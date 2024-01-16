@@ -366,7 +366,7 @@ pub mod test {
                 (private_key, public_key)
             })
             .collect::<Vec<(Scalar, ecdsa::PublicKey)>>();
-        let mut key_id: u32 = 0;
+        let mut key_id: u32 = 1;
         let mut signer_ids_map = HashMap::new();
         let mut signer_key_ids = HashMap::new();
         let mut signer_key_ids_set = HashMap::new();
@@ -375,7 +375,7 @@ pub mod test {
             let mut key_ids = Vec::new();
             let mut key_ids_set = HashSet::new();
             for _ in 0..keys_per_signer {
-                key_ids_map.insert(key_id + 1, *public_key);
+                key_ids_map.insert(key_id, *public_key);
                 key_ids.push(key_id);
                 key_ids_set.insert(key_id);
                 key_id += 1;
@@ -498,6 +498,7 @@ pub mod test {
         // Send the DKG Private Begin message to all signers and share their responses with the coordinator and signers
         let (outbound_messages, operation_results) =
             feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
+        assert_eq!(operation_results.len(), 0);
         assert_eq!(outbound_messages.len(), 1);
         match &outbound_messages[0].msg {
             Message::DkgEndBegin(_) => {}
@@ -505,6 +506,11 @@ pub mod test {
                 panic!("Expected DkgEndBegin message");
             }
         }
+
+        // Send the DKG Private Begin message to all signers and share their responses with the coordinator and signers
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
+        assert_eq!(outbound_messages.len(), 0);
         assert_eq!(operation_results.len(), 1);
         match operation_results[0] {
             OperationResult::Dkg(point) => {

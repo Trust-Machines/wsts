@@ -156,12 +156,14 @@ impl Signable for DkgPrivateShares {
         hasher.update("DKG_PRIVATE_SHARES".as_bytes());
         hasher.update(self.dkg_id.to_be_bytes());
         hasher.update(self.signer_id.to_be_bytes());
-        // make sure we iterate sequentially
+        // make sure we hash consistently by sorting the keys
         for (src_id, share) in &self.shares {
             hasher.update(src_id.to_be_bytes());
-            for dst_id in 0..share.len() as u32 {
+            let mut dst_ids = share.keys().cloned().collect::<Vec<u32>>();
+            dst_ids.sort();
+            for dst_id in &dst_ids {
                 hasher.update(dst_id.to_be_bytes());
-                hasher.update(&share[&dst_id]);
+                hasher.update(&share[dst_id]);
             }
         }
     }

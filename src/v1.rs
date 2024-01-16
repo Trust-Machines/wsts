@@ -117,6 +117,11 @@ impl Party {
         shares: HashMap<u32, Scalar>,
         polys: &HashMap<u32, PolyCommitment>,
     ) -> Result<(), DkgError> {
+        println!(
+            "compute_secret {} shares {} polys",
+            shares.len(),
+            polys.len()
+        );
         let mut missing_shares = Vec::new();
         for i in polys.keys() {
             if shares.get(i).is_none() {
@@ -130,7 +135,7 @@ impl Party {
         self.private_key = Scalar::zero();
         self.group_key = Point::zero();
 
-        let bad_ids: Vec<u32> = shares
+        let bad_ids: Vec<u32> = polys
             .keys()
             .cloned()
             .filter(|i| !polys[i].verify())

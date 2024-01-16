@@ -95,7 +95,7 @@ pub struct Signer<SignerType: SignerTrait> {
     /// the public keys for all signers and coordinator
     pub public_keys: PublicKeys,
     dkg_public_shares: BTreeMap<u32, DkgPublicShares>,
-    dkg_private_shares: BTreeMap<u32, DkgPublicShares>,
+    dkg_private_shares: BTreeMap<u32, DkgPrivateShares>,
     dkg_private_begin_msg: Option<DkgPrivateBegin>,
     dkg_end_begin_msg: Option<DkgEndBegin>,
 }
@@ -242,11 +242,6 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         match out_msgs {
             Ok(mut out) => {
                 if self.can_dkg_end() {
-                    debug!(
-                        "can_dkg_end==true. shares {} commitments {}",
-                        self.decrypted_shares.len(),
-                        self.commitments.len()
-                    );
                     let dkg_end_msgs = self.dkg_ended()?;
                     out.push(dkg_end_msgs);
                     self.move_to(State::Idle)?;
@@ -311,16 +306,41 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
 
     /// do we have all DkgPublicShares and DkgPrivateShares?
     pub fn can_dkg_end(&self) -> bool {
-        debug!(
-            "can_dkg_end state {:?} commitments {} shares {}",
+        info!(
+            "can_dkg_end state {:?} DkgPrivateBegin {} DkgEndBegin {}",
             self.state,
-            self.commitments.len(),
-            self.decrypted_shares.len()
+            self.dkg_private_begin_msg.is_some(),
+            self.dkg_end_begin_msg.is_some(),
         );
-        self.state == State::DkgPrivateGather
-            //&& self.commitments.len() == usize::try_from(self.signer.get_num_parties()).unwrap()
-            && self.decrypted_shares.len()
-                == usize::try_from(self.signer.get_num_parties()).unwrap()
+
+        if self.state == State::DkgPrivateGather {
+            if let Some(dkg_private_begin) = &self.dkg_private_begin_msg {
+                // need public shares from active signers
+                for signer_id in &dkg_private_begin.signer_ids {
+                    if !self.dkg_public_shares.contains_key(&signer_id) {
+                        info!("can_dkg_end: public shares missing {} false", signer_id);
+                        return false;
+                    }
+                }
+
+                if let Some(dkg_end_begin) = &self.dkg_end_begin_msg {
+                    // need private shares from active signers
+                    for signer_id in &dkg_private_begin.signer_ids {
+                        if !self.dkg_private_shares.contains_key(&signer_id) {
+                            info!("can_dkg_end: private shares missing {} false", signer_id);
+                            return false;
+                        }
+                    }
+                    info!("can_dkg_end: true");
+
+                    return true;
+                }
+            }
+        } else {
+            info!("can_dkg_end: bad state {:?} false", self.state);
+            return false;
+        }
+        false
     }
 
     fn nonce_request(&mut self, nonce_request: &NonceRequest) -> Result<Vec<Message>, Error> {
@@ -494,9 +514,9 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
 
             for (dst_key_id, private_share) in shares {
                 if active_key_ids.contains(dst_key_id) {
-                    debug!("encrypting dkg private share for key_id {}", dst_key_id + 1);
+                    debug!("encrypting dkg private share for key_id {}", dst_key_id);
                     let compressed =
-                        Compressed::from(self.public_keys.key_ids[&(dst_key_id + 1)].to_bytes());
+                        Compressed::from(self.public_keys.key_ids[dst_key_id].to_bytes());
                     let dst_public_key = Point::try_from(&compressed).unwrap();
                     let shared_secret =
                         make_shared_secret(&self.network_private_key, &dst_public_key);
@@ -542,6 +562,8 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             self.commitments.len(),
             self.signer.get_num_parties(),
         );
+        self.dkg_public_shares
+            .insert(dkg_public_shares.signer_id, dkg_public_shares.clone());
         Ok(vec![])
     }
 
@@ -551,6 +573,8 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         dkg_private_shares: &DkgPrivateShares,
     ) -> Result<Vec<Message>, Error> {
         // go ahead and decrypt here, since we know the signer_id and hence the pubkey of the sender
+        self.dkg_private_shares
+            .insert(dkg_private_shares.signer_id, dkg_private_shares.clone());
 
         // make a HashSet of our key_ids so we can quickly query them
         let key_ids: HashSet<u32> = self.signer.get_key_ids().into_iter().collect();
