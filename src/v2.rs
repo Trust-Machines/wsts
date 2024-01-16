@@ -133,7 +133,7 @@ impl Party {
     /// Get the shares of this party's private polynomial for all keys
     pub fn get_shares(&self) -> HashMap<u32, Scalar> {
         let mut shares = HashMap::new();
-        for i in 0..self.num_keys {
+        for i in 1..self.num_keys + 1 {
             shares.insert(i, self.f.eval(compute::id(i)));
         }
         shares
@@ -466,6 +466,7 @@ impl traits::Signer for Party {
         for key_id in self.get_key_ids() {
             let mut shares = HashMap::new();
             for (signer_id, signer_shares) in private_shares.iter() {
+                println!("{signer_id} {}", key_id);
                 shares.insert(*signer_id, signer_shares[&key_id]);
             }
             key_shares.insert(key_id, shares);

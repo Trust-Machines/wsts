@@ -306,7 +306,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
 
     /// do we have all DkgPublicShares and DkgPrivateShares?
     pub fn can_dkg_end(&self) -> bool {
-        info!(
+        debug!(
             "can_dkg_end state {:?} DkgPrivateBegin {} DkgEndBegin {}",
             self.state,
             self.dkg_private_begin_msg.is_some(),
@@ -325,7 +325,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
 
                 if let Some(dkg_end_begin) = &self.dkg_end_begin_msg {
                     // need private shares from active signers
-                    for signer_id in &dkg_private_begin.signer_ids {
+                    for signer_id in &dkg_end_begin.signer_ids {
                         if !self.dkg_private_shares.contains_key(&signer_id) {
                             info!("can_dkg_end: private shares missing {} false", signer_id);
                             return false;
@@ -337,7 +337,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                 }
             }
         } else {
-            info!("can_dkg_end: bad state {:?} false", self.state);
+            debug!("can_dkg_end: bad state {:?} false", self.state);
             return false;
         }
         false
