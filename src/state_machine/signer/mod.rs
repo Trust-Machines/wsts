@@ -663,7 +663,6 @@ impl<SignerType: SignerTrait> StateMachine<State, Error> for Signer<SignerType> 
 
 #[cfg(test)]
 pub mod test {
-    use hashbrown::HashMap;
     use rand_core::OsRng;
 
     use crate::{

@@ -96,7 +96,33 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 }
             }
             State::DkgPrivateDistribute => {}
-            State::DkgPrivateGather => {}
+            State::DkgPrivateGather => {
+                if let Some(start) = self.dkg_private_start {
+                    if let Some(timeout) = self.config.dkg_private_timeout {
+                        if now.duration_since(start) > timeout {
+                            // check dkg_threshold to determine if we can continue
+                            let dkg_size = self.compute_dkg_private_size();
+
+                            if self.config.dkg_threshold > dkg_size {
+                                error!("Timeout gathering DkgPrivateShares for dkg round {} signing round {} iteration {}, dkg_threshold not met ({}/{}), unable to continue", self.current_dkg_id, self.current_sign_id, self.current_sign_iter_id, dkg_size, self.config.dkg_threshold);
+                                let wait = self.dkg_wait_signer_ids.iter().copied().collect();
+                                return Ok((
+                                    None,
+                                    Some(OperationResult::DkgError(DkgError::DkgPrivateTimeout(
+                                        wait,
+                                    ))),
+                                ));
+                            } else {
+                                // we hit the timeout but met the threshold, continue
+                                warn!("Timeout gathering DkgPrivateShares for dkg round {} signing round {} iteration {}, dkg_threshold was met ({}/{}), ", self.current_dkg_id, self.current_sign_id, self.current_sign_iter_id, dkg_size, self.config.dkg_threshold);
+                                self.private_shares_gathered()?;
+                                let packet = self.start_dkg_end()?;
+                                return Ok((Some(packet), None));
+                            }
+                        }
+                    }
+                }
+            }
             State::DkgEndDistribute => {}
             State::DkgEndGather => {
                 if let Some(start) = self.dkg_end_start {
@@ -774,6 +800,13 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             .sum()
     }
 
+    fn compute_dkg_private_size(&self) -> u32 {
+        self.dkg_private_shares
+            .keys()
+            .map(|signer_id| self.config.signer_key_ids[signer_id].len() as u32)
+            .sum()
+    }
+
     fn compute_dkg_end_size(&self) -> u32 {
         self.dkg_end_messages
             .keys()
@@ -1153,6 +1186,7 @@ pub mod test {
             Some(timeout),
             Some(timeout),
             Some(timeout),
+            Some(timeout),
         );
 
         // Start a DKG round where we will not allow all signers to recv DkgBegin, so they will not respond with DkgPublicShares
@@ -1248,11 +1282,37 @@ pub mod test {
             .process_inbound_messages(&[])
             .unwrap();
 
-        assert!(outbound_messages.is_empty());
+        assert_eq!(outbound_messages.len(), 1);
+        assert_eq!(operation_results.len(), 0);
+        match &outbound_messages[0].msg {
+            Message::DkgEndBegin(_) => {}
+            _ => {
+                panic!("Expected DkgEndBegin message");
+            }
+        }
         assert_eq!(
             minimum_coordinator.first().unwrap().state,
             State::DkgEndGather,
         );
+
+        // Send the DkgEndBegin message to all signers and share their responses with the coordinator and signers
+        let (outbound_messages, operation_results) = feedback_messages(
+            &mut minimum_coordinator,
+            &mut minimum_signers,
+            &outbound_messages,
+        );
+        assert_eq!(outbound_messages.len(), 0);
+        assert_eq!(operation_results.len(), 1);
+        match operation_results[0] {
+            OperationResult::Dkg(point) => {
+                assert_ne!(point, Point::default());
+                for coordinator in minimum_coordinator.iter() {
+                    assert_eq!(coordinator.get_aggregate_public_key(), Some(point));
+                    assert_eq!(coordinator.get_state(), State::Idle);
+                }
+            }
+            _ => panic!("Expected Dkg Operation result"),
+        }
     }
 
     #[test]
@@ -1273,6 +1333,7 @@ pub mod test {
         let (mut coordinators, signers) = setup_with_timeouts::<FireCoordinator<Aggregator>, Signer>(
             num_signers,
             keys_per_signer,
+            Some(timeout),
             Some(timeout),
             Some(timeout),
             Some(timeout),
@@ -1607,6 +1668,7 @@ pub mod test {
             setup_with_timeouts::<FireCoordinator<Aggregator>, Signer>(
                 num_signers,
                 keys_per_signer,
+                None,
                 None,
                 None,
                 Some(Duration::from_millis(128)),

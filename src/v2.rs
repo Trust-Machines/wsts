@@ -466,7 +466,6 @@ impl traits::Signer for Party {
         for key_id in self.get_key_ids() {
             let mut shares = HashMap::new();
             for (signer_id, signer_shares) in private_shares.iter() {
-                println!("{signer_id} {}", key_id);
                 shares.insert(*signer_id, signer_shares[&key_id]);
             }
             key_shares.insert(key_id, shares);

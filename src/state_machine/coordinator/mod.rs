@@ -91,6 +91,8 @@ pub struct Config {
     pub message_private_key: Scalar,
     /// timeout to gather DkgPublicShares messages
     pub dkg_public_timeout: Option<Duration>,
+    /// timeout to gather DkgPrivateShares messages
+    pub dkg_private_timeout: Option<Duration>,
     /// timeout to gather DkgEnd messages
     pub dkg_end_timeout: Option<Duration>,
     /// timeout to gather nonces
@@ -116,6 +118,7 @@ impl Config {
             dkg_threshold: num_keys,
             message_private_key,
             dkg_public_timeout: None,
+            dkg_private_timeout: None,
             dkg_end_timeout: None,
             nonce_timeout: None,
             sign_timeout: None,
@@ -132,6 +135,7 @@ impl Config {
         dkg_threshold: u32,
         message_private_key: Scalar,
         dkg_public_timeout: Option<Duration>,
+        dkg_private_timeout: Option<Duration>,
         dkg_end_timeout: Option<Duration>,
         nonce_timeout: Option<Duration>,
         sign_timeout: Option<Duration>,
@@ -144,6 +148,7 @@ impl Config {
             dkg_threshold,
             message_private_key,
             dkg_public_timeout,
+            dkg_private_timeout,
             dkg_end_timeout,
             nonce_timeout,
             sign_timeout,
@@ -333,6 +338,7 @@ pub mod test {
             None,
             None,
             None,
+            None,
         )
     }
 
@@ -340,6 +346,7 @@ pub mod test {
         num_signers: u32,
         keys_per_signer: u32,
         dkg_public_timeout: Option<Duration>,
+        dkg_private_timeout: Option<Duration>,
         dkg_end_timeout: Option<Duration>,
         nonce_timeout: Option<Duration>,
         sign_timeout: Option<Duration>,
@@ -414,6 +421,7 @@ pub mod test {
                     dkg_threshold,
                     private_key,
                     dkg_public_timeout,
+                    dkg_private_timeout,
                     dkg_end_timeout,
                     nonce_timeout,
                     sign_timeout,
