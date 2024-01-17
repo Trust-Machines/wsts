@@ -3,7 +3,6 @@ use num_traits::{One, Zero};
 use polynomial::Polynomial;
 use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
-use tracing::info;
 
 use crate::{
     common::{CheckPrivateShares, Nonce, PolyCommitment, PublicNonce, Signature, SignatureShare},
@@ -117,11 +116,6 @@ impl Party {
         shares: HashMap<u32, Scalar>,
         polys: &HashMap<u32, PolyCommitment>,
     ) -> Result<(), DkgError> {
-        println!(
-            "compute_secret {} shares {} polys",
-            shares.len(),
-            polys.len()
-        );
         let mut missing_shares = Vec::new();
         for i in polys.keys() {
             if shares.get(i).is_none() {
@@ -526,13 +520,11 @@ impl traits::Signer for Signer {
         private_shares: &HashMap<u32, HashMap<u32, Scalar>>,
         polys: &HashMap<u32, PolyCommitment>,
     ) -> Result<(), HashMap<u32, DkgError>> {
-        println!("compute_secrets {}", self.get_id());
         let mut dkg_errors = HashMap::new();
         for party in &mut self.parties {
             // go through the shares, looking for this party's
             let mut key_shares = HashMap::with_capacity(polys.len());
             for (signer_id, signer_shares) in private_shares.iter() {
-                println!("{signer_id} {}", party.id);
                 key_shares.insert(*signer_id, signer_shares[&party.id]);
             }
             if let Err(e) = party.compute_secret(key_shares, polys) {

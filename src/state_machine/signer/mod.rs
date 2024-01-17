@@ -775,8 +775,18 @@ pub mod test {
     }
 
     fn dkg_ended<SignerType: SignerTrait>() {
+        let mut rng = OsRng;
         let mut signer =
-            Signer::<SignerType>::new(1, 1, 1, 1, vec![1], Default::default(), Default::default());
+            Signer::<SignerType>::new(1, 1, 1, 0, vec![1], Default::default(), Default::default());
+        let polys = signer.signer.get_poly_commitments(&mut rng);
+        let dkg_public_shares = DkgPublicShares {
+            dkg_id: 1,
+            signer_id: 0,
+            comms: vec![(1, polys[0].clone())],
+        };
+        signer
+            .dkg_public_share(&dkg_public_shares)
+            .expect("failed to add public share");
         if let Ok(Message::DkgEnd(dkg_end)) = signer.dkg_ended() {
             match dkg_end.status {
                 DkgStatus::Failure(_) => {}
