@@ -97,7 +97,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 }
                 State::DkgPrivateGather => {
                     self.gather_private_shares(packet)?;
-                    if self.state == State::DkgPublicGather {
+                    if self.state == State::DkgPrivateGather {
                         // We need more data
                         return Ok((None, None));
                     }
@@ -187,7 +187,9 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         };
 
         let dkg_begin_packet = Packet {
-            sig: dkg_begin.sign(&self.config.message_private_key).expect(""),
+            sig: dkg_begin
+                .sign(&self.config.message_private_key)
+                .expect("Failed to sign DkgBegin"),
             msg: Message::DkgBegin(dkg_begin),
         };
         self.move_to(State::DkgPublicGather)?;
@@ -203,11 +205,13 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         );
         let dkg_begin = DkgPrivateBegin {
             dkg_id: self.current_dkg_id,
-            key_ids: (0..self.config.num_keys).collect(),
+            key_ids: (1..self.config.num_keys + 1).collect(),
             signer_ids: (0..self.config.num_signers).collect(),
         };
         let dkg_private_begin_msg = Packet {
-            sig: dkg_begin.sign(&self.config.message_private_key).expect(""),
+            sig: dkg_begin
+                .sign(&self.config.message_private_key)
+                .expect("Failed to sign DkgPrivateBegin"),
             msg: Message::DkgPrivateBegin(dkg_begin),
         };
         self.move_to(State::DkgPrivateGather)?;
@@ -276,14 +280,14 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
 
             self.dkg_private_shares
                 .insert(dkg_private_shares.signer_id, dkg_private_shares.clone());
-            debug!(
+            info!(
                 "DKG round {} DkgPrivateShares from signer {}",
                 dkg_private_shares.dkg_id, dkg_private_shares.signer_id
             );
         }
 
         if self.ids_to_await.is_empty() {
-            self.move_to(State::DkgPrivateDistribute)?;
+            self.move_to(State::DkgEndDistribute)?;
         }
         Ok(())
     }

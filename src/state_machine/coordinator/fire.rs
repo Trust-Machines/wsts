@@ -311,12 +311,10 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         self.dkg_public_shares.clear();
         self.party_polynomials.clear();
         self.dkg_wait_signer_ids = (0..self.config.num_signers).collect();
-
         info!(
             "DKG Round {}: Starting Public Share Distribution",
             self.current_dkg_id,
         );
-
         let dkg_begin = DkgBegin {
             dkg_id: self.current_dkg_id,
         };
@@ -449,7 +447,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
 
             self.dkg_private_shares
                 .insert(dkg_private_shares.signer_id, dkg_private_shares.clone());
-            debug!(
+            info!(
                 "DKG round {} DkgPrivateShares from signer {}",
                 dkg_private_shares.dkg_id, dkg_private_shares.signer_id
             );
