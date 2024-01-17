@@ -192,9 +192,8 @@ impl CheckPrivateShares {
         polys: HashMap<u32, PolyCommitment>,
     ) -> Self {
         let mut l: usize = 0;
-        for (_id, comm) in &polys {
+        if let Some((_id, comm)) = (&polys).into_iter().next() {
             l = comm.poly.len();
-            break;
         }
         let n: u32 = shares.len().try_into().unwrap();
         let t: u32 = l.try_into().unwrap();

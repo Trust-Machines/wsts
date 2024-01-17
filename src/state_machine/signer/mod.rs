@@ -254,7 +254,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
 
     /// DKG is done so compute secrets
     pub fn dkg_ended(&mut self) -> Result<Message, Error> {
-        for (_signer_id, shares) in &self.dkg_public_shares {
+        for shares in self.dkg_public_shares.values() {
             for (party_id, comm) in shares.comms.iter() {
                 self.commitments.insert(*party_id, comm.clone());
             }
@@ -317,7 +317,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             if let Some(dkg_private_begin) = &self.dkg_private_begin_msg {
                 // need public shares from active signers
                 for signer_id in &dkg_private_begin.signer_ids {
-                    if !self.dkg_public_shares.contains_key(&signer_id) {
+                    if !self.dkg_public_shares.contains_key(signer_id) {
                         info!(
                             "can_dkg_end: false, missing public shares from signer {}",
                             signer_id
@@ -329,7 +329,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                 if let Some(dkg_end_begin) = &self.dkg_end_begin_msg {
                     // need private shares from active signers
                     for signer_id in &dkg_end_begin.signer_ids {
-                        if !self.dkg_private_shares.contains_key(&signer_id) {
+                        if !self.dkg_private_shares.contains_key(signer_id) {
                             info!(
                                 "can_dkg_end: false, missing private shares from signer {}",
                                 signer_id
