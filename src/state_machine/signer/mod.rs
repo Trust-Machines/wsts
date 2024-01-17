@@ -94,10 +94,14 @@ pub struct Signer<SignerType: SignerTrait> {
     pub network_private_key: Scalar,
     /// the public keys for all signers and coordinator
     pub public_keys: PublicKeys,
-    dkg_public_shares: BTreeMap<u32, DkgPublicShares>,
-    dkg_private_shares: BTreeMap<u32, DkgPrivateShares>,
-    dkg_private_begin_msg: Option<DkgPrivateBegin>,
-    dkg_end_begin_msg: Option<DkgEndBegin>,
+    /// the DKG public shares received in this round
+    pub dkg_public_shares: BTreeMap<u32, DkgPublicShares>,
+    /// the DKG private shares received in this round
+    pub dkg_private_shares: BTreeMap<u32, DkgPrivateShares>,
+    /// the DKG private begin message received in this round
+    pub dkg_private_begin_msg: Option<DkgPrivateBegin>,
+    /// the DKG end begin message received in this round
+    pub dkg_end_begin_msg: Option<DkgEndBegin>,
 }
 
 impl<SignerType: SignerTrait> Signer<SignerType> {
@@ -701,7 +705,7 @@ pub mod test {
             )],
         };
         signer.dkg_public_share(&public_share).unwrap();
-        assert_eq!(1, signer.commitments.len())
+        assert_eq!(1, signer.dkg_public_shares.len())
     }
 
     #[test]
