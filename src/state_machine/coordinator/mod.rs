@@ -507,7 +507,7 @@ pub mod test {
             }
         }
 
-        // Send the DKG Private Begin message to all signers and share their responses with the coordinator and signers
+        // Send the DkgEndBegin message to all signers and share their responses with the coordinator and signers
         let (outbound_messages, operation_results) =
             feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
         assert_eq!(outbound_messages.len(), 0);

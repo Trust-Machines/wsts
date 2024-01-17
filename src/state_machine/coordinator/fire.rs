@@ -969,6 +969,7 @@ pub mod test {
                 },
                 Config, Coordinator as CoordinatorTrait, State,
             },
+            signer::Signer,
             DkgError, OperationResult, SignError,
         },
         traits::{Aggregator as AggregatorTrait, Signer as SignerTrait},
@@ -1074,20 +1075,22 @@ pub mod test {
         all_signers_dkg::<v2::Aggregator, v2::Signer>();
     }
 
-    fn all_signers_dkg<Aggregator: AggregatorTrait, Signer: SignerTrait>() {
-        let (mut coordinator, mut signers) = setup::<FireCoordinator<Aggregator>, Signer>(5, 2);
+    fn all_signers_dkg<Aggregator: AggregatorTrait, SignerType: SignerTrait>(
+    ) -> (Vec<FireCoordinator<Aggregator>>, Vec<Signer<SignerType>>) {
+        let (mut coordinators, mut signers) =
+            setup::<FireCoordinator<Aggregator>, SignerType>(5, 2);
 
         // We have started a dkg round
-        let message = coordinator.first_mut().unwrap().start_dkg_round().unwrap();
-        assert!(coordinator.first().unwrap().aggregate_public_key.is_none());
-        assert_eq!(coordinator.first().unwrap().state, State::DkgPublicGather);
+        let message = coordinators.first_mut().unwrap().start_dkg_round().unwrap();
+        assert!(coordinators.first().unwrap().aggregate_public_key.is_none());
+        assert_eq!(coordinators.first().unwrap().state, State::DkgPublicGather);
 
-        // Send the DKG Begin message to all signers and gather responses by sharing with all other signers and coordinator
+        // Send the DKG Begin message to all signers and gather responses by sharing with all other signers and coordinators
         let (outbound_messages, operation_results) =
-            feedback_messages(&mut coordinator, &mut signers, &[message]);
+            feedback_messages(&mut coordinators, &mut signers, &[message]);
         assert!(operation_results.is_empty());
-        for coordinator in &coordinator {
-            assert_eq!(coordinator.state, State::DkgEndGather);
+        for coordinator in &coordinators {
+            assert_eq!(coordinator.state, State::DkgPrivateGather);
         }
 
         // Successfully got an Aggregate Public Key...
@@ -1098,21 +1101,34 @@ pub mod test {
                 panic!("Expected DkgPrivateBegin message");
             }
         }
-        // Send the DKG Private Begin message to all signers and share their responses with the coordinator and signers
+        // Send the DKG Private Begin message to all signers and share their responses with the coordinators and signers
         let (outbound_messages, operation_results) =
-            feedback_messages(&mut coordinator, &mut signers, &outbound_messages);
-        assert!(outbound_messages.is_empty());
+            feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
+        assert_eq!(operation_results.len(), 0);
+        assert_eq!(outbound_messages.len(), 1);
+        match &outbound_messages[0].msg {
+            Message::DkgEndBegin(_) => {}
+            _ => {
+                panic!("Expected DkgEndBegin message");
+            }
+        }
+
+        // Send the DkgEndBegin message to all signers and share their responses with the coordinators and signers
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
+        assert_eq!(outbound_messages.len(), 0);
         assert_eq!(operation_results.len(), 1);
         match operation_results[0] {
             OperationResult::Dkg(point) => {
                 assert_ne!(point, Point::default());
-                for coordinator in &coordinator {
-                    assert_eq!(coordinator.aggregate_public_key, Some(point));
-                    assert_eq!(coordinator.state, State::Idle);
+                for coordinator in coordinators.iter() {
+                    assert_eq!(coordinator.get_aggregate_public_key(), Some(point));
+                    assert_eq!(coordinator.get_state(), State::Idle);
                 }
             }
             _ => panic!("Expected Dkg Operation result"),
         }
+        (coordinators, signers)
     }
 
     #[test]
@@ -1181,7 +1197,7 @@ pub mod test {
         assert_eq!(operation_results.len(), 0);
         assert_eq!(
             minimum_coordinators.first().unwrap().state,
-            State::DkgEndGather,
+            State::DkgPrivateGather,
         );
 
         // Run DKG again with fresh coordinator and signers, this time allow gathering DkgPublicShares but timeout getting DkgEnd
@@ -1194,10 +1210,9 @@ pub mod test {
         assert!(operation_results.is_empty());
         assert_eq!(
             minimum_coordinator.first().unwrap().state,
-            State::DkgEndGather
+            State::DkgPrivateGather
         );
 
-        // Successfully got an Aggregate Public Key...
         assert_eq!(outbound_messages.len(), 1);
         match &outbound_messages[0].msg {
             Message::DkgPrivateBegin(_) => {}
@@ -1221,7 +1236,7 @@ pub mod test {
         assert_eq!(operation_results.len(), 0);
         assert_eq!(
             minimum_coordinator.first().unwrap().state,
-            State::DkgEndGather,
+            State::DkgPrivateGather,
         );
 
         // Sleep long enough to hit the timeout
@@ -1234,18 +1249,10 @@ pub mod test {
             .unwrap();
 
         assert!(outbound_messages.is_empty());
-        assert_eq!(operation_results.len(), 1);
         assert_eq!(
             minimum_coordinator.first().unwrap().state,
             State::DkgEndGather,
         );
-        match &operation_results[0] {
-            OperationResult::DkgError(dkg_error) => match dkg_error {
-                DkgError::DkgEndTimeout(_) => {}
-                _ => panic!("Expected DkgError::DkgEndTimeout"),
-            },
-            _ => panic!("Expected OperationResult::DkgError"),
-        }
     }
 
     #[test]
@@ -1402,44 +1409,7 @@ pub mod test {
     }
 
     fn all_signers_sign<Aggregator: AggregatorTrait, Signer: SignerTrait>() {
-        let (mut coordinators, mut signers) = setup::<FireCoordinator<Aggregator>, Signer>(5, 2);
-
-        // We have started a dkg round
-        let message = coordinators.first_mut().unwrap().start_dkg_round().unwrap();
-        assert!(coordinators.first().unwrap().aggregate_public_key.is_none());
-        assert_eq!(coordinators.first().unwrap().state, State::DkgPublicGather);
-
-        // Send the DKG Begin message to all signers and gather responses by sharing with all other signers and coordinator
-        let (outbound_messages, operation_results) =
-            feedback_messages(&mut coordinators, &mut signers, &[message]);
-        assert!(operation_results.is_empty());
-        for coordinator in &coordinators {
-            assert_eq!(coordinator.state, State::DkgEndGather);
-        }
-
-        // Successfully got an Aggregate Public Key...
-        assert_eq!(outbound_messages.len(), 1);
-        match &outbound_messages[0].msg {
-            Message::DkgPrivateBegin(_) => {}
-            _ => {
-                panic!("Expected DkgPrivateBegin message");
-            }
-        }
-        // Send the DKG Private Begin message to all signers and share their responses with the coordinator and signers
-        let (outbound_messages, operation_results) =
-            feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
-        assert!(outbound_messages.is_empty());
-        assert_eq!(operation_results.len(), 1);
-        match operation_results[0] {
-            OperationResult::Dkg(point) => {
-                assert_ne!(point, Point::default());
-                for coordinator in &coordinators {
-                    assert_eq!(coordinator.aggregate_public_key, Some(point));
-                    assert_eq!(coordinator.state, State::Idle);
-                }
-            }
-            _ => panic!("Expected Dkg Operation result"),
-        }
+        let (mut coordinators, mut signers) = all_signers_dkg::<Aggregator, Signer>();
 
         // We have started a signing round
         let msg = "It was many and many a year ago, in a kingdom by the sea"
