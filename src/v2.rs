@@ -619,10 +619,10 @@ mod tests {
         let Nk: u32 = 10;
         let T: u32 = 7;
         let party_key_ids: Vec<Vec<u32>> = [
-            [0, 1, 2].to_vec(),
-            [3, 4].to_vec(),
-            [5, 6, 7].to_vec(),
-            [8, 9].to_vec(),
+            [1, 2, 3].to_vec(),
+            [4, 5].to_vec(),
+            [6, 7, 8].to_vec(),
+            [9, 10].to_vec(),
         ]
         .to_vec();
         let Np = party_key_ids.len().try_into().unwrap();
