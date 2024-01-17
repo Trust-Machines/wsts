@@ -543,7 +543,8 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         Ok(msgs)
     }
 
-    fn dkg_end_begin(&mut self, dkg_end_begin: &DkgEndBegin) -> Result<Vec<Message>, Error> {
+    /// handle incoming DkgEndBegin
+    pub fn dkg_end_begin(&mut self, dkg_end_begin: &DkgEndBegin) -> Result<Vec<Message>, Error> {
         let msgs = vec![];
 
         self.dkg_end_begin_msg = Some(dkg_end_begin.clone());
@@ -663,10 +664,13 @@ pub mod test {
 
     use crate::{
         common::PolyCommitment,
-        curve::scalar::Scalar,
-        net::{DkgPublicShares, DkgStatus, Message},
+        curve::{ecdsa, scalar::Scalar},
+        net::{DkgBegin, DkgEndBegin, DkgPrivateBegin, DkgPublicShares, DkgStatus, Message},
         schnorr::ID,
-        state_machine::signer::{Signer, State as SignerState},
+        state_machine::{
+            signer::{Signer, State as SignerState},
+            PublicKeys,
+        },
         traits::Signer as SignerTrait,
         v1, v2,
     };
@@ -743,22 +747,44 @@ pub mod test {
 
     fn can_dkg_end<SignerType: SignerTrait>() {
         let mut rnd = OsRng;
-        let mut signer =
-            Signer::<SignerType>::new(1, 1, 1, 1, vec![1], Default::default(), Default::default());
+        let private_key = Scalar::random(&mut rnd);
+        let public_key = ecdsa::PublicKey::new(&private_key).unwrap();
+        let mut public_keys: PublicKeys = Default::default();
+
+        public_keys.signers.insert(0, public_key.clone());
+        public_keys.key_ids.insert(1, public_key.clone());
+
+        let mut signer = Signer::<SignerType>::new(1, 1, 1, 0, vec![1], private_key, public_keys);
         // can_dkg_end starts out as false
         assert!(!signer.can_dkg_end());
 
         // meet the conditions for DKG_END
-        signer.state = SignerState::DkgPrivateGather;
-        signer.commitments.insert(
-            1,
-            PolyCommitment {
-                id: ID::new(&Scalar::new(), &Scalar::new(), &mut rnd),
-                poly: vec![],
-            },
-        );
-        let shares: HashMap<u32, Scalar> = HashMap::new();
-        signer.decrypted_shares.insert(1, shares);
+        let dkg_begin = Message::DkgBegin(DkgBegin { dkg_id: 1 });
+        let dkg_public_shares = signer
+            .process(&dkg_begin)
+            .expect("failed to process DkgBegin");
+        let _ = signer
+            .process(&dkg_public_shares[0])
+            .expect("failed to process DkgPublicShares");
+        let dkg_private_begin = Message::DkgPrivateBegin(DkgPrivateBegin {
+            dkg_id: 1,
+            signer_ids: vec![0],
+            key_ids: vec![1],
+        });
+        let dkg_private_shares = signer
+            .process(&dkg_private_begin)
+            .expect("failed to process DkgBegin");
+        let _ = signer
+            .process(&dkg_private_shares[0])
+            .expect("failed to process DkgPrivateShares");
+        let dkg_end_begin = DkgEndBegin {
+            dkg_id: 1,
+            signer_ids: vec![0],
+            key_ids: vec![1],
+        };
+        let _ = signer
+            .dkg_end_begin(&dkg_end_begin)
+            .expect("failed to process DkgPrivateShares");
 
         // can_dkg_end should be true
         assert!(signer.can_dkg_end());
