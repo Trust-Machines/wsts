@@ -262,7 +262,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             return Ok(Message::DkgEnd(DkgEnd {
                 dkg_id: self.dkg_id,
                 signer_id: self.signer_id,
-                status: DkgStatus::Failure(format!("Bad state")),
+                status: DkgStatus::Failure("Bad state".to_string()),
             }));
         }
 

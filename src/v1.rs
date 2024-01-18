@@ -148,9 +148,7 @@ impl Party {
         }
 
         if shares.len() != polys.len() {
-            let mut not_enough_shares = Vec::new();
-            not_enough_shares.push(self.id);
-            return Err(DkgError::NotEnoughShares(not_enough_shares));
+            return Err(DkgError::NotEnoughShares(vec![self.id]));
         }
 
         // let's optimize for the case where all shares are good, and test them as a batch
