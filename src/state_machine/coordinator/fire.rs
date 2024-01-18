@@ -1394,7 +1394,7 @@ pub mod test {
         assert!(operation_results.is_empty());
         assert_eq!(
             insufficient_coordinator.first().unwrap().state,
-            State::DkgEndGather
+            State::DkgPrivateGather
         );
 
         // Successfully got an Aggregate Public Key...
@@ -1421,7 +1421,7 @@ pub mod test {
         assert_eq!(operation_results.len(), 0);
         assert_eq!(
             insufficient_coordinator.first().unwrap().state,
-            State::DkgEndGather,
+            State::DkgPrivateGather,
         );
 
         // Sleep long enough to hit the timeout
@@ -1437,12 +1437,12 @@ pub mod test {
         assert_eq!(operation_results.len(), 1);
         assert_eq!(
             insufficient_coordinator.first().unwrap().state,
-            State::DkgEndGather,
+            State::DkgPrivateGather,
         );
         match &operation_results[0] {
             OperationResult::DkgError(dkg_error) => match dkg_error {
-                DkgError::DkgEndTimeout(_) => {}
-                _ => panic!("Expected DkgError::DkgEndTimeout"),
+                DkgError::DkgPrivateTimeout(_) => {}
+                _ => panic!("Expected DkgError::DkgPrivateTimeout"),
             },
             _ => panic!("Expected OperationResult::DkgError"),
         }
