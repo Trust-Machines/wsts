@@ -224,7 +224,6 @@ impl CheckPrivateShares {
 impl MultiMult for CheckPrivateShares {
     /// The first n*t scalars will be powers, the last n will be the negation of shares
     fn get_scalar(&self, i: usize) -> &Scalar {
-        println!("get_scalar({})", i);
         let h: u32 = i.try_into().unwrap();
         let u: usize = self.t.try_into().unwrap();
         if h < self.n * self.t {
@@ -236,7 +235,6 @@ impl MultiMult for CheckPrivateShares {
 
     /// The first n*t points will be poly coeffs, the last n will be G
     fn get_point(&self, i: usize) -> &Point {
-        println!("get_point({})", i);
         let h: u32 = i.try_into().unwrap();
         let u: usize = self.t.try_into().unwrap();
         if h < self.n * self.t {

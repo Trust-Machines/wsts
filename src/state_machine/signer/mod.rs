@@ -258,9 +258,21 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
 
     /// DKG is done so compute secrets
     pub fn dkg_ended(&mut self) -> Result<Message, Error> {
-        for shares in self.dkg_public_shares.values() {
-            for (party_id, comm) in shares.comms.iter() {
-                self.commitments.insert(*party_id, comm.clone());
+        if !self.can_dkg_end() {
+            return Ok(Message::DkgEnd(DkgEnd {
+                dkg_id: self.dkg_id,
+                signer_id: self.signer_id,
+                status: DkgStatus::Failure(format!("Bad state")),
+            }));
+        }
+
+        // only use the public shares from the DkgEndBegin signers
+        if let Some(dkg_end_begin) = &self.dkg_end_begin_msg {
+            for signer_id in &dkg_end_begin.signer_ids {
+                let shares = &self.dkg_public_shares[signer_id];
+                for (party_id, comm) in shares.comms.iter() {
+                    self.commitments.insert(*party_id, comm.clone());
+                }
             }
         }
 
@@ -269,10 +281,12 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                 .signer
                 .compute_secrets(&self.decrypted_shares, &self.commitments)
             {
-                Ok(()) => DkgEnd {
-                    dkg_id: self.dkg_id,
-                    signer_id: self.signer_id,
-                    status: DkgStatus::Success,
+                Ok(()) => {
+                    DkgEnd {
+                        dkg_id: self.dkg_id,
+                        signer_id: self.signer_id,
+                        status: DkgStatus::Success,
+                    }
                 },
                 Err(dkg_error_map) => DkgEnd {
                     dkg_id: self.dkg_id,
@@ -802,20 +816,16 @@ pub mod test {
     fn dkg_ended_v2() {
         dkg_ended::<v2::Signer>();
     }
+    //use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
     fn dkg_ended<SignerType: SignerTrait>() {
-        let mut rng = OsRng;
+        /*tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(EnvFilter::from_default_env())
+        .init();*/
         let mut signer =
             Signer::<SignerType>::new(1, 1, 1, 0, vec![1], Default::default(), Default::default());
-        let polys = signer.signer.get_poly_commitments(&mut rng);
-        let dkg_public_shares = DkgPublicShares {
-            dkg_id: 1,
-            signer_id: 0,
-            comms: vec![(1, polys[0].clone())],
-        };
-        signer
-            .dkg_public_share(&dkg_public_shares)
-            .expect("failed to add public share");
+
         if let Ok(Message::DkgEnd(dkg_end)) = signer.dkg_ended() {
             match dkg_end.status {
                 DkgStatus::Failure(_) => {}

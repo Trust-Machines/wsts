@@ -3,6 +3,7 @@ use num_traits::{One, Zero};
 use polynomial::Polynomial;
 use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
+use tracing::info;
 
 use crate::{
     common::{Nonce, PolyCommitment, PublicNonce, Signature, SignatureShare},
@@ -145,6 +146,7 @@ impl Party {
         shares: &HashMap<u32, HashMap<u32, Scalar>>,
         comms: &HashMap<u32, PolyCommitment>,
     ) -> Result<(), DkgError> {
+        info!("compute_secret: {} {}", shares.len(), comms.len());
         let mut missing_shares = Vec::new();
         for key_id in &self.key_ids {
             if shares.get(key_id).is_none() {
@@ -154,6 +156,9 @@ impl Party {
         if !missing_shares.is_empty() {
             return Err(DkgError::MissingShares(missing_shares));
         }
+
+        self.private_keys.clear();
+        self.group_key = Point::zero();
 
         let mut bad_ids = Vec::new();
         for (i, comm) in comms.iter() {
@@ -168,8 +173,7 @@ impl Party {
 
         let mut not_enough_shares = Vec::new();
         for key_id in &self.key_ids {
-            let num_parties: usize = self.num_parties.try_into().unwrap();
-            if shares[key_id].len() != num_parties {
+            if shares[key_id].len() != comms.len() {
                 not_enough_shares.push(*key_id);
             }
         }
@@ -326,7 +330,7 @@ impl Aggregator {
 
         z += cx_sign * c * tweak;
 
-        if bad_party_sigs.is_empty() {
+        if bad_party_sigs.is_empty() && bad_party_keys.is_empty() {
             let sig = Signature { R, z };
             Ok((tweaked_public_key, sig))
         } else if !bad_party_keys.is_empty() {

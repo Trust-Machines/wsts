@@ -3,6 +3,7 @@ use num_traits::{One, Zero};
 use polynomial::Polynomial;
 use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
+use tracing::info;
 
 use crate::{
     common::{CheckPrivateShares, Nonce, PolyCommitment, PublicNonce, Signature, SignatureShare},
@@ -129,14 +130,24 @@ impl Party {
         self.private_key = Scalar::zero();
         self.group_key = Point::zero();
 
-        let bad_ids: Vec<u32> = polys
-            .keys()
-            .cloned()
-            .filter(|i| !polys[i].verify())
-            .collect();
+        let mut bad_ids = Vec::new();//: Vec<u32> = polys
+        for (i, comm) in polys.iter() {
+            if !comm.verify() {
+                bad_ids.push(*i);
+            }
+            self.group_key += comm.poly[0];
+        }
+        info!("compute_secret: {} {} {}", shares.len(), polys.len(), self.group_key);
         if !bad_ids.is_empty() {
             return Err(DkgError::BadIds(bad_ids));
         }
+
+        if shares.len() != polys.len() {
+            let mut not_enough_shares = Vec::new();
+            not_enough_shares.push(self.id);
+            return Err(DkgError::NotEnoughShares(not_enough_shares));
+        }
+
         // let's optimize for the case where all shares are good, and test them as a batch
 
         // building a vector of scalars and points from public poly evaluations and expected values takes too much memory
@@ -155,11 +166,8 @@ impl Party {
             return Err(DkgError::BadShares(bad_shares));
         }
 
-        for (i, s) in shares.iter() {
-            let comm = &polys[i];
-
+        for (_i, s) in shares.iter() {
             self.private_key += s;
-            self.group_key += comm.poly[0];
         }
         self.public_key = self.private_key * G;
 
