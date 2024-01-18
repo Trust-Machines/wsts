@@ -130,14 +130,19 @@ impl Party {
         self.private_key = Scalar::zero();
         self.group_key = Point::zero();
 
-        let mut bad_ids = Vec::new();//: Vec<u32> = polys
+        let mut bad_ids = Vec::new(); //: Vec<u32> = polys
         for (i, comm) in polys.iter() {
             if !comm.verify() {
                 bad_ids.push(*i);
             }
             self.group_key += comm.poly[0];
         }
-        info!("compute_secret: {} {} {}", shares.len(), polys.len(), self.group_key);
+        info!(
+            "compute_secret: {} {} {}",
+            shares.len(),
+            polys.len(),
+            self.group_key
+        );
         if !bad_ids.is_empty() {
             return Err(DkgError::BadIds(bad_ids));
         }
@@ -331,11 +336,6 @@ impl traits::Aggregator for Aggregator {
 
     /// Initialize the Aggregator polynomial
     fn init(&mut self, comms: &HashMap<u32, PolyCommitment>) -> Result<(), AggregatorError> {
-        let len = self.num_keys.try_into().unwrap();
-        if comms.len() != len {
-            return Err(AggregatorError::BadPolyCommitmentLen(len, comms.len()));
-        }
-
         let mut bad_poly_commitments = Vec::new();
         for (_id, comm) in comms {
             if !comm.verify() {

@@ -281,12 +281,10 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                 .signer
                 .compute_secrets(&self.decrypted_shares, &self.commitments)
             {
-                Ok(()) => {
-                    DkgEnd {
-                        dkg_id: self.dkg_id,
-                        signer_id: self.signer_id,
-                        status: DkgStatus::Success,
-                    }
+                Ok(()) => DkgEnd {
+                    dkg_id: self.dkg_id,
+                    signer_id: self.signer_id,
+                    status: DkgStatus::Success,
                 },
                 Err(dkg_error_map) => DkgEnd {
                     dkg_id: self.dkg_id,
