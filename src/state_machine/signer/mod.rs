@@ -334,7 +334,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                 // need public shares from active signers
                 for signer_id in &dkg_private_begin.signer_ids {
                     if !self.dkg_public_shares.contains_key(signer_id) {
-                        info!(
+                        debug!(
                             "can_dkg_end: false, missing public shares from signer {}",
                             signer_id
                         );
@@ -346,14 +346,14 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                     // need private shares from active signers
                     for signer_id in &dkg_end_begin.signer_ids {
                         if !self.dkg_private_shares.contains_key(signer_id) {
-                            info!(
+                            debug!(
                                 "can_dkg_end: false, missing private shares from signer {}",
                                 signer_id
                             );
                             return false;
                         }
                     }
-                    info!("can_dkg_end: true");
+                    debug!("can_dkg_end: true");
 
                     return true;
                 }

@@ -3,7 +3,6 @@ use num_traits::{One, Zero};
 use polynomial::Polynomial;
 use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
-use tracing::info;
 
 use crate::{
     common::{CheckPrivateShares, Nonce, PolyCommitment, PublicNonce, Signature, SignatureShare},
@@ -137,12 +136,6 @@ impl Party {
             }
             self.group_key += comm.poly[0];
         }
-        info!(
-            "compute_secret: {} {} {}",
-            shares.len(),
-            polys.len(),
-            self.group_key
-        );
         if !bad_ids.is_empty() {
             return Err(DkgError::BadIds(bad_ids));
         }

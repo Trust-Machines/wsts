@@ -732,7 +732,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 .flat_map(|(i, _)| self.signature_shares[i].clone())
                 .collect::<Vec<SignatureShare>>();
 
-            info!(
+            debug!(
                 "aggregator.sign({}, {:?}, {:?}, {})",
                 bs58::encode(&self.message).into_string(),
                 nonces.len(),

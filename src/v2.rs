@@ -3,7 +3,6 @@ use num_traits::{One, Zero};
 use polynomial::Polynomial;
 use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
-use tracing::info;
 
 use crate::{
     common::{Nonce, PolyCommitment, PublicNonce, Signature, SignatureShare},
@@ -146,7 +145,6 @@ impl Party {
         shares: &HashMap<u32, HashMap<u32, Scalar>>,
         comms: &HashMap<u32, PolyCommitment>,
     ) -> Result<(), DkgError> {
-        info!("compute_secret: {} {}", shares.len(), comms.len());
         let mut missing_shares = Vec::new();
         for key_id in &self.key_ids {
             if shares.get(key_id).is_none() {
