@@ -1545,7 +1545,7 @@ pub mod test {
             num_signers_to_remove -= (num_signers - signers.len() as u32) as usize;
         }
         for _ in 0..num_signers_to_remove {
-            //signers.pop();
+            signers.pop();
         }
 
         // Start a signing round
