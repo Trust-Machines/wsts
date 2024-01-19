@@ -1127,18 +1127,20 @@ pub mod test {
 
     #[test]
     fn all_signers_dkg_v1() {
-        all_signers_dkg::<v1::Aggregator, v1::Signer>();
+        all_signers_dkg::<v1::Aggregator, v1::Signer>(5, 2);
     }
 
     #[test]
     fn all_signers_dkg_v2() {
-        all_signers_dkg::<v2::Aggregator, v2::Signer>();
+        all_signers_dkg::<v2::Aggregator, v2::Signer>(5, 2);
     }
 
     fn all_signers_dkg<Aggregator: AggregatorTrait, SignerType: SignerTrait>(
+        num_signers: u32,
+        keys_per_signer: u32,
     ) -> (Vec<FireCoordinator<Aggregator>>, Vec<Signer<SignerType>>) {
         let (mut coordinators, mut signers) =
-            setup::<FireCoordinator<Aggregator>, SignerType>(5, 2);
+            setup::<FireCoordinator<Aggregator>, SignerType>(num_signers, keys_per_signer);
 
         // We have started a dkg round
         let message = coordinators.first_mut().unwrap().start_dkg_round().unwrap();
@@ -1501,7 +1503,7 @@ pub mod test {
     }
 
     fn all_signers_sign<Aggregator: AggregatorTrait, Signer: SignerTrait>() {
-        let (mut coordinators, mut signers) = all_signers_dkg::<Aggregator, Signer>();
+        let (mut coordinators, mut signers) = all_signers_dkg::<Aggregator, Signer>(5, 2);
 
         // We have started a signing round
         let msg = "It was many and many a year ago, in a kingdom by the sea"
@@ -1939,45 +1941,7 @@ pub mod test {
         let num_signers = 12;
         let keys_per_signer = 1;
         let (mut coordinators, mut signers) =
-            setup::<FireCoordinator<Aggregator>, Signer>(num_signers, keys_per_signer);
-
-        // We have started a dkg round
-        let message = coordinators.first_mut().unwrap().start_dkg_round().unwrap();
-        assert!(coordinators.first().unwrap().aggregate_public_key.is_none());
-        assert_eq!(coordinators.first().unwrap().state, State::DkgPublicGather);
-
-        // Send the DKG Begin message to all signers and gather responses by sharing with all other signers and coordinator
-        let (outbound_messages, operation_results) =
-            feedback_messages(&mut coordinators, &mut signers, &[message]);
-        assert!(operation_results.is_empty());
-        for coordinator in &coordinators {
-            assert_eq!(coordinator.state, State::DkgEndGather);
-        }
-
-        // Successfully got an Aggregate Public Key...
-        assert_eq!(outbound_messages.len(), 1);
-        match &outbound_messages[0].msg {
-            Message::DkgPrivateBegin(_) => {}
-            _ => {
-                panic!("Expected DkgPrivateBegin message");
-            }
-        }
-
-        // Send the DKG Private Begin message to all signers and share their responses with the coordinator and signers
-        let (outbound_messages, operation_results) =
-            feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
-        assert!(outbound_messages.is_empty());
-        assert_eq!(operation_results.len(), 1);
-        match operation_results[0] {
-            OperationResult::Dkg(point) => {
-                assert_ne!(point, Point::default());
-                for coordinator in &coordinators {
-                    assert_eq!(coordinator.aggregate_public_key, Some(point));
-                    assert_eq!(coordinator.state, State::Idle);
-                }
-            }
-            _ => panic!("Expected Dkg Operation result"),
-        }
+            all_signers_dkg::<Aggregator, Signer>(num_signers, keys_per_signer);
 
         // Start a signing round
         let orig_msg = "It was many and many a year ago, in a kingdom by the sea"
