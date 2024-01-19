@@ -22,6 +22,9 @@ pub enum DkgError {
     /// DKG public timeout
     #[error("DKG public timeout, waiting for {0:?}")]
     DkgPublicTimeout(Vec<u32>),
+    /// DKG private timeout
+    #[error("DKG private timeout, waiting for {0:?}")]
+    DkgPrivateTimeout(Vec<u32>),
     /// DKG end timeout
     #[error("DKG end timeout, waiting for {0:?}")]
     DkgEndTimeout(Vec<u32>),

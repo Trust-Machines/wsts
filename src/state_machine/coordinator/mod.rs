@@ -13,12 +13,16 @@ use std::time::Duration;
 pub enum State {
     /// The coordinator is idle
     Idle,
-    /// The coordinator is distributing public shares
+    /// The coordinator is asking signers to send public shares
     DkgPublicDistribute,
     /// The coordinator is gathering public shares
     DkgPublicGather,
-    /// The coordinator is distributing private shares
+    /// The coordinator is asking signers to send private shares
     DkgPrivateDistribute,
+    /// The coordinator is gathering private shares
+    DkgPrivateGather,
+    /// The coordinator is asking signers to compute shares and send end
+    DkgEndDistribute,
     /// The coordinator is gathering DKG End messages
     DkgEndGather,
     /// The coordinator is requesting nonces
@@ -87,6 +91,8 @@ pub struct Config {
     pub message_private_key: Scalar,
     /// timeout to gather DkgPublicShares messages
     pub dkg_public_timeout: Option<Duration>,
+    /// timeout to gather DkgPrivateShares messages
+    pub dkg_private_timeout: Option<Duration>,
     /// timeout to gather DkgEnd messages
     pub dkg_end_timeout: Option<Duration>,
     /// timeout to gather nonces
@@ -112,6 +118,7 @@ impl Config {
             dkg_threshold: num_keys,
             message_private_key,
             dkg_public_timeout: None,
+            dkg_private_timeout: None,
             dkg_end_timeout: None,
             nonce_timeout: None,
             sign_timeout: None,
@@ -128,6 +135,7 @@ impl Config {
         dkg_threshold: u32,
         message_private_key: Scalar,
         dkg_public_timeout: Option<Duration>,
+        dkg_private_timeout: Option<Duration>,
         dkg_end_timeout: Option<Duration>,
         nonce_timeout: Option<Duration>,
         sign_timeout: Option<Duration>,
@@ -140,6 +148,7 @@ impl Config {
             dkg_threshold,
             message_private_key,
             dkg_public_timeout,
+            dkg_private_timeout,
             dkg_end_timeout,
             nonce_timeout,
             sign_timeout,
@@ -239,6 +248,8 @@ pub mod test {
         assert!(coordinator
             .can_move_to(&State::DkgPrivateDistribute)
             .is_err());
+        assert!(coordinator.can_move_to(&State::DkgPrivateGather).is_err());
+        assert!(coordinator.can_move_to(&State::DkgEndDistribute).is_err());
         assert!(coordinator.can_move_to(&State::DkgEndGather).is_err());
         assert!(coordinator.can_move_to(&State::Idle).is_ok());
 
@@ -250,15 +261,21 @@ pub mod test {
         assert!(coordinator
             .can_move_to(&State::DkgPrivateDistribute)
             .is_err());
+        assert!(coordinator.can_move_to(&State::DkgPrivateGather).is_err());
+        assert!(coordinator.can_move_to(&State::DkgEndDistribute).is_err());
         assert!(coordinator.can_move_to(&State::DkgEndGather).is_err());
         assert!(coordinator.can_move_to(&State::Idle).is_ok());
 
         coordinator.move_to(State::DkgPublicGather).unwrap();
-        assert!(coordinator.can_move_to(&State::DkgPublicDistribute).is_ok());
+        assert!(coordinator
+            .can_move_to(&State::DkgPublicDistribute)
+            .is_err());
         assert!(coordinator.can_move_to(&State::DkgPublicGather).is_ok());
         assert!(coordinator
             .can_move_to(&State::DkgPrivateDistribute)
             .is_ok());
+        assert!(coordinator.can_move_to(&State::DkgPrivateGather).is_err());
+        assert!(coordinator.can_move_to(&State::DkgEndDistribute).is_err());
         assert!(coordinator.can_move_to(&State::DkgEndGather).is_err());
         assert!(coordinator.can_move_to(&State::Idle).is_ok());
 
@@ -270,11 +287,29 @@ pub mod test {
         assert!(coordinator
             .can_move_to(&State::DkgPrivateDistribute)
             .is_err());
-        assert!(coordinator.can_move_to(&State::DkgEndGather).is_ok());
+        assert!(coordinator.can_move_to(&State::DkgPrivateGather).is_ok());
+        assert!(coordinator.can_move_to(&State::DkgEndDistribute).is_err());
+        assert!(coordinator.can_move_to(&State::DkgEndGather).is_err());
         assert!(coordinator.can_move_to(&State::Idle).is_ok());
 
+        coordinator.move_to(State::DkgPrivateGather).unwrap();
+        assert!(coordinator
+            .can_move_to(&State::DkgPublicDistribute)
+            .is_err());
+        assert!(coordinator.can_move_to(&State::DkgPublicGather).is_err());
+        assert!(coordinator
+            .can_move_to(&State::DkgPrivateDistribute)
+            .is_err());
+        assert!(coordinator.can_move_to(&State::DkgPrivateGather).is_ok());
+        assert!(coordinator.can_move_to(&State::DkgEndDistribute).is_ok());
+        assert!(coordinator.can_move_to(&State::DkgEndGather).is_err());
+        assert!(coordinator.can_move_to(&State::Idle).is_ok());
+
+        coordinator.move_to(State::DkgEndDistribute).unwrap();
+        assert!(coordinator.can_move_to(&State::DkgEndGather).is_ok());
+
         coordinator.move_to(State::DkgEndGather).unwrap();
-        assert!(coordinator.can_move_to(&State::DkgPublicDistribute).is_ok());
+        assert!(coordinator.can_move_to(&State::Idle).is_ok());
     }
 
     pub fn start_dkg_round<Coordinator: CoordinatorTrait>() {
@@ -303,6 +338,7 @@ pub mod test {
             None,
             None,
             None,
+            None,
         )
     }
 
@@ -310,6 +346,7 @@ pub mod test {
         num_signers: u32,
         keys_per_signer: u32,
         dkg_public_timeout: Option<Duration>,
+        dkg_private_timeout: Option<Duration>,
         dkg_end_timeout: Option<Duration>,
         nonce_timeout: Option<Duration>,
         sign_timeout: Option<Duration>,
@@ -336,7 +373,7 @@ pub mod test {
                 (private_key, public_key)
             })
             .collect::<Vec<(Scalar, ecdsa::PublicKey)>>();
-        let mut key_id: u32 = 0;
+        let mut key_id: u32 = 1;
         let mut signer_ids_map = HashMap::new();
         let mut signer_key_ids = HashMap::new();
         let mut signer_key_ids_set = HashMap::new();
@@ -345,7 +382,7 @@ pub mod test {
             let mut key_ids = Vec::new();
             let mut key_ids_set = HashSet::new();
             for _ in 0..keys_per_signer {
-                key_ids_map.insert(key_id + 1, *public_key);
+                key_ids_map.insert(key_id, *public_key);
                 key_ids.push(key_id);
                 key_ids_set.insert(key_id);
                 key_id += 1;
@@ -384,6 +421,7 @@ pub mod test {
                     dkg_threshold,
                     private_key,
                     dkg_public_timeout,
+                    dkg_private_timeout,
                     dkg_end_timeout,
                     nonce_timeout,
                     sign_timeout,
@@ -455,10 +493,9 @@ pub mod test {
             feedback_messages(&mut coordinators, &mut signers, &[message]);
         assert!(operation_results.is_empty());
         for coordinator in coordinators.iter() {
-            assert_eq!(coordinator.get_state(), State::DkgEndGather);
+            assert_eq!(coordinator.get_state(), State::DkgPrivateGather);
         }
 
-        // Successfully got an Aggregate Public Key...
         assert_eq!(outbound_messages.len(), 1);
         match &outbound_messages[0].msg {
             Message::DkgPrivateBegin(_) => {}
@@ -469,7 +506,19 @@ pub mod test {
         // Send the DKG Private Begin message to all signers and share their responses with the coordinator and signers
         let (outbound_messages, operation_results) =
             feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
-        assert!(outbound_messages.is_empty());
+        assert_eq!(operation_results.len(), 0);
+        assert_eq!(outbound_messages.len(), 1);
+        match &outbound_messages[0].msg {
+            Message::DkgEndBegin(_) => {}
+            _ => {
+                panic!("Expected DkgEndBegin message");
+            }
+        }
+
+        // Send the DkgEndBegin message to all signers and share their responses with the coordinator and signers
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
+        assert_eq!(outbound_messages.len(), 0);
         assert_eq!(operation_results.len(), 1);
         match operation_results[0] {
             OperationResult::Dkg(point) => {

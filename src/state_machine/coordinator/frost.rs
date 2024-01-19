@@ -1,4 +1,4 @@
-use hashbrown::HashSet;
+use hashbrown::{HashMap, HashSet};
 use std::collections::BTreeMap;
 use tracing::{debug, info};
 
@@ -7,8 +7,8 @@ use crate::{
     compute,
     curve::point::Point,
     net::{
-        DkgBegin, DkgPrivateBegin, DkgPublicShares, Message, NonceRequest, NonceResponse, Packet,
-        Signable, SignatureShareRequest,
+        DkgBegin, DkgEndBegin, DkgPrivateBegin, DkgPrivateShares, DkgPublicShares, Message,
+        NonceRequest, NonceResponse, Packet, Signable, SignatureShareRequest,
     },
     state_machine::{
         coordinator::{Config, Coordinator as CoordinatorTrait, Error, State},
@@ -30,7 +30,8 @@ pub struct Coordinator<Aggregator: AggregatorTrait> {
     /// current signing iteration ID
     current_sign_iter_id: u64,
     dkg_public_shares: BTreeMap<u32, DkgPublicShares>,
-    party_polynomials: BTreeMap<u32, PolyCommitment>,
+    dkg_private_shares: BTreeMap<u32, DkgPrivateShares>,
+    party_polynomials: HashMap<u32, PolyCommitment>,
     public_nonces: BTreeMap<u32, NonceResponse>,
     signature_shares: BTreeMap<u32, Vec<SignatureShare>>,
     /// aggregate public key
@@ -92,6 +93,17 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 }
                 State::DkgPrivateDistribute => {
                     let packet = self.start_private_shares()?;
+                    return Ok((Some(packet), None));
+                }
+                State::DkgPrivateGather => {
+                    self.gather_private_shares(packet)?;
+                    if self.state == State::DkgPrivateGather {
+                        // We need more data
+                        return Ok((None, None));
+                    }
+                }
+                State::DkgEndDistribute => {
+                    let packet = self.start_dkg_end()?;
                     return Ok((Some(packet), None));
                 }
                 State::DkgEndGather => {
@@ -175,7 +187,9 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         };
 
         let dkg_begin_packet = Packet {
-            sig: dkg_begin.sign(&self.config.message_private_key).expect(""),
+            sig: dkg_begin
+                .sign(&self.config.message_private_key)
+                .expect("Failed to sign DkgBegin"),
             msg: Message::DkgBegin(dkg_begin),
         };
         self.move_to(State::DkgPublicGather)?;
@@ -191,14 +205,37 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         );
         let dkg_begin = DkgPrivateBegin {
             dkg_id: self.current_dkg_id,
-            key_ids: (0..self.config.num_keys).collect(),
+            key_ids: (1..self.config.num_keys + 1).collect(),
+            signer_ids: (0..self.config.num_signers).collect(),
         };
         let dkg_private_begin_msg = Packet {
-            sig: dkg_begin.sign(&self.config.message_private_key).expect(""),
+            sig: dkg_begin
+                .sign(&self.config.message_private_key)
+                .expect("Failed to sign DkgPrivateBegin"),
             msg: Message::DkgPrivateBegin(dkg_begin),
         };
-        self.move_to(State::DkgEndGather)?;
+        self.move_to(State::DkgPrivateGather)?;
         Ok(dkg_private_begin_msg)
+    }
+
+    /// Ask signers to compute secrets and send DKG end
+    pub fn start_dkg_end(&mut self) -> Result<Packet, Error> {
+        self.ids_to_await = (0..self.config.num_signers).collect();
+        info!(
+            "DKG Round {}: Starting DKG End Distribution",
+            self.current_dkg_id
+        );
+        let dkg_begin = DkgEndBegin {
+            dkg_id: self.current_dkg_id,
+            key_ids: (0..self.config.num_keys).collect(),
+            signer_ids: (0..self.config.num_signers).collect(),
+        };
+        let dkg_end_begin_msg = Packet {
+            sig: dkg_begin.sign(&self.config.message_private_key).expect(""),
+            msg: Message::DkgEndBegin(dkg_begin),
+        };
+        self.move_to(State::DkgEndGather)?;
+        Ok(dkg_end_begin_msg)
     }
 
     fn gather_public_shares(&mut self, packet: &Packet) -> Result<(), Error> {
@@ -225,15 +262,32 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         }
 
         if self.ids_to_await.is_empty() {
-            // Calculate the aggregate public key
-            let key = self
-                .party_polynomials
-                .iter()
-                .fold(Point::default(), |s, (_, comm)| s + comm.poly[0]);
-
-            info!("Aggregate public key: {}", key);
-            self.aggregate_public_key = Some(key);
             self.move_to(State::DkgPrivateDistribute)?;
+        }
+        Ok(())
+    }
+
+    fn gather_private_shares(&mut self, packet: &Packet) -> Result<(), Error> {
+        if let Message::DkgPrivateShares(dkg_private_shares) = &packet.msg {
+            if dkg_private_shares.dkg_id != self.current_dkg_id {
+                return Err(Error::BadDkgId(
+                    dkg_private_shares.dkg_id,
+                    self.current_dkg_id,
+                ));
+            }
+
+            self.ids_to_await.remove(&dkg_private_shares.signer_id);
+
+            self.dkg_private_shares
+                .insert(dkg_private_shares.signer_id, dkg_private_shares.clone());
+            info!(
+                "DKG round {} DkgPrivateShares from signer {}",
+                dkg_private_shares.dkg_id, dkg_private_shares.signer_id
+            );
+        }
+
+        if self.ids_to_await.is_empty() {
+            self.move_to(State::DkgEndDistribute)?;
         }
         Ok(())
     }
@@ -255,6 +309,14 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         }
 
         if self.ids_to_await.is_empty() {
+            // Calculate the aggregate public key
+            let key = self
+                .party_polynomials
+                .iter()
+                .fold(Point::default(), |s, (_, comm)| s + comm.poly[0]);
+
+            info!("Aggregate public key: {}", key);
+            self.aggregate_public_key = Some(key);
             self.move_to(State::Idle)?;
         }
         Ok(())
@@ -397,8 +459,6 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         }
         if self.ids_to_await.is_empty() {
             // Calculate the aggregate signature
-            let polys: Vec<PolyCommitment> = self.party_polynomials.values().cloned().collect();
-
             let nonce_responses = (0..self.config.num_signers)
                 .map(|i| self.public_nonces[&i].clone())
                 .collect::<Vec<NonceResponse>>();
@@ -426,7 +486,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 shares.len()
             );
 
-            self.aggregator.init(polys)?;
+            self.aggregator.init(&self.party_polynomials)?;
 
             if is_taproot {
                 let schnorr_proof = self.aggregator.sign_taproot(
@@ -481,16 +541,16 @@ impl<Aggregator: AggregatorTrait> StateMachine<State, Error> for Coordinator<Agg
         let prev_state = &self.state;
         let accepted = match state {
             State::Idle => true,
-            State::DkgPublicDistribute => {
-                prev_state == &State::Idle
-                    || prev_state == &State::DkgPublicGather
-                    || prev_state == &State::DkgEndGather
-            }
+            State::DkgPublicDistribute => prev_state == &State::Idle,
             State::DkgPublicGather => {
                 prev_state == &State::DkgPublicDistribute || prev_state == &State::DkgPublicGather
             }
             State::DkgPrivateDistribute => prev_state == &State::DkgPublicGather,
-            State::DkgEndGather => prev_state == &State::DkgPrivateDistribute,
+            State::DkgPrivateGather => {
+                prev_state == &State::DkgPrivateDistribute || prev_state == &State::DkgPrivateGather
+            }
+            State::DkgEndDistribute => prev_state == &State::DkgPrivateGather,
+            State::DkgEndGather => prev_state == &State::DkgEndDistribute,
             State::NonceRequest(_, _) => {
                 prev_state == &State::Idle || prev_state == &State::DkgEndGather
             }
@@ -528,6 +588,7 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
             current_sign_id: 0,
             current_sign_iter_id: 0,
             dkg_public_shares: Default::default(),
+            dkg_private_shares: Default::default(),
             party_polynomials: Default::default(),
             public_nonces: Default::default(),
             signature_shares: Default::default(),
@@ -707,7 +768,7 @@ pub mod test {
 
         let message = coordinator.start_private_shares().unwrap();
         assert!(matches!(message.msg, Message::DkgPrivateBegin(_)));
-        assert_eq!(coordinator.get_state(), State::DkgEndGather);
+        assert_eq!(coordinator.get_state(), State::DkgPrivateGather);
         assert_eq!(coordinator.current_dkg_id, 0);
     }
 

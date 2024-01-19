@@ -42,7 +42,7 @@ pub trait Signer: Clone {
     fn compute_secrets(
         &mut self,
         shares: &HashMap<u32, HashMap<u32, Scalar>>,
-        polys: &[PolyCommitment],
+        polys: &HashMap<u32, PolyCommitment>,
     ) -> Result<(), HashMap<u32, DkgError>>;
 
     /// Generate all nonces for this signer
@@ -82,7 +82,7 @@ pub trait Aggregator: Clone {
     fn new(num_keys: u32, threshold: u32) -> Self;
 
     /// Initialize an Aggregator with the passed polynomial commitments
-    fn init(&mut self, poly_comms: Vec<PolyCommitment>) -> Result<(), AggregatorError>;
+    fn init(&mut self, poly_comms: &HashMap<u32, PolyCommitment>) -> Result<(), AggregatorError>;
 
     /// Check and aggregate the signature shares into a `Signature`
     fn sign(
