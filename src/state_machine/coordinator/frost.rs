@@ -635,6 +635,11 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
         self.aggregate_public_key = aggregate_public_key;
     }
 
+    /// Retrieve the current message bytes being signed
+    fn get_message(&self) -> Vec<u8> {
+        self.message.clone()
+    }
+
     /// Retrive the current state
     fn get_state(&self) -> State {
         self.state.clone()

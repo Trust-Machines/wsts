@@ -379,6 +379,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             signer_id,
             key_ids,
             nonces,
+            message: nonce_request.message.clone(),
         };
 
         let response = Message::NonceResponse(response);

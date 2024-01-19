@@ -68,6 +68,9 @@ pub enum Error {
     /// No signature set
     #[error("No signature set")]
     MissingSignature,
+    /// Missing message response information for a signing round
+    #[error("Missing message nonce information")]
+    MissingMessageNonceInfo,
 }
 
 impl From<AggregatorError> for Error {
@@ -176,6 +179,9 @@ pub trait Coordinator: Clone {
 
     /// Set the aggregate public key
     fn set_aggregate_public_key(&mut self, aggregate_public_key: Option<Point>);
+
+    /// Retrieve the current message bytes being signed
+    fn get_message(&self) -> Vec<u8>;
 
     /// Retrive the current state
     fn get_state(&self) -> State;
@@ -435,22 +441,22 @@ pub mod test {
 
     /// Helper function for feeding messages back from the processor into the signing rounds and coordinators
     pub fn feedback_messages<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
-        coordinators: &mut Vec<Coordinator>,
-        signers: &mut Vec<Signer<SignerType>>,
+        coordinators: &mut [Coordinator],
+        signers: &mut [Signer<SignerType>],
         messages: &[Packet],
     ) -> (Vec<Packet>, Vec<OperationResult>) {
         let mut inbound_messages = vec![];
         let mut feedback_messages = vec![];
-        for signer in signers.as_mut_slice() {
+        for signer in signers.iter_mut() {
             let outbound_messages = signer.process_inbound_messages(messages).unwrap();
             feedback_messages.extend_from_slice(outbound_messages.as_slice());
             inbound_messages.extend(outbound_messages);
         }
-        for signer in signers.as_mut_slice() {
+        for signer in signers.iter_mut() {
             let outbound_messages = signer.process_inbound_messages(&feedback_messages).unwrap();
             inbound_messages.extend(outbound_messages);
         }
-        for coordinator in coordinators.as_mut_slice() {
+        for coordinator in coordinators.iter_mut() {
             // Process all coordinator messages, but don't bother with propogating these results
             let _ = coordinator.process_inbound_messages(messages).unwrap();
         }
