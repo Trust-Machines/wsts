@@ -31,9 +31,6 @@ pub enum DkgError {
     /// DKG crypto error
     #[error("DKG crypto error")]
     Crypto(#[from] DkgCryptoError),
-    /// Bad state for DKG
-    #[error("Bad state for DK")]
-    State,
 }
 
 /// Sign errors
