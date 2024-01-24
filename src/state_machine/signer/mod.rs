@@ -34,8 +34,6 @@ pub enum State {
     DkgPrivateGather,
     /// The signer is distributing signature shares
     SignGather,
-    /// The signer is finished signing
-    Signed,
 }
 
 #[derive(thiserror::Error, Clone, Debug)]
@@ -164,6 +162,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         self.dkg_private_shares.clear();
         self.dkg_private_begin_msg = None;
         self.dkg_end_begin_msg = None;
+        self.state = State::Idle;
     }
 
     ///
@@ -659,7 +658,6 @@ impl<SignerType: SignerTrait> StateMachine<State, Error> for Signer<SignerType> 
             State::DkgPrivateDistribute => prev_state == &State::DkgPublicGather,
             State::DkgPrivateGather => prev_state == &State::DkgPrivateDistribute,
             State::SignGather => prev_state == &State::Idle,
-            State::Signed => prev_state == &State::SignGather,
         };
         if accepted {
             debug!("state change from {:?} to {:?}", prev_state, state);
