@@ -164,6 +164,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         self.dkg_private_shares.clear();
         self.dkg_private_begin_msg = None;
         self.dkg_end_begin_msg = None;
+        self.state = State::Idle;
     }
 
     ///
