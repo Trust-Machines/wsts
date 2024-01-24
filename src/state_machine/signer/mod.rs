@@ -152,7 +152,8 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         }
     }
 
-    fn reset<T: RngCore + CryptoRng>(&mut self, dkg_id: u64, rng: &mut T) {
+    /// Reset internal state
+    pub fn reset<T: RngCore + CryptoRng>(&mut self, dkg_id: u64, rng: &mut T) {
         self.dkg_id = dkg_id;
         self.commitments.clear();
         self.decrypted_shares.clear();
@@ -169,8 +170,6 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
     pub fn process_inbound_messages(&mut self, messages: &[Packet]) -> Result<Vec<Packet>, Error> {
         let mut responses = vec![];
         for message in messages {
-            // TODO: this code was swiped from frost-signer. Expose it there so we don't have duplicate code
-            // See: https://github.com/stacks-network/stacks-blockchain/issues/3913
             let outbounds = self.process(&message.msg)?;
             for out in outbounds {
                 let msg = Packet {
