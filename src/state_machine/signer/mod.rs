@@ -16,7 +16,7 @@ use crate::{
     },
     state_machine::{PublicKeys, StateMachine},
     traits::Signer as SignerTrait,
-    util::{decrypt, encrypt, make_shared_secret},
+    util::{decrypt, encrypt, make_dkg_shared_secret},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -539,8 +539,11 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                     let compressed =
                         Compressed::from(self.public_keys.key_ids[dst_key_id].to_bytes());
                     let dst_public_key = Point::try_from(&compressed).unwrap();
-                    let shared_secret =
-                        make_shared_secret(&self.network_private_key, &dst_public_key);
+                    let shared_secret = make_dkg_shared_secret(
+                        &self.network_private_key,
+                        &dst_public_key,
+                        self.dkg_id,
+                    );
                     let encrypted_share =
                         encrypt(&shared_secret, &private_share.to_bytes(), &mut rng).unwrap();
 
@@ -603,7 +606,11 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         let compressed =
             Compressed::from(self.public_keys.signers[&dkg_private_shares.signer_id].to_bytes());
         let public_key = Point::try_from(&compressed).unwrap();
-        let shared_secret = make_shared_secret(&self.network_private_key, &public_key);
+        let shared_secret = make_dkg_shared_secret(
+            &self.network_private_key,
+            &public_key,
+            dkg_private_shares.dkg_id,
+        );
 
         for (src_id, shares) in &dkg_private_shares.shares {
             let mut decrypted_shares = HashMap::new();
