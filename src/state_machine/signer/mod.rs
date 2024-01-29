@@ -344,7 +344,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                                         &self.decryption_keys.get(&party_id)
                                     {
                                         bad_private_shares
-                                            .insert(*party_signer_id, shared_secret.clone());
+                                            .insert(*party_signer_id, *shared_secret);
                                     } else {
                                         warn!("DkgError::BadShares from party_id {} but no (signer_id, shared_secret) cached", party_id);
                                     }
