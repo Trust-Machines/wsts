@@ -6,7 +6,6 @@ use tracing::warn;
 use crate::{
     common::{MerkleRoot, PolyCommitment, PublicNonce, SignatureShare},
     curve::{ecdsa, scalar::Scalar},
-    errors::DkgError,
     state_machine::PublicKeys,
 };
 

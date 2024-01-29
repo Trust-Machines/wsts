@@ -289,7 +289,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                 } else {
                     missing_public_shares.insert(*signer_id);
                 }
-                if let Some(shares) = self.dkg_private_shares.get(signer_id) {
+                if let Some(_shares) = self.dkg_private_shares.get(signer_id) {
                     // TODO: consider move private shares checks here
                 } else {
                     missing_private_shares.insert(*signer_id);
@@ -336,6 +336,23 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                 Err(dkg_error_map) => {
                     // we've handled everything except BadShares and Point both of which should map to DkgFailure::BadPrivateShares
                     let mut bad_private_shares = HashMap::new();
+                    for (_signer_party_id, dkg_error) in dkg_error_map {
+                        match dkg_error {
+                            DkgError::BadShares(party_ids) => {
+                                for party_id in party_ids {
+                                    if let Some((party_signer_id, shared_secret)) =
+                                        &self.decryption_keys.get(&party_id)
+                                    {
+                                        bad_private_shares
+                                            .insert(*party_signer_id, shared_secret.clone());
+                                    } else {
+                                        warn!("DkgError::BadShares from party_id {} but no (signer_id, shared_secret) cached", party_id);
+                                    }
+                                }
+                            }
+                            _ => todo!(),
+                        }
+                    }
                     DkgEnd {
                         dkg_id: self.dkg_id,
                         signer_id: self.signer_id,
