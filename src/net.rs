@@ -1,4 +1,4 @@
-use hashbrown::HashMap;
+use hashbrown::{HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tracing::warn;
@@ -6,6 +6,7 @@ use tracing::warn;
 use crate::{
     common::{MerkleRoot, PolyCommitment, PublicNonce, SignatureShare},
     curve::{ecdsa, scalar::Scalar},
+    errors::DkgError,
     state_machine::PublicKeys,
 };
 
@@ -45,11 +46,26 @@ pub trait Signable {
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 /// Final DKG status after receiving public and private shares
+pub enum DkgFailure {
+    /// Signer was in the wrong internal state to complete DKG
+    BadState,
+    /// DKG public shares were missing from these signer_ids
+    MissingPublicShares(HashSet<u32>),
+    /// DKG public shares were bad from these signer_ids
+    BadPublicShares(HashSet<u32>),
+    /// DKG private shares were missing from these signer_ids
+    MissingPrivateShares(HashSet<u32>),
+    /// DKG private shares were bad from these signer_ids
+    BadPrivateShares(HashMap<u32, [u8; 32]>),
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+/// Final DKG status after receiving public and private shares
 pub enum DkgStatus {
     /// DKG completed successfully
     Success,
-    /// DKG failed with error
-    Failure(String),
+    /// DKG failed
+    Failure(DkgFailure),
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]

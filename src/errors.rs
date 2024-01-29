@@ -1,8 +1,10 @@
+use hashbrown::HashMap;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::curve::{point::Error as PointError, scalar::Scalar};
 
-#[derive(Error, Debug, Clone)]
+#[derive(Error, Debug, Clone, Serialize, Deserialize, PartialEq)]
 /// Errors which can happen during distributed key generation
 pub enum DkgError {
     #[error("missing shares from {0:?}")]
@@ -28,7 +30,7 @@ impl From<PointError> for DkgError {
     }
 }
 
-#[derive(Error, Debug, Clone)]
+#[derive(Error, Debug, Clone, Serialize, Deserialize, PartialEq)]
 /// Errors which can happen during signature aggregation
 pub enum AggregatorError {
     #[error("bad poly commitment length (expected {0} got {1})")]
