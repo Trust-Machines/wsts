@@ -544,7 +544,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                             _ => (),
                         }
                     }
-                    _ => {}
+                    DkgStatus::Success => (),
                 }
             }
             if malicious_signers.is_empty() {
