@@ -343,8 +343,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                                     if let Some((party_signer_id, shared_secret)) =
                                         &self.decryption_keys.get(&party_id)
                                     {
-                                        bad_private_shares
-                                            .insert(*party_signer_id, *shared_secret);
+                                        bad_private_shares.insert(*party_signer_id, *shared_secret);
                                     } else {
                                         warn!("DkgError::BadShares from party_id {} but no (signer_id, shared_secret) cached", party_id);
                                     }
