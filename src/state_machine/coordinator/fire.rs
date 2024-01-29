@@ -7,8 +7,9 @@ use crate::{
     compute,
     curve::point::Point,
     net::{
-        DkgBegin, DkgEnd, DkgEndBegin, DkgPrivateBegin, DkgPrivateShares, DkgPublicShares, Message,
-        NonceRequest, NonceResponse, Packet, Signable, SignatureShareRequest,
+        DkgBegin, DkgEnd, DkgEndBegin, DkgFailure, DkgPrivateBegin, DkgPrivateShares,
+        DkgPublicShares, DkgStatus, Message, NonceRequest, NonceResponse, Packet, Signable,
+        SignatureShareRequest,
     },
     state_machine::{
         coordinator::{Config, Coordinator as CoordinatorTrait, Error, State},
@@ -517,7 +518,41 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         }
 
         if self.dkg_wait_signer_ids.is_empty() {
-            self.dkg_end_gathered()?;
+            // if there are any errors, mark signers malicious and retry
+            let mut malicious_signers = HashSet::new();
+            for (signer_id, dkg_end) in &self.dkg_end_messages {
+                match &dkg_end.status {
+                    DkgStatus::Failure(dkg_failure) => {
+                        match dkg_failure {
+                            DkgFailure::BadState => {
+                                malicious_signers.insert(*signer_id);
+                            }
+                            DkgFailure::BadPublicShares(bad_shares) => {
+                                // bad_shares is a set of signer_ids
+                                for bad_signer_id in bad_shares {
+                                    // TODO: verify public shares are bad
+                                    malicious_signers.insert(*bad_signer_id);
+                                }
+                            }
+                            DkgFailure::BadPrivateShares(bad_shares) => {
+                                // bad_shares is a map of signer_id to shared secret
+                                for (bad_signer_id, _shared_secret) in bad_shares {
+                                    // TODO: verify private shares are bad
+                                    malicious_signers.insert(*bad_signer_id);
+                                }
+                            }
+                            _ => (),
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if malicious_signers.is_empty() {
+                self.dkg_end_gathered()?;
+            } else {
+                // see if we have sufficient non-malicious signers to continue
+                todo!();
+            }
         }
         Ok(())
     }
