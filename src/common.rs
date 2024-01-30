@@ -6,6 +6,7 @@ use hashbrown::HashMap;
 use num_traits::{One, Zero};
 use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use crate::{
     compute::challenge,
@@ -15,6 +16,7 @@ use crate::{
         traits::MultiMult,
     },
     schnorr::ID,
+    util::hash_to_scalar,
 };
 
 /// A merkle root is a 256 bit hash
@@ -144,6 +146,60 @@ impl Signature {
         let R = &self.z * G + (-c) * public_key;
 
         R == self.R
+    }
+}
+
+#[allow(non_snake_case)]
+/// A Chaum-Pedersen proof that (G, A=a*G, B=b*G, K=(a*b)*G) is a DH tuple
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct TupleProof {
+    /// R = r*G for a random scalar r
+    pub R: Point,
+    /// rB = r*B
+    pub rB: Point,
+    /// z = a*s where s = H(G,A,B,K,R)
+    pub z: Scalar,
+}
+
+impl TupleProof {
+    #[allow(non_snake_case)]
+    /// Construct a Chaum-Pedersen proof that (G, A, B, K) is a DH tuple
+    pub fn new<RNG: RngCore + CryptoRng>(
+        a: &Scalar,
+        A: &Point,
+        B: &Point,
+        K: &Point,
+        rng: &mut RNG,
+    ) -> Self {
+        let r = Scalar::random(rng);
+        let R = r * G;
+        let s = Self::challenge(A, B, K, &R);
+
+        Self {
+            R: r * G,
+            rB: r * B,
+            z: r + a * s,
+        }
+    }
+
+    #[allow(non_snake_case)]
+    /// Verify the proof using the transcript and public parameters
+    pub fn verify(&self, A: &Point, B: &Point, K: &Point) -> bool {
+        let s = Self::challenge(A, B, K, &self.R);
+
+        (self.z * G == self.R + s * A) && (self.z * B == self.rB + s * K)
+    }
+
+    fn challenge(A: &Point, B: &Point, K: &Point, R: &Point) -> Scalar {
+        let mut hasher = Sha256::new();
+
+        hasher.update("TUPLE_PROOF/".as_bytes());
+        hasher.update(A.compress().as_bytes());
+        hasher.update(B.compress().as_bytes());
+        hasher.update(K.compress().as_bytes());
+        hasher.update(R.compress().as_bytes());
+
+        hash_to_scalar(&mut hasher)
     }
 }
 

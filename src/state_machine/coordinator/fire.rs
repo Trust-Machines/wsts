@@ -67,6 +67,7 @@ pub struct Coordinator<Aggregator: AggregatorTrait> {
     dkg_end_start: Option<Instant>,
     sign_start: Option<Instant>,
     malicious_signer_ids: HashSet<u32>,
+    malicious_dkg_signer_ids: HashSet<u32>,
 }
 
 impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
@@ -226,14 +227,14 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                     if let Message::DkgBegin(dkg_begin) = &packet.msg {
                         // Set the current sign id to one before the current message to ensure
                         // that we start the next round at the correct id. (Do this rather
-                        // then overwriting afterwards to ensure logging is accurate)
+                        // than overwriting afterwards to ensure logging is accurate)
                         self.current_dkg_id = dkg_begin.dkg_id.wrapping_sub(1);
                         let packet = self.start_dkg_round()?;
                         return Ok((Some(packet), None));
                     } else if let Message::NonceRequest(nonce_request) = &packet.msg {
                         // Set the current sign id to one before the current message to ensure
                         // that we start the next round at the correct id. (Do this rather
-                        // then overwriting afterwards to ensure logging is accurate)
+                        // than overwriting afterwards to ensure logging is accurate)
                         self.current_sign_id = nonce_request.sign_id.wrapping_sub(1);
                         self.current_sign_iter_id = nonce_request.sign_iter_id.wrapping_sub(1);
                         let packet = self.start_signing_round(
@@ -953,6 +954,7 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
             nonce_start: None,
             sign_start: None,
             malicious_signer_ids: Default::default(),
+            malicious_dkg_signer_ids: Default::default(),
         }
     }
 

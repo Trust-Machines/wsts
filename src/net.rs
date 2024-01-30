@@ -4,8 +4,8 @@ use sha2::{Digest, Sha256};
 use tracing::warn;
 
 use crate::{
-    common::{MerkleRoot, PolyCommitment, PublicNonce, SignatureShare},
-    curve::{ecdsa, scalar::Scalar},
+    common::{MerkleRoot, PolyCommitment, PublicNonce, SignatureShare, TupleProof},
+    curve::{ecdsa, point::Point, scalar::Scalar},
     state_machine::PublicKeys,
 };
 
@@ -44,6 +44,15 @@ pub trait Signable {
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+///
+pub struct BadPrivateShare {
+    src_party_id: u32,
+    dst_key_id: u32,
+    shared_key: Point,
+    tuple_proof: TupleProof,
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 /// Final DKG status after receiving public and private shares
 pub enum DkgFailure {
     /// Signer was in the wrong internal state to complete DKG
@@ -55,7 +64,7 @@ pub enum DkgFailure {
     /// DKG private shares were missing from these signer_ids
     MissingPrivateShares(HashSet<u32>),
     /// DKG private shares were bad from these signer_ids
-    BadPrivateShares(HashMap<u32, [u8; 32]>),
+    BadPrivateShares(HashMap<u32, Vec<BadPrivateShare>>),
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]

@@ -38,8 +38,23 @@ pub fn make_dkg_shared_secret(private_key: &Scalar, public_key: &Point, dkg_id: 
     let mut hasher = Sha256::new();
     let shared_key = private_key * public_key;
 
-    hasher.update("DH_SHARED_SECRET_KEY/".as_bytes());
+    hasher.update("DH_DKG_SHARED_SECRET_KEY/".as_bytes());
     hasher.update(shared_key.compress().as_bytes());
+    hasher.update(dkg_id.to_be_bytes());
+
+    let hash = hasher.finalize();
+    let mut bytes = [0u8; 32];
+
+    bytes.clone_from_slice(hash.as_slice());
+    bytes
+}
+
+/// Create a shared secret from the Diffie-Hellman shared key and DKG round ID
+pub fn make_dkg_shared_secret_from_key(dh_shared_key: &Point, dkg_id: u64) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+
+    hasher.update("DH_DKG_SHARED_SECRET_KEY/".as_bytes());
+    hasher.update(dh_shared_key.compress().as_bytes());
     hasher.update(dkg_id.to_be_bytes());
 
     let hash = hasher.finalize();
