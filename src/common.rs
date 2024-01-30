@@ -204,25 +204,6 @@ impl TupleProof {
     }
 }
 
-/// Helper functions for tests
-pub mod test_helpers {
-    /// Generate a set of `k` vectors which divide `n` IDs evenly
-    pub fn gen_signer_ids(n: u32, k: u32) -> Vec<Vec<u32>> {
-        let mut ids = Vec::new();
-        let m = n / k;
-
-        for i in 0..k {
-            let mut pids = Vec::new();
-            for j in 0..m {
-                pids.push(i * m + j);
-            }
-            ids.push(pids);
-        }
-
-        ids
-    }
-}
-
 /// An implementation of p256k1's MultiMult trait that allows fast checking of DKG private shares
 /// We convert a set of checked polynomial evaluations into a single giant multimult
 /// These evaluations take the form of s * G == \Sum{k=0}{T+1}(a_k * x^k) where the a vals are the coeffs of the polys
@@ -306,5 +287,69 @@ impl MultiMult for CheckPrivateShares {
 
     fn get_size(&self) -> usize {
         ((self.t + 1) * self.n).try_into().unwrap()
+    }
+}
+
+/// Helper functions for tests
+pub mod test_helpers {
+    /// Generate a set of `k` vectors which divide `n` IDs evenly
+    pub fn gen_signer_ids(n: u32, k: u32) -> Vec<Vec<u32>> {
+        let mut ids = Vec::new();
+        let m = n / k;
+
+        for i in 0..k {
+            let mut pids = Vec::new();
+            for j in 0..m {
+                pids.push(i * m + j);
+            }
+            ids.push(pids);
+        }
+
+        ids
+    }
+}
+
+#[cfg(test)]
+pub mod test {
+    use rand_core::OsRng;
+
+    use crate::{
+        common::TupleProof,
+        curve::{point::Point, scalar::Scalar},
+    };
+
+    #[test]
+    #[allow(non_snake_case)]
+    fn tuple_proof() {
+        let mut rng = OsRng;
+        let a = Scalar::random(&mut rng);
+        let b = Scalar::random(&mut rng);
+        let c = Scalar::random(&mut rng);
+
+        let A = Point::from(a);
+        let B = Point::from(b);
+
+        let K = a * B;
+        let tuple_proof = TupleProof::new(&a, &A, &B, &K, &mut rng);
+        assert!(tuple_proof.verify(&A, &B, &K));
+        assert!(!tuple_proof.verify(&B, &A, &K));
+
+        let tuple_proof = TupleProof::new(&b, &A, &B, &K, &mut rng);
+        assert!(!tuple_proof.verify(&A, &B, &K));
+        assert!(!tuple_proof.verify(&B, &A, &K));
+
+        let K = b * A;
+        let tuple_proof = TupleProof::new(&b, &B, &A, &K, &mut rng);
+        assert!(tuple_proof.verify(&B, &A, &K));
+        assert!(!tuple_proof.verify(&A, &B, &K));
+
+        let tuple_proof = TupleProof::new(&a, &B, &A, &K, &mut rng);
+        assert!(!tuple_proof.verify(&B, &A, &K));
+        assert!(!tuple_proof.verify(&A, &B, &K));
+
+        let K = c * A;
+        let tuple_proof = TupleProof::new(&a, &A, &B, &K, &mut rng);
+        assert!(!tuple_proof.verify(&A, &B, &K));
+        assert!(!tuple_proof.verify(&B, &A, &K));
     }
 }
