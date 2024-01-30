@@ -537,13 +537,29 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 if let DkgStatus::Failure(dkg_failure) = &dkg_end.status {
                     match dkg_failure {
                         DkgFailure::BadState => {
+                            // signer should not be in a bad state so treat as malicious
                             self.malicious_dkg_signer_ids.insert(*signer_id);
                         }
                         DkgFailure::BadPublicShares(bad_shares) => {
                             // bad_shares is a set of signer_ids
                             for bad_signer_id in bad_shares {
-                                // TODO: verify public shares are bad
-                                self.malicious_dkg_signer_ids.insert(*bad_signer_id);
+                                // verify public shares are bad
+                                let dkg_public_shares = &self.dkg_public_shares[bad_signer_id];
+                                let mut bad_party_ids = Vec::new();
+                                for (party_id, comm) in &dkg_public_shares.comms {
+                                    if !comm.verify() {
+                                        bad_party_ids.push(party_id);
+                                    }
+                                }
+
+                                // if none of the shares were bad sender was malicious
+                                if bad_party_ids.is_empty() {
+                                    warn!("Signer {} reported BadPublicShares from {} but the shares were valid, mark {} as malicious", signer_id, bad_signer_id, signer_id);
+                                    self.malicious_dkg_signer_ids.insert(*signer_id);
+                                } else {
+                                    warn!("Signer {} reported BadPublicShares from {}, mark {} as malicious", signer_id, bad_signer_id, bad_signer_id);
+                                    self.malicious_dkg_signer_ids.insert(*bad_signer_id);
+                                }
                             }
                         }
                         DkgFailure::BadPrivateShares(bad_shares) => {
