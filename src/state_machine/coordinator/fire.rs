@@ -5,7 +5,7 @@ use tracing::{debug, error, info, warn};
 use crate::{
     common::{MerkleRoot, PolyCommitment, PublicNonce, Signature, SignatureShare},
     compute,
-    curve::point::Point,
+    curve::{point::Point, scalar::Scalar},
     net::{
         DkgBegin, DkgEnd, DkgEndBegin, DkgFailure, DkgPrivateBegin, DkgPrivateShares,
         DkgPublicShares, DkgStatus, Message, NonceRequest, NonceResponse, Packet, Signable,
@@ -17,6 +17,7 @@ use crate::{
     },
     taproot::SchnorrProof,
     traits::Aggregator as AggregatorTrait,
+    util::{decrypt, make_shared_secret_from_key},
 };
 
 #[derive(Clone, Default)]
@@ -569,7 +570,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                                 let signer_public_key = &self.config.signer_public_keys[signer_id];
                                 let bad_signer_public_key =
                                     &self.config.signer_public_keys[bad_signer_id];
-                                let /*mut*/ is_bad = false;
+                                let mut is_bad = false;
 
                                 if bad_private_share.tuple_proof.verify(
                                     signer_public_key,
@@ -577,6 +578,9 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                                     &bad_private_share.shared_key,
                                 ) {
                                     // verify at least one bad private share for one of signer_id's key_ids
+                                    let shared_secret =
+                                        make_shared_secret_from_key(&bad_private_share.shared_key);
+
                                     let dkg_public_shares = &self.dkg_public_shares[bad_signer_id]
                                         .comms
                                         .iter()
@@ -586,11 +590,28 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                                         &self.dkg_private_shares[bad_signer_id];
                                     let signer_key_ids = &self.config.signer_key_ids[signer_id];
 
-                                    for (src_party_id, _key_shares) in &dkg_private_shares.shares {
+                                    for (src_party_id, key_shares) in &dkg_private_shares.shares {
                                         let _poly = &dkg_public_shares[src_party_id];
-                                        for _key_id in signer_key_ids {
-                                            // TODO: try to decrypt share
-                                            // TODO: verify share is good by comparing to poly evaluated at key_id
+                                        for key_id in signer_key_ids {
+                                            let bytes = &key_shares[key_id];
+                                            match decrypt(&shared_secret, &bytes) {
+                                                Ok(plain) => match Scalar::try_from(&plain[..]) {
+                                                    Ok(_s) => {
+                                                        // TODO: verify share is good by comparing to poly evaluated at key_id
+                                                    }
+                                                    Err(e) => {
+                                                        warn!("Failed to parse Scalar for dkg private share from signer_id {} to key_id {}: {:?}", bad_signer_id, key_id, e);
+
+                                                        is_bad = true;
+                                                        break;
+                                                    }
+                                                },
+                                                Err(e) => {
+                                                    warn!("Failed to decrypt dkg private share from signer_id {} to key_id {}: {:?}", bad_signer_id, key_id, e);
+                                                    is_bad = true;
+                                                    break;
+                                                }
+                                            }
                                         }
                                     }
                                 }
