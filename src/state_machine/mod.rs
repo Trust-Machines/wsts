@@ -4,7 +4,8 @@ use thiserror::Error;
 use crate::{
     common::Signature,
     curve::{ecdsa, point::Point},
-    errors::{AggregatorError, DkgError as DkgCryptoError},
+    errors::AggregatorError,
+    net::DkgFailure,
     taproot::SchnorrProof,
 };
 
@@ -28,9 +29,9 @@ pub enum DkgError {
     /// DKG end timeout
     #[error("DKG end timeout, waiting for {0:?}")]
     DkgEndTimeout(Vec<u32>),
-    /// DKG crypto error
-    #[error("DKG crypto error")]
-    Crypto(#[from] DkgCryptoError),
+    /// DKG end failure
+    #[error("DKG end failure")]
+    DkgEndFailure(HashMap<u32, DkgFailure>),
 }
 
 /// Sign errors
