@@ -107,6 +107,8 @@ pub struct Config {
     pub sign_timeout: Option<Duration>,
     /// map of signer_id to controlled key_ids
     pub signer_key_ids: HashMap<u32, HashSet<u32>>,
+    /// ECDSA public keys as Point objects indexed by signer_id
+    pub signer_public_keys: HashMap<u32, Point>,
 }
 
 impl Config {
@@ -129,6 +131,7 @@ impl Config {
             nonce_timeout: None,
             sign_timeout: None,
             signer_key_ids: Default::default(),
+            signer_public_keys: Default::default(),
         }
     }
 
@@ -146,6 +149,7 @@ impl Config {
         nonce_timeout: Option<Duration>,
         sign_timeout: Option<Duration>,
         signer_key_ids: HashMap<u32, HashSet<u32>>,
+        signer_public_keys: HashMap<u32, Point>,
     ) -> Self {
         Config {
             num_signers,
@@ -159,6 +163,7 @@ impl Config {
             nonce_timeout,
             sign_timeout,
             signer_key_ids,
+            signer_public_keys,
         }
     }
 }
@@ -386,8 +391,9 @@ pub mod test {
         let mut signer_ids_map = HashMap::new();
         let mut signer_key_ids = HashMap::new();
         let mut signer_key_ids_set = HashMap::new();
+        let mut signer_public_keys = HashMap::new();
         let mut key_ids_map = HashMap::new();
-        for (i, (_private_key, public_key)) in key_pairs.iter().enumerate() {
+        for (i, (private_key, public_key)) in key_pairs.iter().enumerate() {
             let mut key_ids = Vec::new();
             let mut key_ids_set = HashSet::new();
             for _ in 0..keys_per_signer {
@@ -399,6 +405,7 @@ pub mod test {
             signer_ids_map.insert(i as u32, *public_key);
             signer_key_ids.insert(i as u32, key_ids);
             signer_key_ids_set.insert(i as u32, key_ids_set);
+            signer_public_keys.insert(i as u32, Point::from(private_key));
         }
         let public_keys = PublicKeys {
             signers: signer_ids_map,
@@ -435,6 +442,7 @@ pub mod test {
                     nonce_timeout,
                     sign_timeout,
                     signer_key_ids_set.clone(),
+                    signer_public_keys.clone(),
                 );
                 Coordinator::new(config)
             })
