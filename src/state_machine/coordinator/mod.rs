@@ -3,7 +3,7 @@ use crate::{
     curve::{point::Point, scalar::Scalar},
     errors::AggregatorError,
     net::Packet,
-    state_machine::OperationResult,
+    state_machine::{DkgFailure, OperationResult},
 };
 use hashbrown::{HashMap, HashSet};
 use std::time::Duration;
@@ -71,6 +71,9 @@ pub enum Error {
     /// Missing message response information for a signing round
     #[error("Missing message nonce information")]
     MissingMessageNonceInfo,
+    /// DKG failure from signers
+    #[error("DKG failure from signers")]
+    DkgFailure(HashMap<u32, DkgFailure>),
 }
 
 impl From<AggregatorError> for Error {
