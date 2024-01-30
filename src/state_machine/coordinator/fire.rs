@@ -532,6 +532,8 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             }
         }
 
+        let mut dkg_failures = HashMap::new();
+
         if self.dkg_wait_signer_ids.is_empty() {
             // if there are any errors, mark signers malicious and retry
             for (signer_id, dkg_end) in &self.dkg_end_messages {
@@ -557,15 +559,16 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                             }
                             _ => (),
                         }
+                        dkg_failures.insert(*signer_id, dkg_failure.clone());
                     }
                     DkgStatus::Success => (),
                 }
             }
-            if self.malicious_dkg_signer_ids.is_empty() {
+            if dkg_failures.is_empty() {
                 self.dkg_end_gathered()?;
             } else {
-                // see if we have sufficient non-malicious signers to continue
-                todo!();
+                // TODO: see if we have sufficient non-malicious signers to continue
+                return Err(Error::DkgFailure(dkg_failures));
             }
         }
         Ok(())
