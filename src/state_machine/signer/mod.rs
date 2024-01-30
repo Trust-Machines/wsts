@@ -341,7 +341,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                         match dkg_error {
                             DkgError::BadShares(party_ids) => {
                                 for party_id in party_ids {
-                                    if let Some((party_signer_id, shared_key)) =
+                                    if let Some((party_signer_id, _shared_key)) =
                                         &self.decryption_keys.get(&party_id)
                                     {
                                         bad_private_shares.insert(
@@ -721,6 +721,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         Ok(vec![])
     }
 
+    #[allow(non_snake_case)]
     fn make_bad_private_share(&self, signer_id: u32) -> BadPrivateShare {
         let mut rng = OsRng;
         let a = self.network_private_key;

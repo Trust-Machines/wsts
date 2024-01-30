@@ -190,6 +190,7 @@ impl TupleProof {
         (self.z * G == self.R + s * A) && (self.z * B == self.rB + s * K)
     }
 
+    #[allow(non_snake_case)]
     fn challenge(A: &Point, B: &Point, K: &Point, R: &Point) -> Scalar {
         let mut hasher = Sha256::new();
 
