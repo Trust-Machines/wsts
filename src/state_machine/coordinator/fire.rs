@@ -534,31 +534,28 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         if self.dkg_wait_signer_ids.is_empty() {
             // if there are any errors, mark signers malicious and retry
             for (signer_id, dkg_end) in &self.dkg_end_messages {
-                match &dkg_end.status {
-                    DkgStatus::Failure(dkg_failure) => {
-                        match dkg_failure {
-                            DkgFailure::BadState => {
-                                self.malicious_dkg_signer_ids.insert(*signer_id);
-                            }
-                            DkgFailure::BadPublicShares(bad_shares) => {
-                                // bad_shares is a set of signer_ids
-                                for bad_signer_id in bad_shares {
-                                    // TODO: verify public shares are bad
-                                    self.malicious_dkg_signer_ids.insert(*bad_signer_id);
-                                }
-                            }
-                            DkgFailure::BadPrivateShares(bad_shares) => {
-                                // bad_shares is a map of signer_id to shared secret
-                                for (bad_signer_id, _bad_private_share) in bad_shares {
-                                    // TODO: verify private shares are bad
-                                    self.malicious_dkg_signer_ids.insert(*bad_signer_id);
-                                }
-                            }
-                            _ => (),
+                if let DkgStatus::Failure(dkg_failure) = &dkg_end.status {
+                    match dkg_failure {
+                        DkgFailure::BadState => {
+                            self.malicious_dkg_signer_ids.insert(*signer_id);
                         }
-                        dkg_failures.insert(*signer_id, dkg_failure.clone());
+                        DkgFailure::BadPublicShares(bad_shares) => {
+                            // bad_shares is a set of signer_ids
+                            for bad_signer_id in bad_shares {
+                                // TODO: verify public shares are bad
+                                self.malicious_dkg_signer_ids.insert(*bad_signer_id);
+                            }
+                        }
+                        DkgFailure::BadPrivateShares(bad_shares) => {
+                            // bad_shares is a map of signer_id to shared secret
+                            for (bad_signer_id, _bad_private_share) in bad_shares {
+                                // TODO: verify private shares are bad
+                                self.malicious_dkg_signer_ids.insert(*bad_signer_id);
+                            }
+                        }
+                        _ => (),
                     }
-                    DkgStatus::Success => (),
+                    dkg_failures.insert(*signer_id, dkg_failure.clone());
                 }
             }
             if dkg_failures.is_empty() {
