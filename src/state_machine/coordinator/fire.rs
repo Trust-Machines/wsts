@@ -274,18 +274,15 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 }
                 State::DkgEndGather => {
                     if let Err(error) = self.gather_dkg_end(packet) {
-                        match error {
-                            Error::DkgFailure(dkg_failures) => {
-                                return Ok((
-                                    None,
-                                    Some(OperationResult::DkgError(DkgError::DkgEndFailure(
-                                        dkg_failures,
-                                    ))),
-                                ));
-                            }
-                            _ => {
-                                return Err(error);
-                            }
+                        if let Error::DkgFailure(dkg_failures) = error {
+                            return Ok((
+                                None,
+                                Some(OperationResult::DkgError(DkgError::DkgEndFailure(
+                                    dkg_failures,
+                                ))),
+                            ));
+                        } else {
+                            return Err(error);
                         }
                     }
                     if self.state == State::DkgEndGather {
