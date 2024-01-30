@@ -338,22 +338,21 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                     // we've handled everything except BadShares and Point both of which should map to DkgFailure::BadPrivateShares
                     let mut bad_private_shares = HashMap::new();
                     for (_my_party_id, dkg_error) in dkg_error_map {
-                        match dkg_error {
-                            DkgError::BadShares(party_ids) => {
-                                for party_id in party_ids {
-                                    if let Some((party_signer_id, _shared_key)) =
-                                        &self.decryption_keys.get(&party_id)
-                                    {
-                                        bad_private_shares.insert(
-                                            *party_signer_id,
-                                            self.make_bad_private_share(*party_signer_id),
-                                        );
-                                    } else {
-                                        warn!("DkgError::BadShares from party_id {} but no (signer_id, shared_secret) cached", party_id);
-                                    }
+                        if let DkgError::BadShares(party_ids) = dkg_error {
+                            for party_id in party_ids {
+                                if let Some((party_signer_id, _shared_key)) =
+                                    &self.decryption_keys.get(&party_id)
+                                {
+                                    bad_private_shares.insert(
+                                        *party_signer_id,
+                                        self.make_bad_private_share(*party_signer_id),
+                                    );
+                                } else {
+                                    warn!("DkgError::BadShares from party_id {} but no (signer_id, shared_secret) cached", party_id);
                                 }
                             }
-                            _ => todo!(),
+                        } else {
+                            todo!();
                         }
                     }
                     DkgEnd {
