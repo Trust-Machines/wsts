@@ -563,10 +563,38 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                             }
                         }
                         DkgFailure::BadPrivateShares(bad_shares) => {
-                            // bad_shares is a map of signer_id to shared secret
+                            // bad_shares is a map of signer_id to BadPrivateShare
                             for (bad_signer_id, _bad_private_share) in bad_shares {
-                                // TODO: verify private shares are bad
-                                self.malicious_dkg_signer_ids.insert(*bad_signer_id);
+                                // verify the DH tuple proof first so we know the shared key is correct
+                                // TODO: gets the public keys for signer_id and bad_signer_id
+                                // TODO: use the public keys to verify the DH tuple proof
+
+                                // verify at least one bad private share for one of signer_id's key_ids
+                                let dkg_public_shares = &self.dkg_public_shares[bad_signer_id]
+                                    .comms
+                                    .iter()
+                                    .cloned()
+                                    .collect::<HashMap<u32, PolyCommitment>>();
+                                let dkg_private_shares = &self.dkg_private_shares[bad_signer_id];
+                                let signer_key_ids = &self.config.signer_key_ids[signer_id];
+                                let /*mut*/ is_bad = false;
+
+                                for (src_party_id, _key_shares) in &dkg_private_shares.shares {
+                                    let _poly = &dkg_public_shares[src_party_id];
+                                    for _key_id in signer_key_ids {
+                                        // TODO: try to decrypt share
+                                        // TODO: verify share is good by comparing to poly evaluated at key_id
+                                    }
+                                }
+
+                                // if none of the shares were bad sender was malicious
+                                if !is_bad {
+                                    warn!("Signer {} reported BadPrivateShare from {} but the shares were valid, mark {} as malicious", signer_id, bad_signer_id, signer_id);
+                                    self.malicious_dkg_signer_ids.insert(*signer_id);
+                                } else {
+                                    warn!("Signer {} reported BadPrivateShare from {}, mark {} as malicious", signer_id, bad_signer_id, bad_signer_id);
+                                    self.malicious_dkg_signer_ids.insert(*bad_signer_id);
+                                }
                             }
                         }
                         _ => (),
