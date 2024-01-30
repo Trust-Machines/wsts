@@ -594,7 +594,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                                         let _poly = &dkg_public_shares[src_party_id];
                                         for key_id in signer_key_ids {
                                             let bytes = &key_shares[key_id];
-                                            match decrypt(&shared_secret, &bytes) {
+                                            match decrypt(&shared_secret, bytes) {
                                                 Ok(plain) => match Scalar::try_from(&plain[..]) {
                                                     Ok(_s) => {
                                                         // TODO: verify share is good by comparing to poly evaluated at key_id
