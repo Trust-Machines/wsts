@@ -46,10 +46,10 @@ pub trait Signable {
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 ///
 pub struct BadPrivateShare {
-    src_party_id: u32,
-    dst_key_id: u32,
-    shared_key: Point,
-    tuple_proof: TupleProof,
+    ///
+    pub shared_key: Point,
+    ///
+    pub tuple_proof: TupleProof,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
@@ -64,7 +64,7 @@ pub enum DkgFailure {
     /// DKG private shares were missing from these signer_ids
     MissingPrivateShares(HashSet<u32>),
     /// DKG private shares were bad from these signer_ids
-    BadPrivateShares(HashMap<u32, Vec<BadPrivateShare>>),
+    BadPrivateShares(HashMap<u32, BadPrivateShare>),
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]

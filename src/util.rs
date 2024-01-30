@@ -20,42 +20,17 @@ pub fn hash_to_scalar(hasher: &mut Sha256) -> Scalar {
 
 /// Do a Diffie-Hellman key exchange to create a shared secret from the passed private/public keys
 pub fn make_shared_secret(private_key: &Scalar, public_key: &Point) -> [u8; 32] {
-    let mut hasher = Sha256::new();
     let shared_key = private_key * public_key;
+
+    make_shared_secret_from_key(&shared_key)
+}
+
+/// Create a shared secret from the passed Diffie-Hellman shared key
+pub fn make_shared_secret_from_key(shared_key: &Point) -> [u8; 32] {
+    let mut hasher = Sha256::new();
 
     hasher.update("DH_SHARED_SECRET_KEY/".as_bytes());
     hasher.update(shared_key.compress().as_bytes());
-
-    let hash = hasher.finalize();
-    let mut bytes = [0u8; 32];
-
-    bytes.clone_from_slice(hash.as_slice());
-    bytes
-}
-
-/// Do a Diffie-Hellman key exchange to create a shared secret from the passed private/public keys and DKG round ID
-pub fn make_dkg_shared_secret(private_key: &Scalar, public_key: &Point, dkg_id: u64) -> [u8; 32] {
-    let mut hasher = Sha256::new();
-    let shared_key = private_key * public_key;
-
-    hasher.update("DH_DKG_SHARED_SECRET_KEY/".as_bytes());
-    hasher.update(shared_key.compress().as_bytes());
-    hasher.update(dkg_id.to_be_bytes());
-
-    let hash = hasher.finalize();
-    let mut bytes = [0u8; 32];
-
-    bytes.clone_from_slice(hash.as_slice());
-    bytes
-}
-
-/// Create a shared secret from the Diffie-Hellman shared key and DKG round ID
-pub fn make_dkg_shared_secret_from_key(dh_shared_key: &Point, dkg_id: u64) -> [u8; 32] {
-    let mut hasher = Sha256::new();
-
-    hasher.update("DH_DKG_SHARED_SECRET_KEY/".as_bytes());
-    hasher.update(dh_shared_key.compress().as_bytes());
-    hasher.update(dkg_id.to_be_bytes());
 
     let hash = hasher.finalize();
     let mut bytes = [0u8; 32];
@@ -116,24 +91,6 @@ mod test {
 
         let xy = make_shared_secret(&x, &Y);
         let yx = make_shared_secret(&y, &X);
-
-        assert_eq!(xy, yx);
-    }
-
-    #[test]
-    #[allow(non_snake_case)]
-    fn test_dkg_shared_secret() {
-        let mut rng = OsRng;
-
-        let id = 12345u64;
-        let x = Scalar::random(&mut rng);
-        let y = Scalar::random(&mut rng);
-
-        let X = Point::from(x);
-        let Y = Point::from(y);
-
-        let xy = make_dkg_shared_secret(&x, &Y, id);
-        let yx = make_dkg_shared_secret(&y, &X, id);
 
         assert_eq!(xy, yx);
     }

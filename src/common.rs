@@ -157,7 +157,7 @@ pub struct TupleProof {
     pub R: Point,
     /// rB = r*B
     pub rB: Point,
-    /// z = a*s where s = H(G,A,B,K,R)
+    /// z = r + a*s where s = H(G,A,B,K,R) as per Fiat-Shamir
     pub z: Scalar,
 }
 
@@ -176,7 +176,7 @@ impl TupleProof {
         let s = Self::challenge(A, B, K, &R);
 
         Self {
-            R: r * G,
+            R,
             rB: r * B,
             z: r + a * s,
         }
