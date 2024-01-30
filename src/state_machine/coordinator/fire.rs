@@ -5,7 +5,10 @@ use tracing::{debug, error, info, warn};
 use crate::{
     common::{MerkleRoot, PolyCommitment, PublicNonce, Signature, SignatureShare},
     compute,
-    curve::{point::Point, scalar::Scalar},
+    curve::{
+        point::{Point, G},
+        scalar::Scalar,
+    },
     net::{
         DkgBegin, DkgEnd, DkgEndBegin, DkgFailure, DkgPrivateBegin, DkgPrivateShares,
         DkgPublicShares, DkgStatus, Message, NonceRequest, NonceResponse, Packet, Signable,
@@ -591,13 +594,31 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                                     let signer_key_ids = &self.config.signer_key_ids[signer_id];
 
                                     for (src_party_id, key_shares) in &dkg_private_shares.shares {
-                                        let _poly = &dkg_public_shares[src_party_id];
+                                        let poly = &dkg_public_shares[src_party_id];
                                         for key_id in signer_key_ids {
                                             let bytes = &key_shares[key_id];
                                             match decrypt(&shared_secret, bytes) {
                                                 Ok(plain) => match Scalar::try_from(&plain[..]) {
-                                                    Ok(_s) => {
+                                                    Ok(private_share) => {
                                                         // TODO: verify share is good by comparing to poly evaluated at key_id
+                                                        let f_key_id = match compute::poly(
+                                                            &compute::id(*key_id),
+                                                            &poly.poly,
+                                                        ) {
+                                                            Ok(p) => p,
+                                                            Err(e) => {
+                                                                warn!("Failed to evaluate public poly from signer_id {} to key_id {}: {:?}", bad_signer_id, key_id, e);
+                                                                is_bad = true;
+                                                                break;
+                                                            }
+                                                        };
+
+                                                        if private_share * G != f_key_id {
+                                                            warn!("Invalid dkg private share from signer_id {} to key_id {}", bad_signer_id, key_id);
+
+                                                            is_bad = true;
+                                                            break;
+                                                        }
                                                     }
                                                     Err(e) => {
                                                         warn!("Failed to parse Scalar for dkg private share from signer_id {} to key_id {}: {:?}", bad_signer_id, key_id, e);
