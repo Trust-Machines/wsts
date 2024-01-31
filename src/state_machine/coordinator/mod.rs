@@ -456,6 +456,19 @@ pub mod test {
         signers: &mut [Signer<SignerType>],
         messages: &[Packet],
     ) -> (Vec<Packet>, Vec<OperationResult>) {
+        mutate_messages(coordinators, signers, messages, |_signer, msgs| msgs)
+    }
+    /// Helper function for feeding mutated messages back from the processor into the signing rounds and coordinators
+    pub fn mutate_messages<
+        Coordinator: CoordinatorTrait,
+        SignerType: SignerTrait,
+        F: FnOnce(&Signer<SignerType>, Vec<Message>) -> Vec<Message>,
+    >(
+        coordinators: &mut [Coordinator],
+        signers: &mut [Signer<SignerType>],
+        messages: &[Packet],
+        signer_mutator: F,
+    ) -> (Vec<Packet>, Vec<OperationResult>) {
         let mut inbound_messages = vec![];
         let mut feedback_messages = vec![];
         for signer in signers.iter_mut() {
