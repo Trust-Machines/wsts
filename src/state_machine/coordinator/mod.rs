@@ -456,13 +456,13 @@ pub mod test {
         signers: &mut [Signer<SignerType>],
         messages: &[Packet],
     ) -> (Vec<Packet>, Vec<OperationResult>) {
-        mutate_messages(coordinators, signers, messages, |_signer, msgs| msgs)
+        feedback_mutated_messages(coordinators, signers, messages, |_signer, msgs| msgs)
     }
     /// Helper function for feeding mutated messages back from the processor into the signing rounds and coordinators
-    pub fn mutate_messages<
+    pub fn feedback_mutated_messages<
         Coordinator: CoordinatorTrait,
         SignerType: SignerTrait,
-        F: FnOnce(&Signer<SignerType>, Vec<Message>) -> Vec<Message>,
+        F: Fn(&Signer<SignerType>, Vec<Packet>) -> Vec<Packet>,
     >(
         coordinators: &mut [Coordinator],
         signers: &mut [Signer<SignerType>],
@@ -473,6 +473,7 @@ pub mod test {
         let mut feedback_messages = vec![];
         for signer in signers.iter_mut() {
             let outbound_messages = signer.process_inbound_messages(messages).unwrap();
+            let outbound_messages = signer_mutator(signer, outbound_messages);
             feedback_messages.extend_from_slice(outbound_messages.as_slice());
             inbound_messages.extend(outbound_messages);
         }
