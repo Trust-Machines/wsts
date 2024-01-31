@@ -599,9 +599,8 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                                             let bytes = &key_shares[key_id];
                                             match decrypt(&shared_secret, bytes) {
                                                 Ok(plain) => match Scalar::try_from(&plain[..]) {
-                                                    Ok(private_share) => {
-                                                        // TODO: verify share is good by comparing to poly evaluated at key_id
-                                                        let f_key_id = match compute::poly(
+                                                    Ok(private_eval) => {
+                                                        let poly_eval = match compute::poly(
                                                             &compute::id(*key_id),
                                                             &poly.poly,
                                                         ) {
@@ -613,7 +612,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                                                             }
                                                         };
 
-                                                        if private_share * G != f_key_id {
+                                                        if private_eval * G != poly_eval {
                                                             warn!("Invalid dkg private share from signer_id {} to key_id {}", bad_signer_id, key_id);
 
                                                             is_bad = true;
