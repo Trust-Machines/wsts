@@ -1159,13 +1159,14 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
 pub mod test {
     use crate::{
         curve::{point::Point, scalar::Scalar},
-        net::Message,
+        net::{DkgPrivateShares, Message, Packet},
         state_machine::{
             coordinator::{
                 fire::Coordinator as FireCoordinator,
                 test::{
-                    coordinator_state_machine, feedback_messages, new_coordinator,
-                    process_inbound_messages, setup, setup_with_timeouts, start_dkg_round,
+                    coordinator_state_machine, feedback_messages, feedback_mutated_messages,
+                    new_coordinator, process_inbound_messages, setup, setup_with_timeouts,
+                    start_dkg_round,
                 },
                 Config, Coordinator as CoordinatorTrait, State,
             },
@@ -1175,6 +1176,7 @@ pub mod test {
         traits::{Aggregator as AggregatorTrait, Signer as SignerTrait},
         v1, v2,
     };
+    use hashbrown::HashMap;
     use rand_core::OsRng;
     use std::{thread, time::Duration};
 
@@ -1630,6 +1632,111 @@ pub mod test {
             },
             _ => panic!("Expected OperationResult::DkgError"),
         }
+    }
+
+    #[test]
+    fn malicious_signers_dkg_v1() {
+        malicious_signers_dkg::<v1::Aggregator, v1::Signer>(5, 2);
+    }
+
+    #[test]
+    fn malicious_signers_dkg_v2() {
+        malicious_signers_dkg::<v2::Aggregator, v2::Signer>(5, 2);
+    }
+
+    fn malicious_signers_dkg<Aggregator: AggregatorTrait, SignerType: SignerTrait>(
+        num_signers: u32,
+        keys_per_signer: u32,
+    ) -> (Vec<FireCoordinator<Aggregator>>, Vec<Signer<SignerType>>) {
+        let (mut coordinators, mut signers) =
+            setup::<FireCoordinator<Aggregator>, SignerType>(num_signers, keys_per_signer);
+
+        // We have started a dkg round
+        let message = coordinators.first_mut().unwrap().start_dkg_round().unwrap();
+        assert!(coordinators.first().unwrap().aggregate_public_key.is_none());
+        assert_eq!(coordinators.first().unwrap().state, State::DkgPublicGather);
+
+        // Send the DKG Begin message to all signers and gather responses by sharing with all other signers and coordinators
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &[message]);
+        assert!(operation_results.is_empty());
+        for coordinator in &coordinators {
+            assert_eq!(coordinator.state, State::DkgPrivateGather);
+        }
+
+        assert_eq!(outbound_messages.len(), 1);
+        match &outbound_messages[0].msg {
+            Message::DkgPrivateBegin(_) => {}
+            _ => {
+                panic!("Expected DkgPrivateBegin message");
+            }
+        }
+        // Send the DKG Private Begin message to all signers and share their responses with the coordinators and signers, but mutate one signer's DkgPrivateShares so it is marked malicious
+        let (outbound_messages, operation_results) = feedback_mutated_messages(
+            &mut coordinators,
+            &mut signers,
+            &outbound_messages,
+            |signer, msgs| {
+                if signer.signer_id == 0 {
+                    msgs.iter()
+                        .map(|packet| {
+                            if let Message::DkgPrivateShares(shares) = &packet.msg {
+                                // mutate one of the shares
+                                let sshares: Vec<(u32, HashMap<u32, Vec<u8>>)> = shares
+                                    .shares
+                                    .iter()
+                                    .map(|(src_party_id, share_map)| {
+                                        (
+                                            *src_party_id,
+                                            share_map
+                                                .iter()
+                                                .map(|(dst_key_id, bytes)| {
+                                                    let mut bytes = bytes.clone();
+                                                    bytes.insert(0, 234);
+                                                    (*dst_key_id, bytes)
+                                                })
+                                                .collect(),
+                                        )
+                                    })
+                                    .collect();
+
+                                Packet {
+                                    msg: Message::DkgPrivateShares(DkgPrivateShares {
+                                        dkg_id: shares.dkg_id,
+                                        signer_id: shares.signer_id,
+                                        shares: sshares.clone(),
+                                    }),
+                                    sig: vec![],
+                                }
+                            } else {
+                                packet.clone()
+                            }
+                        })
+                        .collect()
+                } else {
+                    msgs
+                }
+            },
+        );
+        assert_eq!(operation_results.len(), 0);
+        assert_eq!(outbound_messages.len(), 1);
+        match &outbound_messages[0].msg {
+            Message::DkgEndBegin(_) => {}
+            _ => {
+                panic!("Expected DkgEndBegin message");
+            }
+        }
+
+        // Send the DkgEndBegin message to all signers and share their responses with the coordinators and signers
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
+        assert_eq!(outbound_messages.len(), 0);
+        assert_eq!(operation_results.len(), 1);
+        match &operation_results[0] {
+            OperationResult::DkgError(_dkg_error) => {}
+            _ => panic!("Expected OperationResult::DkgError"),
+        }
+        (coordinators, signers)
     }
 
     #[test]
