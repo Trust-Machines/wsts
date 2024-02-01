@@ -1159,7 +1159,7 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
 pub mod test {
     use crate::{
         curve::{point::Point, scalar::Scalar},
-        net::{DkgPrivateShares, Message, Packet},
+        net::{DkgFailure, DkgPrivateShares, Message, Packet},
         state_machine::{
             coordinator::{
                 fire::Coordinator as FireCoordinator,
@@ -1733,7 +1733,24 @@ pub mod test {
         assert_eq!(outbound_messages.len(), 0);
         assert_eq!(operation_results.len(), 1);
         match &operation_results[0] {
-            OperationResult::DkgError(_dkg_error) => {}
+            OperationResult::DkgError(dkg_error) => {
+                // we mutated the private shares themselves, so we should see a BadPrivateShares from signer_id 0
+                match dkg_error {
+                    DkgError::DkgEndFailure(failure_map) => {
+                        for (_signer_id, dkg_failure) in failure_map {
+                            match dkg_failure {
+                                DkgFailure::BadPrivateShares(bad_share_map) => {
+                                    for (bad_signer_id, _bad_private_share) in bad_share_map {
+                                        assert_eq!(*bad_signer_id, 0u32);
+                                    }
+                                }
+                                _ => panic!("Expected DkgFailure::BadPrivateShares"),
+                            }
+                        }
+                    }
+                    _ => panic!("Expected DkgError::DkgEndFailure"),
+                }
+            }
             _ => panic!("Expected OperationResult::DkgError"),
         }
         (coordinators, signers)
