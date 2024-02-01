@@ -299,7 +299,7 @@ pub mod test_helpers {
 
         for i in 0..k {
             let mut pids = Vec::new();
-            for j in 0..m {
+            for j in 1..m + 1 {
                 pids.push(i * m + j);
             }
             ids.push(pids);
