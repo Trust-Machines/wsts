@@ -18,10 +18,16 @@ pub fn hash_to_scalar(hasher: &mut Sha256) -> Scalar {
     Scalar::from(hash_bytes)
 }
 
-/// Do a Diffie-Hellman key exchange to create a shared secret from the passed private and public keys
+/// Do a Diffie-Hellman key exchange to create a shared secret from the passed private/public keys
 pub fn make_shared_secret(private_key: &Scalar, public_key: &Point) -> [u8; 32] {
-    let mut hasher = Sha256::new();
     let shared_key = private_key * public_key;
+
+    make_shared_secret_from_key(&shared_key)
+}
+
+/// Create a shared secret from the passed Diffie-Hellman shared key
+pub fn make_shared_secret_from_key(shared_key: &Point) -> [u8; 32] {
+    let mut hasher = Sha256::new();
 
     hasher.update("DH_SHARED_SECRET_KEY/".as_bytes());
     hasher.update(shared_key.compress().as_bytes());

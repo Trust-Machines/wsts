@@ -4,15 +4,16 @@ use std::collections::BTreeMap;
 use tracing::{debug, info, trace, warn};
 
 use crate::{
-    common::{PolyCommitment, PublicNonce},
+    common::{PolyCommitment, PublicNonce, TupleProof},
     curve::{
-        point::{Compressed, Point},
+        point::{Compressed, Point, G},
         scalar::Scalar,
     },
+    errors::DkgError,
     net::{
-        DkgBegin, DkgEnd, DkgEndBegin, DkgPrivateBegin, DkgPrivateShares, DkgPublicShares,
-        DkgStatus, Message, NonceRequest, NonceResponse, Packet, Signable, SignatureShareRequest,
-        SignatureShareResponse,
+        BadPrivateShare, DkgBegin, DkgEnd, DkgEndBegin, DkgFailure, DkgPrivateBegin,
+        DkgPrivateShares, DkgPublicShares, DkgStatus, Message, NonceRequest, NonceResponse, Packet,
+        Signable, SignatureShareRequest, SignatureShareResponse,
     },
     state_machine::{PublicKeys, StateMachine},
     traits::Signer as SignerTrait,
@@ -80,12 +81,18 @@ pub struct Signer<SignerType: SignerTrait> {
     pub signer_id: u32,
     /// the current state
     pub state: State,
-    /// map of party_id to the polynomial commitment for that party
+    /// map of polynomial commitments for each party
+    /// party_id => PolyCommitment
     pub commitments: HashMap<u32, PolyCommitment>,
     /// map of decrypted DKG private shares
+    /// src_party_id => (dst_key_id => private_share)
     pub decrypted_shares: HashMap<u32, HashMap<u32, Scalar>>,
+    /// shared secrets used to decrypt private shares
+    /// src_party_id => (signer_id, dh shared key)
+    pub decryption_keys: HashMap<u32, (u32, Point)>,
     /// invalid private shares
-    pub invalid_private_shares: Vec<u32>,
+    /// signer_id => {shared_key, tuple_proof}
+    pub invalid_private_shares: HashMap<u32, BadPrivateShare>,
     /// public nonces for this signing round
     pub public_nonces: Vec<PublicNonce>,
     /// the private key used to sign messages sent over the network
@@ -138,8 +145,9 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             signer_id,
             state: State::Idle,
             commitments: Default::default(),
-            decrypted_shares: HashMap::new(),
-            invalid_private_shares: Vec::new(),
+            decrypted_shares: Default::default(),
+            decryption_keys: Default::default(),
+            invalid_private_shares: Default::default(),
             public_nonces: vec![],
             network_private_key,
             public_keys,
@@ -155,6 +163,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         self.dkg_id = dkg_id;
         self.commitments.clear();
         self.decrypted_shares.clear();
+        self.decryption_keys.clear();
         self.invalid_private_shares.clear();
         self.public_nonces.clear();
         self.signer.reset_polys(rng);
@@ -260,18 +269,59 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             return Ok(Message::DkgEnd(DkgEnd {
                 dkg_id: self.dkg_id,
                 signer_id: self.signer_id,
-                status: DkgStatus::Failure("Bad state".to_string()),
+                status: DkgStatus::Failure(DkgFailure::BadState),
             }));
         }
 
         // only use the public shares from the DkgEndBegin signers
+        let mut missing_public_shares = HashSet::new();
+        let mut missing_private_shares = HashSet::new();
+        let mut bad_public_shares = HashSet::new();
         if let Some(dkg_end_begin) = &self.dkg_end_begin_msg {
             for signer_id in &dkg_end_begin.signer_ids {
-                let shares = &self.dkg_public_shares[signer_id];
-                for (party_id, comm) in shares.comms.iter() {
-                    self.commitments.insert(*party_id, comm.clone());
+                if let Some(shares) = self.dkg_public_shares.get(signer_id) {
+                    for (party_id, comm) in shares.comms.iter() {
+                        if !comm.verify() {
+                            bad_public_shares.insert(*signer_id);
+                        } else {
+                            self.commitments.insert(*party_id, comm.clone());
+                        }
+                    }
+                } else {
+                    missing_public_shares.insert(*signer_id);
+                }
+                if let Some(_shares) = self.dkg_private_shares.get(signer_id) {
+                    // TODO: consider move private shares checks here
+                } else {
+                    missing_private_shares.insert(*signer_id);
                 }
             }
+        }
+
+        if !missing_public_shares.is_empty() {
+            return Ok(Message::DkgEnd(DkgEnd {
+                dkg_id: self.dkg_id,
+                signer_id: self.signer_id,
+                status: DkgStatus::Failure(DkgFailure::MissingPublicShares(missing_public_shares)),
+            }));
+        }
+
+        if !bad_public_shares.is_empty() {
+            return Ok(Message::DkgEnd(DkgEnd {
+                dkg_id: self.dkg_id,
+                signer_id: self.signer_id,
+                status: DkgStatus::Failure(DkgFailure::BadPublicShares(bad_public_shares)),
+            }));
+        }
+
+        if !missing_private_shares.is_empty() {
+            return Ok(Message::DkgEnd(DkgEnd {
+                dkg_id: self.dkg_id,
+                signer_id: self.signer_id,
+                status: DkgStatus::Failure(DkgFailure::MissingPrivateShares(
+                    missing_private_shares,
+                )),
+            }));
         }
 
         let dkg_end = if self.invalid_private_shares.is_empty() {
@@ -284,17 +334,43 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                     signer_id: self.signer_id,
                     status: DkgStatus::Success,
                 },
-                Err(dkg_error_map) => DkgEnd {
-                    dkg_id: self.dkg_id,
-                    signer_id: self.signer_id,
-                    status: DkgStatus::Failure(format!("{:?}", dkg_error_map)),
-                },
+                Err(dkg_error_map) => {
+                    // we've handled everything except BadShares and Point both of which should map to DkgFailure::BadPrivateShares
+                    let mut bad_private_shares = HashMap::new();
+                    for (_my_party_id, dkg_error) in dkg_error_map {
+                        if let DkgError::BadShares(party_ids) = dkg_error {
+                            for party_id in party_ids {
+                                if let Some((party_signer_id, _shared_key)) =
+                                    &self.decryption_keys.get(&party_id)
+                                {
+                                    bad_private_shares.insert(
+                                        *party_signer_id,
+                                        self.make_bad_private_share(*party_signer_id),
+                                    );
+                                } else {
+                                    warn!("DkgError::BadShares from party_id {} but no (signer_id, shared_secret) cached", party_id);
+                                }
+                            }
+                        } else {
+                            todo!();
+                        }
+                    }
+                    DkgEnd {
+                        dkg_id: self.dkg_id,
+                        signer_id: self.signer_id,
+                        status: DkgStatus::Failure(DkgFailure::BadPrivateShares(
+                            bad_private_shares,
+                        )),
+                    }
+                }
             }
         } else {
             DkgEnd {
                 dkg_id: self.dkg_id,
                 signer_id: self.signer_id,
-                status: DkgStatus::Failure(format!("{:?}", self.invalid_private_shares)),
+                status: DkgStatus::Failure(DkgFailure::BadPrivateShares(
+                    self.invalid_private_shares.clone(),
+                )),
             }
         };
 
@@ -595,14 +671,15 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         dkg_private_shares: &DkgPrivateShares,
     ) -> Result<Vec<Message>, Error> {
         // go ahead and decrypt here, since we know the signer_id and hence the pubkey of the sender
+        let src_signer_id = dkg_private_shares.signer_id;
         self.dkg_private_shares
-            .insert(dkg_private_shares.signer_id, dkg_private_shares.clone());
+            .insert(src_signer_id, dkg_private_shares.clone());
 
         // make a HashSet of our key_ids so we can quickly query them
         let key_ids: HashSet<u32> = self.signer.get_key_ids().into_iter().collect();
-        let compressed =
-            Compressed::from(self.public_keys.signers[&dkg_private_shares.signer_id].to_bytes());
+        let compressed = Compressed::from(self.public_keys.signers[&src_signer_id].to_bytes());
         let public_key = Point::try_from(&compressed).unwrap();
+        let shared_key = self.network_private_key * public_key;
         let shared_secret = make_shared_secret(&self.network_private_key, &public_key);
 
         for (src_id, shares) in &dkg_private_shares.shares {
@@ -616,17 +693,23 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                             }
                             Err(e) => {
                                 warn!("Failed to parse Scalar for dkg private share from src_id {} to dst_id {}: {:?}", src_id, dst_key_id, e);
-                                self.invalid_private_shares.push(*src_id);
+                                self.invalid_private_shares.insert(
+                                    src_signer_id,
+                                    self.make_bad_private_share(src_signer_id),
+                                );
                             }
                         },
                         Err(e) => {
                             warn!("Failed to decrypt dkg private share from src_id {} to dst_id {}: {:?}", src_id, dst_key_id, e);
-                            self.invalid_private_shares.push(*src_id);
+                            self.invalid_private_shares
+                                .insert(src_signer_id, self.make_bad_private_share(src_signer_id));
                         }
                     }
                 }
             }
             self.decrypted_shares.insert(*src_id, decrypted_shares);
+            self.decryption_keys
+                .insert(*src_id, (dkg_private_shares.signer_id, shared_key));
         }
         debug!(
             "received DkgPrivateShares from signer {} {}/{}",
@@ -635,6 +718,24 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             self.signer.get_num_parties(),
         );
         Ok(vec![])
+    }
+
+    #[allow(non_snake_case)]
+    fn make_bad_private_share(&self, signer_id: u32) -> BadPrivateShare {
+        let mut rng = OsRng;
+        let a = self.network_private_key;
+        let A = a * G;
+        let B = Point::try_from(&Compressed::from(
+            self.public_keys.signers[&signer_id].to_bytes(),
+        ))
+        .unwrap();
+        let K = a * B;
+        let tuple_proof = TupleProof::new(&a, &A, &B, &K, &mut rng);
+
+        BadPrivateShare {
+            shared_key: K,
+            tuple_proof,
+        }
     }
 }
 

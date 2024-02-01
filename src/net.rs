@@ -1,11 +1,11 @@
-use hashbrown::HashMap;
+use hashbrown::{HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tracing::warn;
 
 use crate::{
-    common::{MerkleRoot, PolyCommitment, PublicNonce, SignatureShare},
-    curve::{ecdsa, scalar::Scalar},
+    common::{MerkleRoot, PolyCommitment, PublicNonce, SignatureShare, TupleProof},
+    curve::{ecdsa, point::Point, scalar::Scalar},
     state_machine::PublicKeys,
 };
 
@@ -44,12 +44,36 @@ pub trait Signable {
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+///
+pub struct BadPrivateShare {
+    ///
+    pub shared_key: Point,
+    ///
+    pub tuple_proof: TupleProof,
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+/// Final DKG status after receiving public and private shares
+pub enum DkgFailure {
+    /// Signer was in the wrong internal state to complete DKG
+    BadState,
+    /// DKG public shares were missing from these signer_ids
+    MissingPublicShares(HashSet<u32>),
+    /// DKG public shares were bad from these signer_ids
+    BadPublicShares(HashSet<u32>),
+    /// DKG private shares were missing from these signer_ids
+    MissingPrivateShares(HashSet<u32>),
+    /// DKG private shares were bad from these signer_ids
+    BadPrivateShares(HashMap<u32, BadPrivateShare>),
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 /// Final DKG status after receiving public and private shares
 pub enum DkgStatus {
     /// DKG completed successfully
     Success,
-    /// DKG failed with error
-    Failure(String),
+    /// DKG failed
+    Failure(DkgFailure),
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
@@ -147,8 +171,15 @@ pub struct DkgPrivateShares {
     pub dkg_id: u64,
     /// Signer ID
     pub signer_id: u32,
-    /// List of (src_key_id, Map(dst_key_id, encrypted_share))
+    /// List of (src_party_id, Map(dst_key_id, encrypted_share))
     pub shares: Vec<(u32, HashMap<u32, Vec<u8>>)>,
+}
+
+impl DkgPrivateShares {
+    ///
+    pub fn verify() -> bool {
+        true
+    }
 }
 
 impl Signable for DkgPrivateShares {

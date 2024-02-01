@@ -5,10 +5,14 @@ use tracing::{debug, error, info, warn};
 use crate::{
     common::{MerkleRoot, PolyCommitment, PublicNonce, Signature, SignatureShare},
     compute,
-    curve::point::Point,
+    curve::{
+        point::{Point, G},
+        scalar::Scalar,
+    },
     net::{
-        DkgBegin, DkgEnd, DkgEndBegin, DkgPrivateBegin, DkgPrivateShares, DkgPublicShares, Message,
-        NonceRequest, NonceResponse, Packet, Signable, SignatureShareRequest,
+        DkgBegin, DkgEnd, DkgEndBegin, DkgFailure, DkgPrivateBegin, DkgPrivateShares,
+        DkgPublicShares, DkgStatus, Message, NonceRequest, NonceResponse, Packet, Signable,
+        SignatureShareRequest,
     },
     state_machine::{
         coordinator::{Config, Coordinator as CoordinatorTrait, Error, State},
@@ -16,6 +20,7 @@ use crate::{
     },
     taproot::SchnorrProof,
     traits::Aggregator as AggregatorTrait,
+    util::{decrypt, make_shared_secret_from_key},
 };
 
 #[derive(Clone, Default)]
@@ -66,6 +71,7 @@ pub struct Coordinator<Aggregator: AggregatorTrait> {
     dkg_end_start: Option<Instant>,
     sign_start: Option<Instant>,
     malicious_signer_ids: HashSet<u32>,
+    malicious_dkg_signer_ids: HashSet<u32>,
 }
 
 impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
@@ -225,14 +231,14 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                     if let Message::DkgBegin(dkg_begin) = &packet.msg {
                         // Set the current sign id to one before the current message to ensure
                         // that we start the next round at the correct id. (Do this rather
-                        // then overwriting afterwards to ensure logging is accurate)
+                        // than overwriting afterwards to ensure logging is accurate)
                         self.current_dkg_id = dkg_begin.dkg_id.wrapping_sub(1);
                         let packet = self.start_dkg_round()?;
                         return Ok((Some(packet), None));
                     } else if let Message::NonceRequest(nonce_request) = &packet.msg {
                         // Set the current sign id to one before the current message to ensure
                         // that we start the next round at the correct id. (Do this rather
-                        // then overwriting afterwards to ensure logging is accurate)
+                        // than overwriting afterwards to ensure logging is accurate)
                         self.current_sign_id = nonce_request.sign_id.wrapping_sub(1);
                         self.current_sign_iter_id = nonce_request.sign_iter_id.wrapping_sub(1);
                         let packet = self.start_signing_round(
@@ -271,7 +277,18 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                     return Ok((Some(packet), None));
                 }
                 State::DkgEndGather => {
-                    self.gather_dkg_end(packet)?;
+                    if let Err(error) = self.gather_dkg_end(packet) {
+                        if let Error::DkgFailure(dkg_failures) = error {
+                            return Ok((
+                                None,
+                                Some(OperationResult::DkgError(DkgError::DkgEndFailure(
+                                    dkg_failures,
+                                ))),
+                            ));
+                        } else {
+                            return Err(error);
+                        }
+                    }
                     if self.state == State::DkgEndGather {
                         // We need more data
                         return Ok((None, None));
@@ -516,8 +533,130 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             }
         }
 
+        let mut dkg_failures = HashMap::new();
+
         if self.dkg_wait_signer_ids.is_empty() {
-            self.dkg_end_gathered()?;
+            // if there are any errors, mark signers malicious and retry
+            for (signer_id, dkg_end) in &self.dkg_end_messages {
+                if let DkgStatus::Failure(dkg_failure) = &dkg_end.status {
+                    match dkg_failure {
+                        DkgFailure::BadState => {
+                            // signer should not be in a bad state so treat as malicious
+                            self.malicious_dkg_signer_ids.insert(*signer_id);
+                        }
+                        DkgFailure::BadPublicShares(bad_shares) => {
+                            // bad_shares is a set of signer_ids
+                            for bad_signer_id in bad_shares {
+                                // verify public shares are bad
+                                let dkg_public_shares = &self.dkg_public_shares[bad_signer_id];
+                                let mut bad_party_ids = Vec::new();
+                                for (party_id, comm) in &dkg_public_shares.comms {
+                                    if !comm.verify() {
+                                        bad_party_ids.push(party_id);
+                                    }
+                                }
+
+                                // if none of the shares were bad sender was malicious
+                                if bad_party_ids.is_empty() {
+                                    warn!("Signer {} reported BadPublicShares from {} but the shares were valid, mark {} as malicious", signer_id, bad_signer_id, signer_id);
+                                    self.malicious_dkg_signer_ids.insert(*signer_id);
+                                } else {
+                                    warn!("Signer {} reported BadPublicShares from {}, mark {} as malicious", signer_id, bad_signer_id, bad_signer_id);
+                                    self.malicious_dkg_signer_ids.insert(*bad_signer_id);
+                                }
+                            }
+                        }
+                        DkgFailure::BadPrivateShares(bad_shares) => {
+                            // bad_shares is a map of signer_id to BadPrivateShare
+                            for (bad_signer_id, bad_private_share) in bad_shares {
+                                // verify the DH tuple proof first so we know the shared key is correct
+                                let signer_public_key = &self.config.signer_public_keys[signer_id];
+                                let bad_signer_public_key =
+                                    &self.config.signer_public_keys[bad_signer_id];
+                                let mut is_bad = false;
+
+                                if bad_private_share.tuple_proof.verify(
+                                    signer_public_key,
+                                    bad_signer_public_key,
+                                    &bad_private_share.shared_key,
+                                ) {
+                                    // verify at least one bad private share for one of signer_id's key_ids
+                                    let shared_secret =
+                                        make_shared_secret_from_key(&bad_private_share.shared_key);
+
+                                    let dkg_public_shares = &self.dkg_public_shares[bad_signer_id]
+                                        .comms
+                                        .iter()
+                                        .cloned()
+                                        .collect::<HashMap<u32, PolyCommitment>>();
+                                    let dkg_private_shares =
+                                        &self.dkg_private_shares[bad_signer_id];
+                                    let signer_key_ids = &self.config.signer_key_ids[signer_id];
+
+                                    for (src_party_id, key_shares) in &dkg_private_shares.shares {
+                                        let poly = &dkg_public_shares[src_party_id];
+                                        for key_id in signer_key_ids {
+                                            let bytes = &key_shares[key_id];
+                                            match decrypt(&shared_secret, bytes) {
+                                                Ok(plain) => match Scalar::try_from(&plain[..]) {
+                                                    Ok(private_eval) => {
+                                                        let poly_eval = match compute::poly(
+                                                            &compute::id(*key_id),
+                                                            &poly.poly,
+                                                        ) {
+                                                            Ok(p) => p,
+                                                            Err(e) => {
+                                                                warn!("Failed to evaluate public poly from signer_id {} to key_id {}: {:?}", bad_signer_id, key_id, e);
+                                                                is_bad = true;
+                                                                break;
+                                                            }
+                                                        };
+
+                                                        if private_eval * G != poly_eval {
+                                                            warn!("Invalid dkg private share from signer_id {} to key_id {}", bad_signer_id, key_id);
+
+                                                            is_bad = true;
+                                                            break;
+                                                        }
+                                                    }
+                                                    Err(e) => {
+                                                        warn!("Failed to parse Scalar for dkg private share from signer_id {} to key_id {}: {:?}", bad_signer_id, key_id, e);
+
+                                                        is_bad = true;
+                                                        break;
+                                                    }
+                                                },
+                                                Err(e) => {
+                                                    warn!("Failed to decrypt dkg private share from signer_id {} to key_id {}: {:?}", bad_signer_id, key_id, e);
+                                                    is_bad = true;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // if none of the shares were bad sender was malicious
+                                if !is_bad {
+                                    warn!("Signer {} reported BadPrivateShare from {} but the shares were valid, mark {} as malicious", signer_id, bad_signer_id, signer_id);
+                                    self.malicious_dkg_signer_ids.insert(*signer_id);
+                                } else {
+                                    warn!("Signer {} reported BadPrivateShare from {}, mark {} as malicious", signer_id, bad_signer_id, bad_signer_id);
+                                    self.malicious_dkg_signer_ids.insert(*bad_signer_id);
+                                }
+                            }
+                        }
+                        _ => (),
+                    }
+                    dkg_failures.insert(*signer_id, dkg_failure.clone());
+                }
+            }
+            if dkg_failures.is_empty() {
+                self.dkg_end_gathered()?;
+            } else {
+                // TODO: see if we have sufficient non-malicious signers to continue
+                return Err(Error::DkgFailure(dkg_failures));
+            }
         }
         Ok(())
     }
@@ -918,6 +1057,7 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
             nonce_start: None,
             sign_start: None,
             malicious_signer_ids: Default::default(),
+            malicious_dkg_signer_ids: Default::default(),
         }
     }
 
@@ -1019,13 +1159,14 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
 pub mod test {
     use crate::{
         curve::{point::Point, scalar::Scalar},
-        net::Message,
+        net::{DkgFailure, DkgPrivateShares, Message, Packet},
         state_machine::{
             coordinator::{
                 fire::Coordinator as FireCoordinator,
                 test::{
-                    coordinator_state_machine, feedback_messages, new_coordinator,
-                    process_inbound_messages, setup, setup_with_timeouts, start_dkg_round,
+                    coordinator_state_machine, feedback_messages, feedback_mutated_messages,
+                    new_coordinator, process_inbound_messages, setup, setup_with_timeouts,
+                    start_dkg_round,
                 },
                 Config, Coordinator as CoordinatorTrait, State,
             },
@@ -1035,6 +1176,7 @@ pub mod test {
         traits::{Aggregator as AggregatorTrait, Signer as SignerTrait},
         v1, v2,
     };
+    use hashbrown::HashMap;
     use rand_core::OsRng;
     use std::{thread, time::Duration};
 
@@ -1490,6 +1632,128 @@ pub mod test {
             },
             _ => panic!("Expected OperationResult::DkgError"),
         }
+    }
+
+    #[test]
+    fn malicious_signers_dkg_v1() {
+        malicious_signers_dkg::<v1::Aggregator, v1::Signer>(5, 2);
+    }
+
+    #[test]
+    fn malicious_signers_dkg_v2() {
+        malicious_signers_dkg::<v2::Aggregator, v2::Signer>(5, 2);
+    }
+
+    fn malicious_signers_dkg<Aggregator: AggregatorTrait, SignerType: SignerTrait>(
+        num_signers: u32,
+        keys_per_signer: u32,
+    ) -> (Vec<FireCoordinator<Aggregator>>, Vec<Signer<SignerType>>) {
+        let (mut coordinators, mut signers) =
+            setup::<FireCoordinator<Aggregator>, SignerType>(num_signers, keys_per_signer);
+
+        // We have started a dkg round
+        let message = coordinators.first_mut().unwrap().start_dkg_round().unwrap();
+        assert!(coordinators.first().unwrap().aggregate_public_key.is_none());
+        assert_eq!(coordinators.first().unwrap().state, State::DkgPublicGather);
+
+        // Send the DKG Begin message to all signers and gather responses by sharing with all other signers and coordinators
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &[message]);
+        assert!(operation_results.is_empty());
+        for coordinator in &coordinators {
+            assert_eq!(coordinator.state, State::DkgPrivateGather);
+        }
+
+        assert_eq!(outbound_messages.len(), 1);
+        match &outbound_messages[0].msg {
+            Message::DkgPrivateBegin(_) => {}
+            _ => {
+                panic!("Expected DkgPrivateBegin message");
+            }
+        }
+        // Send the DKG Private Begin message to all signers and share their responses with the coordinators and signers, but mutate one signer's DkgPrivateShares so it is marked malicious
+        let (outbound_messages, operation_results) = feedback_mutated_messages(
+            &mut coordinators,
+            &mut signers,
+            &outbound_messages,
+            |signer, msgs| {
+                if signer.signer_id == 0 {
+                    msgs.iter()
+                        .map(|packet| {
+                            if let Message::DkgPrivateShares(shares) = &packet.msg {
+                                // mutate one of the shares
+                                let sshares: Vec<(u32, HashMap<u32, Vec<u8>>)> = shares
+                                    .shares
+                                    .iter()
+                                    .map(|(src_party_id, share_map)| {
+                                        (
+                                            *src_party_id,
+                                            share_map
+                                                .iter()
+                                                .map(|(dst_key_id, bytes)| {
+                                                    let mut bytes = bytes.clone();
+                                                    bytes.insert(0, 234);
+                                                    (*dst_key_id, bytes)
+                                                })
+                                                .collect(),
+                                        )
+                                    })
+                                    .collect();
+
+                                Packet {
+                                    msg: Message::DkgPrivateShares(DkgPrivateShares {
+                                        dkg_id: shares.dkg_id,
+                                        signer_id: shares.signer_id,
+                                        shares: sshares.clone(),
+                                    }),
+                                    sig: vec![],
+                                }
+                            } else {
+                                packet.clone()
+                            }
+                        })
+                        .collect()
+                } else {
+                    msgs
+                }
+            },
+        );
+        assert_eq!(operation_results.len(), 0);
+        assert_eq!(outbound_messages.len(), 1);
+        match &outbound_messages[0].msg {
+            Message::DkgEndBegin(_) => {}
+            _ => {
+                panic!("Expected DkgEndBegin message");
+            }
+        }
+
+        // Send the DkgEndBegin message to all signers and share their responses with the coordinators and signers
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
+        assert_eq!(outbound_messages.len(), 0);
+        assert_eq!(operation_results.len(), 1);
+        match &operation_results[0] {
+            OperationResult::DkgError(dkg_error) => {
+                // we mutated the private shares themselves, so we should see a BadPrivateShares from signer_id 0
+                match dkg_error {
+                    DkgError::DkgEndFailure(failure_map) => {
+                        for (_signer_id, dkg_failure) in failure_map {
+                            match dkg_failure {
+                                DkgFailure::BadPrivateShares(bad_share_map) => {
+                                    for (bad_signer_id, _bad_private_share) in bad_share_map {
+                                        assert_eq!(*bad_signer_id, 0u32);
+                                    }
+                                }
+                                _ => panic!("Expected DkgFailure::BadPrivateShares"),
+                            }
+                        }
+                    }
+                    _ => panic!("Expected DkgError::DkgEndFailure"),
+                }
+            }
+            _ => panic!("Expected OperationResult::DkgError"),
+        }
+        (coordinators, signers)
     }
 
     #[test]

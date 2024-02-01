@@ -1,4 +1,5 @@
 use wsts::common::test_helpers::gen_signer_ids;
+use wsts::traits::Aggregator;
 use wsts::v1;
 use wsts::v1::test_helpers::{dkg, sign};
 
@@ -67,14 +68,14 @@ pub fn bench_aggregator_sign(c: &mut Criterion) {
 
     let mut signers = signers[..(K * 3 / 4).try_into().unwrap()].to_vec();
 
-    let mut aggregator =
-        v1::SignatureAggregator::new(N, T, A.clone()).expect("aggregator ctor failed");
+    let mut aggregator = v1::Aggregator::new(N, T);
+    aggregator.init(&A).expect("aggregator init failed");
 
     let (nonces, sig_shares) = sign(&msg, &mut signers, &mut rng);
 
     let s = format!("v1 group sign N={} T={} K={}", N, T, K);
     c.bench_function(&s, |b| {
-        b.iter(|| aggregator.sign(&msg, &nonces, &sig_shares))
+        b.iter(|| aggregator.sign(&msg, &nonces, &sig_shares, &[]))
     });
 }
 
