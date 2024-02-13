@@ -341,13 +341,6 @@ impl Aggregator {
             }
         }
 
-        // optimistically try to create the aggregate signature without checking for bad keys or sig shares
-        for i in 0..sig_shares.len() {
-            z += sig_shares[i].z_i;
-        }
-
-        z += cx_sign * c * tweak;
-
         for i in 0..sig_shares.len() {
             let z_i = sig_shares[i].z_i;
             let mut cx = Point::zero();
