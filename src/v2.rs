@@ -290,10 +290,8 @@ impl Aggregator {
         let tweaked_public_key = aggregate_public_key + tweak * G;
         let c = compute::challenge(&tweaked_public_key, &R, msg);
         let mut cx_sign = Scalar::one();
-        if tweak != &Scalar::zero() {
-            if !tweaked_public_key.has_even_y() {
-                cx_sign = -Scalar::one();
-            }
+        if tweak != &Scalar::zero() && !tweaked_public_key.has_even_y() {
+            cx_sign = -Scalar::one();
         }
 
         // optimistically try to create the aggregate signature without checking for bad keys or sig shares
