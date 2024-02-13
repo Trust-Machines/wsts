@@ -118,6 +118,7 @@ pub fn id(i: u32) -> Scalar {
 }
 
 /// Evaluate the public polynomial `f` at scalar `x` using multi-exponentiation
+#[allow(clippy::ptr_arg)]
 pub fn poly(x: &Scalar, f: &Vec<Point>) -> Result<Point, PointError> {
     let mut s = Vec::with_capacity(f.len());
     let mut pow = Scalar::one();
