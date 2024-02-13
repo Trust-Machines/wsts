@@ -284,17 +284,13 @@ impl Aggregator {
         }
 
         let party_ids: Vec<u32> = sig_shares.iter().map(|ss| ss.id).collect();
-        let (Rs, R) = compute::intermediate(msg, &party_ids, nonces);
+        let (_Rs, R) = compute::intermediate(msg, &party_ids, nonces);
         let mut z = Scalar::zero();
         let aggregate_public_key = self.poly[0];
         let tweaked_public_key = aggregate_public_key + tweak * G;
         let c = compute::challenge(&tweaked_public_key, &R, msg);
-        let mut r_sign = Scalar::one();
         let mut cx_sign = Scalar::one();
         if tweak != &Scalar::zero() {
-            if !R.has_even_y() {
-                r_sign = -Scalar::one();
-            }
             if !tweaked_public_key.has_even_y() {
                 cx_sign = -Scalar::one();
             }
