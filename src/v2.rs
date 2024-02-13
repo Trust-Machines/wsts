@@ -322,7 +322,6 @@ impl Aggregator {
 
         let party_ids: Vec<u32> = sig_shares.iter().map(|ss| ss.id).collect();
         let (Rs, R) = compute::intermediate(msg, &party_ids, nonces);
-        let mut z = Scalar::zero();
         let mut bad_party_keys = Vec::new();
         let mut bad_party_sigs = Vec::new();
         let aggregate_public_key = self.poly[0];
