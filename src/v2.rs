@@ -269,7 +269,7 @@ pub struct Aggregator {
 }
 
 impl Aggregator {
-    /// Aggregate the party signatures
+    /// Aggregate the party signatures using a tweak
     #[allow(non_snake_case)]
     pub fn sign_with_tweak(
         &mut self,
