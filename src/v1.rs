@@ -247,7 +247,7 @@ pub struct Aggregator {
 
 impl Aggregator {
     #[allow(non_snake_case)]
-    /// Check and aggregate the party signatures using a tweak
+    /// Aggregate the party signatures using a tweak
     pub fn sign_with_tweak(
         &mut self,
         msg: &[u8],
@@ -260,8 +260,42 @@ impl Aggregator {
         }
 
         let signers: Vec<u32> = sig_shares.iter().map(|ss| ss.id).collect();
-        let (Rs, R) = compute::intermediate(msg, &signers, nonces);
+        let (_Rs, R) = compute::intermediate(msg, &signers, nonces);
         let mut z = Scalar::zero();
+        let aggregate_public_key = self.poly[0];
+        let tweaked_public_key = aggregate_public_key + tweak * G;
+        let c = compute::challenge(&tweaked_public_key, &R, msg);
+        let mut cx_sign = Scalar::one();
+        if tweak != &Scalar::zero() && !tweaked_public_key.has_even_y() {
+            cx_sign = -Scalar::one();
+        }
+
+        for i in 0..sig_shares.len() {
+            z += sig_shares[i].z_i;
+        }
+
+        z += cx_sign * c * tweak;
+
+        let sig = Signature { R, z };
+
+        Ok((tweaked_public_key, sig))
+    }
+
+    #[allow(non_snake_case)]
+    /// Check the party signatures after a failed group signature
+    pub fn check_signature_shares(
+        &mut self,
+        msg: &[u8],
+        nonces: &[PublicNonce],
+        sig_shares: &[SignatureShare],
+        tweak: &Scalar,
+    ) -> AggregatorError {
+        if nonces.len() != sig_shares.len() {
+            return AggregatorError::BadNonceLen(nonces.len(), sig_shares.len());
+        }
+
+        let signers: Vec<u32> = sig_shares.iter().map(|ss| ss.id).collect();
+        let (Rs, R) = compute::intermediate(msg, &signers, nonces);
         let mut bad_party_keys = Vec::new();
         let mut bad_party_sigs = Vec::new();
         let aggregate_public_key = self.poly[0];
@@ -296,21 +330,14 @@ impl Aggregator {
             {
                 bad_party_sigs.push(sig_shares[i].id);
             }
-
-            z += z_i;
         }
 
-        if tweak != &Scalar::zero() {
-            z += cx_sign * c * tweak;
-        }
-
-        if bad_party_sigs.is_empty() {
-            let sig = Signature { R, z };
-            Ok((tweaked_public_key, sig))
-        } else if !bad_party_keys.is_empty() {
-            Err(AggregatorError::BadPartyKeys(bad_party_keys))
+        if !bad_party_keys.is_empty() {
+            AggregatorError::BadPartyKeys(bad_party_keys)
+        } else if !bad_party_sigs.is_empty() {
+            AggregatorError::BadPartySigs(bad_party_sigs)
         } else {
-            Err(AggregatorError::BadPartySigs(bad_party_sigs))
+            AggregatorError::BadGroupSig
         }
     }
 }
@@ -364,7 +391,7 @@ impl traits::Aggregator for Aggregator {
         if sig.verify(&key, msg) {
             Ok(sig)
         } else {
-            Err(AggregatorError::BadGroupSig)
+            Err(self.check_signature_shares(msg, nonces, sig_shares, &Scalar::zero()))
         }
     }
 
@@ -384,7 +411,7 @@ impl traits::Aggregator for Aggregator {
         if proof.verify(&key.x(), msg) {
             Ok(proof)
         } else {
-            Err(AggregatorError::BadGroupSig)
+            Err(self.check_signature_shares(msg, nonces, sig_shares, &tweak))
         }
     }
 }

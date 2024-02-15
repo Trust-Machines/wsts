@@ -516,7 +516,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
 
                 info!(
                     "Signer {} sending SignatureShareResponse for DKG round {} sign round {} sign iteration {}",
-                    signer_id, self.dkg_id, self.sign_id, self.sign_iter_id,
+                    signer_id, sign_request.dkg_id, sign_request.sign_id, sign_request.sign_iter_id,
                 );
 
                 let response = Message::SignatureShareResponse(response);
