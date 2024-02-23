@@ -3,6 +3,7 @@ use num_traits::{One, Zero};
 use polynomial::Polynomial;
 use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
+use std::cmp;
 
 use crate::{
     common::{Nonce, PolyCommitment, PublicNonce, Signature, SignatureShare},
@@ -71,13 +72,14 @@ impl Party {
         threshold: u32,
         rng: &mut RNG,
     ) -> Self {
+        let f_range = cmp::max(threshold, 1);
         Self {
             party_id,
             key_ids: key_ids.to_vec(),
             num_keys,
             num_parties,
             threshold,
-            f: VSS::random_poly(threshold - 1, rng),
+            f: VSS::random_poly(f_range - 1, rng),
             private_keys: PrivKeyMap::new(),
             group_key: Point::zero(),
             nonce: Nonce::zero(),
@@ -623,7 +625,7 @@ pub mod test_helpers {
 
 #[cfg(test)]
 mod tests {
-    use crate::{traits::Aggregator, v2};
+    use crate::{traits::Aggregator, v2, vss::VSS};
 
     use rand_core::OsRng;
 
@@ -682,5 +684,18 @@ mod tests {
                 panic!("Aggregator sign failed: {:?}", e);
             }
         }
+    }
+
+    #[test]
+    fn test_random_poly_0_threshold() {
+        let mut rng = OsRng::default();
+        // Ensure this doesn't cause an exception
+        VSS::random_poly(0, &mut rng);
+
+        let mut rng = OsRng;
+        let key_ids = [1, 2, 3];
+
+        // ensure no exception
+        v2::Party::new(0, &key_ids, 1, 1, 0, &mut rng);
     }
 }
