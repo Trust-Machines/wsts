@@ -14,6 +14,7 @@ pub mod net;
 #[allow(clippy::op_ref)]
 pub mod schnorr;
 /// State machines
+#[allow(clippy::result_large_err)]
 pub mod state_machine;
 /// Functions for doing BIP-340 schnorr proofs and other taproot actions
 pub mod taproot;

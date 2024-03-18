@@ -44,13 +44,14 @@ pub struct Coordinator<Aggregator: AggregatorTrait> {
     /// current DKG round ID
     pub current_dkg_id: u64,
     /// current signing round ID
-    current_sign_id: u64,
+    pub current_sign_id: u64,
     /// current signing iteration ID
-    current_sign_iter_id: u64,
+    pub current_sign_iter_id: u64,
     dkg_public_shares: BTreeMap<u32, DkgPublicShares>,
     dkg_private_shares: BTreeMap<u32, DkgPrivateShares>,
     dkg_end_messages: BTreeMap<u32, DkgEnd>,
-    party_polynomials: HashMap<u32, PolyCommitment>,
+    /// the current view of a successful DKG's participants' commitments
+    pub party_polynomials: HashMap<u32, PolyCommitment>,
     signature_shares: BTreeMap<u32, Vec<SignatureShare>>,
     message_nonces: BTreeMap<Vec<u8>, ResponseInfo>,
     /// aggregate public key
@@ -658,6 +659,32 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 return Err(Error::DkgFailure(dkg_failures));
             }
         }
+        Ok(())
+    }
+
+    /// Set the aggregate key and polynomial commitments used to form that key.
+    ///  Check if the polynomial commitments match the key
+    pub fn set_key_and_party_polynomials(
+        &mut self,
+        aggregate_key: Point,
+        party_polynomials: Vec<(u32, PolyCommitment)>,
+    ) -> Result<(), Error> {
+        let computed_key = party_polynomials
+            .iter()
+            .fold(Point::default(), |s, (_, comm)| s + comm.poly[0]);
+        if computed_key != aggregate_key {
+            return Err(Error::AggregateKeyPolynomialMismatch(
+                computed_key,
+                aggregate_key,
+            ));
+        }
+        let party_polynomials_len = party_polynomials.len();
+        let party_polynomials = HashMap::from_iter(party_polynomials);
+        if party_polynomials.len() != party_polynomials_len {
+            return Err(Error::DuplicatePartyId);
+        }
+        self.aggregate_public_key = Some(aggregate_key);
+        self.party_polynomials = party_polynomials;
         Ok(())
     }
 

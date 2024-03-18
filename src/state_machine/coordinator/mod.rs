@@ -36,6 +36,7 @@ pub enum State {
 }
 
 #[derive(thiserror::Error, Debug)]
+#[allow(clippy::large_enum_variant)]
 /// The error type for the coordinator
 pub enum Error {
     /// A bad state change was made
@@ -74,6 +75,14 @@ pub enum Error {
     /// DKG failure from signers
     #[error("DKG failure from signers")]
     DkgFailure(HashMap<u32, DkgFailure>),
+    /// Aggregate key does not match supplied party polynomial
+    #[error(
+        "Aggregate key and computed key from party polynomials mismatch: got {0}, expected {1}"
+    )]
+    AggregateKeyPolynomialMismatch(Point, Point),
+    /// Supplied party polynomial contained duplicate party IDs
+    #[error("Supplied party polynomials contained a duplicate party ID")]
+    DuplicatePartyId,
 }
 
 impl From<AggregatorError> for Error {

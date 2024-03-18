@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use hashbrown::{HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -243,7 +245,7 @@ impl Signable for DkgEnd {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 /// Nonce request message from coordinator to signers
 pub struct NonceRequest {
     /// DKG round ID
@@ -260,6 +262,19 @@ pub struct NonceRequest {
     pub merkle_root: Option<MerkleRoot>,
 }
 
+impl Debug for NonceRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NonceRequest")
+            .field("dkg_id", &self.dkg_id)
+            .field("sign_id", &self.sign_id)
+            .field("sign_iter_id", &self.sign_iter_id)
+            .field("message", &hex::encode(&self.message))
+            .field("is_taproot", &self.is_taproot)
+            .field("merkle_root", &self.merkle_root.as_ref().map(hex::encode))
+            .finish()
+    }
+}
+
 impl Signable for NonceRequest {
     fn hash(&self, hasher: &mut Sha256) {
         hasher.update("NONCE_REQUEST".as_bytes());
@@ -274,7 +289,7 @@ impl Signable for NonceRequest {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 /// Nonce response message from signers to coordinator
 pub struct NonceResponse {
     /// DKG round ID
@@ -291,6 +306,27 @@ pub struct NonceResponse {
     pub nonces: Vec<PublicNonce>,
     /// Bytes being signed
     pub message: Vec<u8>,
+}
+
+impl Debug for NonceResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NonceResponse")
+            .field("dkg_id", &self.dkg_id)
+            .field("sign_id", &self.sign_id)
+            .field("sign_iter_id", &self.sign_iter_id)
+            .field("signer_id", &self.signer_id)
+            .field("key_ids", &self.key_ids)
+            .field(
+                "nonces",
+                &self
+                    .nonces
+                    .iter()
+                    .map(|x| x.to_string())
+                    .collect::<Vec<_>>(),
+            )
+            .field("message", &hex::encode(&self.message))
+            .finish()
+    }
 }
 
 impl Signable for NonceResponse {
@@ -314,7 +350,7 @@ impl Signable for NonceResponse {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 /// Signature share request message from coordinator to signers
 pub struct SignatureShareRequest {
     /// DKG round ID
@@ -331,6 +367,20 @@ pub struct SignatureShareRequest {
     pub is_taproot: bool,
     /// Taproot merkle root
     pub merkle_root: Option<MerkleRoot>,
+}
+
+impl Debug for SignatureShareRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SignatureShareRequest")
+            .field("dkg_id", &self.dkg_id)
+            .field("sign_id", &self.sign_id)
+            .field("sign_iter_id", &self.sign_iter_id)
+            .field("nonce_responses", &self.nonce_responses)
+            .field("message", &hex::encode(&self.message))
+            .field("is_taproot", &self.is_taproot)
+            .field("merkle_root", &self.merkle_root.as_ref().map(hex::encode))
+            .finish()
+    }
 }
 
 impl Signable for SignatureShareRequest {
@@ -381,13 +431,22 @@ impl Signable for SignatureShareResponse {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
 /// Network packets need to be signed so they can be verified
 pub struct Packet {
     /// The message to sign
     pub msg: Message,
     /// The bytes of the signature
     pub sig: Vec<u8>,
+}
+
+impl Debug for Packet {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Packet")
+            .field("msg", &self.msg)
+            .field("sig", &hex::encode(&self.sig))
+            .finish()
+    }
 }
 
 impl Packet {

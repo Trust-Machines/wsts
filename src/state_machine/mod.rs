@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use hashbrown::HashMap;
 use thiserror::Error;
 
@@ -62,13 +64,22 @@ pub enum OperationResult {
     SignError(SignError),
 }
 
-#[derive(Default, Clone, Debug)]
+#[derive(Default, Clone)]
 /// Map of signer_id and key_id to the relevant ecdsa public keys
 pub struct PublicKeys {
     /// signer_id -> public key
     pub signers: HashMap<u32, ecdsa::PublicKey>,
     /// key_id -> public key
     pub key_ids: HashMap<u32, ecdsa::PublicKey>,
+}
+
+impl std::fmt::Debug for PublicKeys {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PublicKeys")
+            .field("signers", &BTreeMap::from_iter(self.signers.iter()))
+            .field("key_ids", &BTreeMap::from_iter(self.key_ids.iter()))
+            .finish()
+    }
 }
 
 /// State machine for a simple FROST coordinator

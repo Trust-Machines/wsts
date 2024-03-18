@@ -117,7 +117,7 @@ impl Display for PublicNonce {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Deserialize, Serialize, PartialEq)]
 /// A share of the party signature with related values
 pub struct SignatureShare {
     /// The ID of the party
@@ -126,6 +126,16 @@ pub struct SignatureShare {
     pub z_i: Scalar,
     /// The key IDs of the party
     pub key_ids: Vec<u32>,
+}
+
+impl Debug for SignatureShare {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        f.debug_struct("SignatureShare")
+            .field("id", &self.id)
+            .field("z_i", &self.z_i.to_string())
+            .field("key_ids", &self.key_ids)
+            .finish()
+    }
 }
 
 #[allow(non_snake_case)]
