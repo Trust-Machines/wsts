@@ -1,8 +1,7 @@
-use hashbrown::{HashMap, HashSet};
+use hashbrown::HashMap;
 use num_traits::{One, Zero};
 use polynomial::Polynomial;
 use rand_core::{CryptoRng, RngCore};
-use serde::{Deserialize, Serialize};
 
 use crate::{
     common::{Nonce, PolyCommitment, PublicNonce, Signature, SignatureShare},
@@ -18,32 +17,6 @@ use crate::{
     vss::VSS,
 };
 
-/// A map of private keys indexed by key ID
-pub type PrivKeyMap = HashMap<u32, Scalar>;
-/// A signing set of key IDs indexed by party ID
-pub type SelectedSigners = HashMap<u32, HashSet<u32>>;
-
-#[derive(Serialize, Deserialize)]
-/// The saved state required to construct a party
-pub struct PartyState {
-    /// The party ID
-    pub party_id: u32,
-    /// The key IDs for this party
-    pub key_ids: Vec<u32>,
-    /// The total number of keys
-    pub num_keys: u32,
-    /// The total number of parties
-    pub num_parties: u32,
-    /// The threshold for signing
-    pub threshold: u32,
-    /// The party's private polynomial
-    pub polynomial: Polynomial<Scalar>,
-    /// The private keys for this party, indexed by ID
-    pub private_keys: PrivKeyMap,
-    /// The aggregate group public key
-    pub group_key: Point,
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 /// A WSTS party, which encapsulates a single polynomial, nonce, and one private key per key ID
 pub struct Party {
@@ -56,7 +29,7 @@ pub struct Party {
     num_parties: u32,
     threshold: u32,
     f: Polynomial<Scalar>,
-    private_keys: PrivKeyMap,
+    private_keys: HashMap<u32, Scalar>,
     group_key: Point,
     nonce: Nonce,
 }
@@ -78,38 +51,9 @@ impl Party {
             num_parties,
             threshold,
             f: VSS::random_poly(threshold - 1, rng),
-            private_keys: PrivKeyMap::new(),
+            private_keys: Default::default(),
             group_key: Point::zero(),
             nonce: Nonce::zero(),
-        }
-    }
-
-    /// Load a party from `state`
-    pub fn load(state: &PartyState) -> Self {
-        Self {
-            party_id: state.party_id,
-            key_ids: state.key_ids.clone(),
-            num_keys: state.num_keys,
-            num_parties: state.num_parties,
-            threshold: state.threshold,
-            f: state.polynomial.clone(),
-            private_keys: state.private_keys.clone(),
-            group_key: state.group_key,
-            nonce: Nonce::zero(),
-        }
-    }
-
-    /// Save the state required to reconstruct the party
-    pub fn save(&self) -> PartyState {
-        PartyState {
-            party_id: self.party_id,
-            key_ids: self.key_ids.clone(),
-            num_keys: self.num_keys,
-            num_parties: self.num_parties,
-            threshold: self.threshold,
-            polynomial: self.f.clone(),
-            private_keys: self.private_keys.clone(),
-            group_key: self.group_key,
         }
     }
 
@@ -444,8 +388,6 @@ impl traits::Aggregator for Aggregator {
 }
 
 /// Typedef so we can use the same tokens for v1 and v2
-pub type SignerState = PartyState;
-/// Typedef so we can use the same tokens for v1 and v2
 pub type Signer = Party;
 
 impl traits::Signer for Party {
@@ -458,6 +400,45 @@ impl traits::Signer for Party {
         rng: &mut RNG,
     ) -> Self {
         Party::new(party_id, key_ids, num_signers, num_keys, threshold, rng)
+    }
+
+    fn load(state: &traits::SignerState) -> Self {
+        // v2 signer contains single party
+        assert_eq!(state.parties.len(), 1);
+
+        let party_state = &state.parties[0].1;
+
+        Self {
+            party_id: state.id,
+            key_ids: state.key_ids.clone(),
+            num_keys: state.num_keys,
+            num_parties: state.num_parties,
+            threshold: state.threshold,
+            f: party_state.polynomial.clone(),
+            private_keys: party_state
+                .private_keys
+                .iter()
+                .map(|(k, v)| (*k, *v))
+                .collect(),
+            group_key: state.group_key,
+            nonce: Nonce::zero(),
+        }
+    }
+
+    fn save(&self) -> traits::SignerState {
+        let party_state = traits::PartyState {
+            polynomial: self.f.clone(),
+            private_keys: self.private_keys.iter().map(|(k, v)| (*k, *v)).collect(),
+        };
+        traits::SignerState {
+            id: self.party_id,
+            key_ids: self.key_ids.clone(),
+            num_keys: self.num_keys,
+            num_parties: self.num_parties,
+            threshold: self.threshold,
+            group_key: self.group_key,
+            parties: vec![(self.party_id, party_state)],
+        }
     }
 
     fn get_id(&self) -> u32 {
@@ -623,7 +604,10 @@ pub mod test_helpers {
 
 #[cfg(test)]
 mod tests {
-    use crate::{traits::Aggregator, v2};
+    use crate::{
+        traits::{Aggregator, Signer},
+        v2,
+    };
 
     use rand_core::OsRng;
 
