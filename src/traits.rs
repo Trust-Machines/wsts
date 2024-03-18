@@ -1,5 +1,7 @@
 use hashbrown::HashMap;
+use polynomial::Polynomial;
 use rand_core::{CryptoRng, RngCore};
+use serde::{Deserialize, Serialize};
 
 use crate::{
     common::{MerkleRoot, PolyCommitment, PublicNonce, Signature, SignatureShare},
@@ -7,6 +9,34 @@ use crate::{
     errors::{AggregatorError, DkgError},
     taproot::SchnorrProof,
 };
+
+#[derive(Debug, Deserialize, Serialize)]
+/// The saved state required to reconstruct a party
+pub struct PartyState {
+    /// The party's private polynomial
+    pub polynomial: Polynomial<Scalar>,
+    /// The key IDS and associate private keys for this party
+    pub private_keys: Vec<(u32, Scalar)>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+/// The saved state required to reconstruct a signer
+pub struct SignerState {
+    /// The signer ID
+    pub id: u32,
+    /// The key IDs this signer controls
+    pub key_ids: Vec<u32>,
+    /// The total number of keys
+    pub num_keys: u32,
+    /// The total number of parties
+    pub num_parties: u32,
+    /// The threshold for signing
+    pub threshold: u32,
+    /// The aggregate group public key
+    pub group_key: Point,
+    /// The party IDs and associated state for this signer
+    pub parties: Vec<(u32, PartyState)>,
+}
 
 /// A trait which provides a common `Signer` interface for `v1` and `v2`
 pub trait Signer: Clone {
@@ -19,6 +49,12 @@ pub trait Signer: Clone {
         threshold: u32,
         rng: &mut RNG,
     ) -> Self;
+
+    /// Load a signer from the previously saved `state`
+    fn load(state: &SignerState) -> Self;
+
+    /// Save the state required to reconstruct the party
+    fn save(&self) -> SignerState;
 
     /// Get the signer ID for this signer
     fn get_id(&self) -> u32;

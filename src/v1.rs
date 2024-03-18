@@ -2,7 +2,6 @@ use hashbrown::HashMap;
 use num_traits::{One, Zero};
 use polynomial::Polynomial;
 use rand_core::{CryptoRng, RngCore};
-use serde::{Deserialize, Serialize};
 
 use crate::{
     common::{CheckPrivateShares, Nonce, PolyCommitment, PublicNonce, Signature, SignatureShare},
@@ -17,15 +16,6 @@ use crate::{
     traits,
     vss::VSS,
 };
-
-#[derive(Debug, Deserialize, Serialize)]
-/// The saved state required to construct a party
-pub struct PartyState {
-    /// The party's private key
-    pub private_key: Scalar,
-    /// The party's private polynomial
-    pub polynomial: Polynomial<Scalar>,
-}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 /// A FROST party, which encapsulates a single polynomial, nonce, and key
@@ -58,22 +48,26 @@ impl Party {
     }
 
     /// Load a party from `state`
-    pub fn load(id: u32, n: u32, group_key: &Point, state: &PartyState) -> Self {
+    pub fn load(id: u32, n: u32, group_key: &Point, state: &traits::PartyState) -> Self {
+        assert_eq!(state.private_keys.len(), 1);
+
+        let private_key = state.private_keys[0].1;
+
         Self {
             id,
             n,
             f: state.polynomial.clone(),
-            private_key: state.private_key,
-            public_key: &state.private_key * G,
+            public_key: private_key * G,
+            private_key,
             group_key: *group_key,
             nonce: Nonce::zero(),
         }
     }
 
     /// Save the state required to reconstruct the party
-    pub fn save(&self) -> PartyState {
-        PartyState {
-            private_key: self.private_key,
+    pub fn save(&self) -> traits::PartyState {
+        traits::PartyState {
+            private_keys: vec![(self.id, self.private_key)],
             polynomial: self.f.clone(),
         }
     }
@@ -416,19 +410,6 @@ impl traits::Aggregator for Aggregator {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-/// The saved state required to construct a Signer
-pub struct SignerState {
-    /// The associated ID
-    id: u32,
-    /// The total number of keys
-    num_keys: u32,
-    /// The aggregate group public key
-    group_key: Point,
-    /// The set of states for the parties which this object encapsulates, indexed by their party/key IDs
-    parties: HashMap<u32, PartyState>,
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 /// A set of encapsulated FROST parties
 pub struct Signer {
@@ -462,9 +443,22 @@ impl Signer {
             parties,
         }
     }
+}
+
+impl traits::Signer for Signer {
+    fn new<RNG: RngCore + CryptoRng>(
+        party_id: u32,
+        key_ids: &[u32],
+        _num_signers: u32,
+        num_keys: u32,
+        threshold: u32,
+        rng: &mut RNG,
+    ) -> Self {
+        Signer::new(party_id, key_ids, num_keys, threshold, rng)
+    }
 
     /// Load a Signer from the saved state
-    pub fn load(state: &SignerState) -> Self {
+    fn load(state: &traits::SignerState) -> Self {
         let parties = state
             .parties
             .iter()
@@ -480,32 +474,24 @@ impl Signer {
     }
 
     /// Save the state required to reconstruct the signer
-    pub fn save(&self) -> SignerState {
-        let mut parties = HashMap::new();
+    fn save(&self) -> traits::SignerState {
+        let mut key_ids = Vec::new();
+        let mut parties = Vec::new();
 
         for party in &self.parties {
-            parties.insert(party.id, party.save());
+            key_ids.push(party.id);
+            parties.push((party.id, party.save()));
         }
 
-        SignerState {
+        traits::SignerState {
             id: self.id,
+            key_ids,
             num_keys: self.num_keys,
+            num_parties: self.num_keys,
+            threshold: self.num_keys,
             group_key: self.group_key,
             parties,
         }
-    }
-}
-
-impl traits::Signer for Signer {
-    fn new<RNG: RngCore + CryptoRng>(
-        party_id: u32,
-        key_ids: &[u32],
-        _num_signers: u32,
-        num_keys: u32,
-        threshold: u32,
-        rng: &mut RNG,
-    ) -> Self {
-        Signer::new(party_id, key_ids, num_keys, threshold, rng)
     }
 
     fn get_id(&self) -> u32 {
