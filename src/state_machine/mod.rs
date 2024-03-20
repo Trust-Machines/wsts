@@ -64,13 +64,38 @@ pub enum OperationResult {
     SignError(SignError),
 }
 
-#[derive(Default, Clone)]
+#[derive(Clone, Default)]
 /// Map of signer_id and key_id to the relevant ecdsa public keys
 pub struct PublicKeys {
     /// signer_id -> public key
     pub signers: HashMap<u32, ecdsa::PublicKey>,
     /// key_id -> public key
     pub key_ids: HashMap<u32, ecdsa::PublicKey>,
+}
+
+impl PartialEq for PublicKeys {
+    fn eq(&self, other: &Self) -> bool {
+        (other
+            .signers
+            .iter()
+            .map(|(id, key)| (*id, key.to_bytes()))
+            .collect::<HashMap<u32, [u8; 33]>>()
+            == self
+                .signers
+                .iter()
+                .map(|(id, key)| (*id, key.to_bytes()))
+                .collect())
+            && (other
+                .key_ids
+                .iter()
+                .map(|(id, key)| (*id, key.to_bytes()))
+                .collect::<HashMap<u32, [u8; 33]>>()
+                == self
+                    .key_ids
+                    .iter()
+                    .map(|(id, key)| (*id, key.to_bytes()))
+                    .collect())
+    }
 }
 
 impl std::fmt::Debug for PublicKeys {

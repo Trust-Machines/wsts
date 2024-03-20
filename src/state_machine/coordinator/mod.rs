@@ -1,17 +1,23 @@
 use crate::{
-    common::MerkleRoot,
+    common::{MerkleRoot, PolyCommitment, Signature, SignatureShare},
     curve::{point::Point, scalar::Scalar},
     errors::AggregatorError,
-    net::Packet,
+    net::{DkgEnd, DkgPrivateShares, DkgPublicShares, NonceResponse, Packet},
     state_machine::{DkgFailure, OperationResult},
+    taproot::SchnorrProof,
 };
+use core::{cmp::PartialEq, fmt::Debug};
 use hashbrown::{HashMap, HashSet};
-use std::time::Duration;
+use std::{
+    collections::BTreeMap,
+    time::{Duration, Instant},
+};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Default, Debug, PartialEq)]
 /// Coordinator states
 pub enum State {
     /// The coordinator is idle
+    #[default]
     Idle,
     /// The coordinator is asking signers to send public shares
     DkgPublicDistribute,
@@ -177,10 +183,80 @@ impl Config {
     }
 }
 
+#[derive(Clone, Debug, Default, PartialEq)]
+/// The info for a sign round over specific message bytes
+pub struct SignRoundInfo {
+    /// the nonce response of a signer id
+    pub public_nonces: BTreeMap<u32, NonceResponse>,
+    /// which key_ids we've received nonces for this iteration
+    pub nonce_recv_key_ids: HashSet<u32>,
+    /// which key_ids we're received sig shares for this iteration
+    pub sign_recv_key_ids: HashSet<u32>,
+    /// which signer_ids we're expecting sig shares from this iteration
+    pub sign_wait_signer_ids: HashSet<u32>,
+}
+
+/// The saved state required to reconstruct a coordinator
+#[derive(Default, Clone, Debug, PartialEq)]
+pub struct SavedState {
+    /// common config fields
+    pub config: Config,
+    /// current DKG round ID
+    pub current_dkg_id: u64,
+    /// current signing round ID
+    pub current_sign_id: u64,
+    /// current signing iteration ID
+    pub current_sign_iter_id: u64,
+    /// map of DkgPublicShares indexed by signer ID
+    pub dkg_public_shares: BTreeMap<u32, DkgPublicShares>,
+    /// map of DkgPrivateShares indexed by signer ID
+    pub dkg_private_shares: BTreeMap<u32, DkgPrivateShares>,
+    /// map of DkgEnd indexed by signer ID
+    pub dkg_end_messages: BTreeMap<u32, DkgEnd>,
+    /// the current view of a successful DKG's participants' commitments
+    pub party_polynomials: HashMap<u32, PolyCommitment>,
+    /// map of SignatureShare indexed by signer ID
+    pub signature_shares: BTreeMap<u32, Vec<SignatureShare>>,
+    /// map of SignRoundInfo indexed by message bytes
+    pub message_nonces: BTreeMap<Vec<u8>, SignRoundInfo>,
+    /// aggregate public key
+    pub aggregate_public_key: Option<Point>,
+    /// current Signature
+    pub signature: Option<Signature>,
+    /// current SchnorrProof
+    pub schnorr_proof: Option<SchnorrProof>,
+    /// which signers we're currently waiting on for DKG
+    pub dkg_wait_signer_ids: HashSet<u32>,
+    /// the bytes that we're signing
+    pub message: Vec<u8>,
+    /// current state of the state machine
+    pub state: State,
+    /// start time for NonceRequest
+    pub nonce_start: Option<Instant>,
+    /// start time for DkgBegin
+    pub dkg_public_start: Option<Instant>,
+    /// start time for DkgPrivateBegin
+    pub dkg_private_start: Option<Instant>,
+    /// start time for DkgEndBegin
+    pub dkg_end_start: Option<Instant>,
+    /// start time for SignatureShareRequest
+    pub sign_start: Option<Instant>,
+    /// set of malicious signers during signing round
+    pub malicious_signer_ids: HashSet<u32>,
+    /// set of malicious signers during dkg round
+    pub malicious_dkg_signer_ids: HashSet<u32>,
+}
+
 /// Coordinator trait for handling the coordination of DKG and sign messages
-pub trait Coordinator: Clone {
+pub trait Coordinator: Clone + Debug + PartialEq {
     /// Create a new Coordinator
     fn new(config: Config) -> Self;
+
+    /// Load a coordinator from the previously saved `state`
+    fn load(state: &SavedState) -> Self;
+
+    /// Save the state required to reconstruct the coordinator
+    fn save(&self) -> SavedState;
 
     /// Retrieve the config
     fn get_config(&self) -> Config;
@@ -543,6 +619,26 @@ pub mod test {
                 panic!("Expected DkgPrivateBegin message");
             }
         }
+
+        // persist the state machines before continuing
+        let new_coordinators = coordinators
+            .iter()
+            .map(|c| Coordinator::load(&c.save()))
+            .collect::<Vec<Coordinator>>();
+
+        assert_eq!(coordinators, new_coordinators);
+
+        coordinators = new_coordinators;
+
+        let new_signers = signers
+            .iter()
+            .map(|s| Signer::<SignerType>::load(&s.save()))
+            .collect::<Vec<Signer<SignerType>>>();
+
+        assert_eq!(signers, new_signers);
+
+        signers = new_signers;
+
         // Send the DKG Private Begin message to all signers and share their responses with the coordinator and signers
         let (outbound_messages, operation_results) =
             feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
@@ -554,6 +650,25 @@ pub mod test {
                 panic!("Expected DkgEndBegin message");
             }
         }
+
+        // persist the state machines before continuing
+        let new_coordinators = coordinators
+            .iter()
+            .map(|c| Coordinator::load(&c.save()))
+            .collect::<Vec<Coordinator>>();
+
+        assert_eq!(coordinators, new_coordinators);
+
+        coordinators = new_coordinators;
+
+        let new_signers = signers
+            .iter()
+            .map(|s| Signer::<SignerType>::load(&s.save()))
+            .collect::<Vec<Signer<SignerType>>>();
+
+        assert_eq!(signers, new_signers);
+
+        signers = new_signers;
 
         // Send the DkgEndBegin message to all signers and share their responses with the coordinator and signers
         let (outbound_messages, operation_results) =
@@ -570,6 +685,25 @@ pub mod test {
             }
             _ => panic!("Expected Dkg Operation result"),
         }
+
+        // persist the state machines before continuing
+        let new_coordinators = coordinators
+            .iter()
+            .map(|c| Coordinator::load(&c.save()))
+            .collect::<Vec<Coordinator>>();
+
+        assert_eq!(coordinators, new_coordinators);
+
+        coordinators = new_coordinators;
+
+        let new_signers = signers
+            .iter()
+            .map(|s| Signer::<SignerType>::load(&s.save()))
+            .collect::<Vec<Signer<SignerType>>>();
+
+        assert_eq!(signers, new_signers);
+
+        signers = new_signers;
 
         // Start a signing round
         let msg = "It was many and many a year ago, in a kingdom by the sea"
@@ -603,6 +737,26 @@ pub mod test {
                 panic!("Expected SignatureShareRequest message");
             }
         }
+
+        // persist the coordinators before continuing
+        let new_coordinators = coordinators
+            .iter()
+            .map(|c| Coordinator::load(&c.save()))
+            .collect::<Vec<Coordinator>>();
+
+        assert_eq!(coordinators, new_coordinators);
+
+        coordinators = new_coordinators;
+
+        let new_signers = signers
+            .iter()
+            .map(|s| Signer::<SignerType>::load(&s.save()))
+            .collect::<Vec<Signer<SignerType>>>();
+
+        assert_eq!(signers, new_signers);
+
+        signers = new_signers;
+
         // Send the SignatureShareRequest message to all signers and share their responses with the coordinator and signers
         let (outbound_messages, operation_results) =
             feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
@@ -622,5 +776,27 @@ pub mod test {
             }
             _ => panic!("Expected Signature Operation result"),
         }
+    }
+
+    pub fn equal_after_save_load<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
+        num_signers: u32,
+        keys_per_signer: u32,
+    ) {
+        let (coordinators, signers) =
+            setup::<Coordinator, SignerType>(num_signers, keys_per_signer);
+
+        let loaded_coordinators = coordinators
+            .iter()
+            .map(|c| Coordinator::load(&c.save()))
+            .collect::<Vec<Coordinator>>();
+
+        assert_eq!(coordinators, loaded_coordinators);
+
+        let loaded_signers = signers
+            .iter()
+            .map(|s| Signer::<SignerType>::load(&s.save()))
+            .collect::<Vec<Signer<SignerType>>>();
+
+        assert_eq!(signers, loaded_signers);
     }
 }

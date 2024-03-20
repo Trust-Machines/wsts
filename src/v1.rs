@@ -50,6 +50,7 @@ impl Party {
     /// Load a party from `state`
     pub fn load(id: u32, n: u32, group_key: &Point, state: &traits::PartyState) -> Self {
         assert_eq!(state.private_keys.len(), 1);
+        assert_eq!(state.private_keys[0].0, id);
 
         let private_key = state.private_keys[0].1;
 
@@ -60,7 +61,7 @@ impl Party {
             public_key: private_key * G,
             private_key,
             group_key: *group_key,
-            nonce: Nonce::zero(),
+            nonce: state.nonce.clone(),
         }
     }
 
@@ -69,6 +70,7 @@ impl Party {
         traits::PartyState {
             private_keys: vec![(self.id, self.private_key)],
             polynomial: self.f.clone(),
+            nonce: self.nonce.clone(),
         }
     }
 
@@ -229,7 +231,7 @@ impl Party {
 }
 
 /// The group signature aggregator
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Aggregator {
     /// The total number of keys
     pub num_keys: u32,
@@ -542,6 +544,7 @@ impl traits::Signer for Signer {
             if let Err(e) = party.compute_secret(key_shares, polys) {
                 dkg_errors.insert(party.id, e);
             }
+            self.group_key = party.group_key;
         }
 
         if dkg_errors.is_empty() {
