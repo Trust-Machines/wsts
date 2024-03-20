@@ -1,25 +1,28 @@
+use core::{cmp::PartialEq, fmt::Debug};
 use hashbrown::HashMap;
 use polynomial::Polynomial;
 use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    common::{MerkleRoot, PolyCommitment, PublicNonce, Signature, SignatureShare},
+    common::{MerkleRoot, Nonce, PolyCommitment, PublicNonce, Signature, SignatureShare},
     curve::{point::Point, scalar::Scalar},
     errors::{AggregatorError, DkgError},
     taproot::SchnorrProof,
 };
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 /// The saved state required to reconstruct a party
 pub struct PartyState {
     /// The party's private polynomial
     pub polynomial: Polynomial<Scalar>,
     /// The key IDS and associate private keys for this party
     pub private_keys: Vec<(u32, Scalar)>,
+    /// The nonce being used by this party
+    pub nonce: Nonce,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 /// The saved state required to reconstruct a signer
 pub struct SignerState {
     /// The signer ID
@@ -39,7 +42,7 @@ pub struct SignerState {
 }
 
 /// A trait which provides a common `Signer` interface for `v1` and `v2`
-pub trait Signer: Clone {
+pub trait Signer: Clone + Debug + PartialEq {
     /// Create a new `Signer`
     fn new<RNG: RngCore + CryptoRng>(
         party_id: u32,
@@ -113,7 +116,7 @@ pub trait Signer: Clone {
 }
 
 /// A trait which provides a common `Aggregator` interface for `v1` and `v2`
-pub trait Aggregator: Clone {
+pub trait Aggregator: Clone + Debug + PartialEq {
     /// Construct an Aggregator with the passed parameters
     fn new(num_keys: u32, threshold: u32) -> Self;
 

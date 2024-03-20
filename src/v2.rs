@@ -202,7 +202,7 @@ impl Party {
 }
 
 /// The group signature aggregator
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Aggregator {
     /// The total number of keys
     pub num_keys: u32,
@@ -421,7 +421,7 @@ impl traits::Signer for Party {
                 .map(|(k, v)| (*k, *v))
                 .collect(),
             group_key: state.group_key,
-            nonce: Nonce::zero(),
+            nonce: party_state.nonce.clone(),
         }
     }
 
@@ -429,6 +429,7 @@ impl traits::Signer for Party {
         let party_state = traits::PartyState {
             polynomial: self.f.clone(),
             private_keys: self.private_keys.iter().map(|(k, v)| (*k, *v)).collect(),
+            nonce: self.nonce.clone(),
         };
         traits::SignerState {
             id: self.party_id,

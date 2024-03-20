@@ -15,7 +15,9 @@ use crate::{
         SignatureShareRequest,
     },
     state_machine::{
-        coordinator::{Config, Coordinator as CoordinatorTrait, Error, State},
+        coordinator::{
+            Config, Coordinator as CoordinatorTrait, Error, SavedState, SignRoundInfo, State,
+        },
         DkgError, OperationResult, SignError, StateMachine,
     },
     taproot::SchnorrProof,
@@ -23,21 +25,8 @@ use crate::{
     util::{decrypt, make_shared_secret_from_key},
 };
 
-#[derive(Clone, Default)]
-/// The Nonce response information for a sign round over specific message bytes
-pub struct ResponseInfo {
-    /// the nonce response of a signer id
-    pub public_nonces: BTreeMap<u32, NonceResponse>,
-    /// which key_ids we've received nonces for this iteration
-    pub nonce_recv_key_ids: HashSet<u32>,
-    /// which key_ids we're received sig shares for this iteration
-    pub sign_recv_key_ids: HashSet<u32>,
-    /// which signer_ids we're expecting sig shares from this iteration
-    pub sign_wait_signer_ids: HashSet<u32>,
-}
-
 /// The coordinator for the FIRE algorithm
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Coordinator<Aggregator: AggregatorTrait> {
     /// common config fields
     config: Config,
@@ -53,7 +42,7 @@ pub struct Coordinator<Aggregator: AggregatorTrait> {
     /// the current view of a successful DKG's participants' commitments
     pub party_polynomials: HashMap<u32, PolyCommitment>,
     signature_shares: BTreeMap<u32, Vec<SignatureShare>>,
-    message_nonces: BTreeMap<Vec<u8>, ResponseInfo>,
+    message_nonces: BTreeMap<Vec<u8>, SignRoundInfo>,
     /// aggregate public key
     pub aggregate_public_key: Option<Point>,
     signature: Option<Signature>,
@@ -1088,6 +1077,63 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
         }
     }
 
+    fn load(state: &SavedState) -> Self {
+        Self {
+            aggregator: Aggregator::new(state.config.num_keys, state.config.threshold),
+            config: state.config.clone(),
+            current_dkg_id: state.current_dkg_id,
+            current_sign_id: state.current_sign_id,
+            current_sign_iter_id: state.current_sign_iter_id,
+            dkg_public_shares: state.dkg_public_shares.clone(),
+            dkg_private_shares: state.dkg_private_shares.clone(),
+            dkg_end_messages: state.dkg_end_messages.clone(),
+            party_polynomials: state.party_polynomials.clone(),
+            message_nonces: state.message_nonces.clone(),
+            signature_shares: state.signature_shares.clone(),
+            aggregate_public_key: state.aggregate_public_key,
+            signature: state.signature.clone(),
+            schnorr_proof: state.schnorr_proof.clone(),
+            message: state.message.clone(),
+            dkg_wait_signer_ids: state.dkg_wait_signer_ids.clone(),
+            state: state.state.clone(),
+            dkg_public_start: state.dkg_public_start,
+            dkg_private_start: state.dkg_private_start,
+            dkg_end_start: state.dkg_end_start,
+            nonce_start: state.nonce_start,
+            sign_start: state.sign_start,
+            malicious_signer_ids: state.malicious_signer_ids.clone(),
+            malicious_dkg_signer_ids: state.malicious_dkg_signer_ids.clone(),
+        }
+    }
+
+    fn save(&self) -> SavedState {
+        SavedState {
+            config: self.config.clone(),
+            current_dkg_id: self.current_dkg_id,
+            current_sign_id: self.current_sign_id,
+            current_sign_iter_id: self.current_sign_iter_id,
+            dkg_public_shares: self.dkg_public_shares.clone(),
+            dkg_private_shares: self.dkg_private_shares.clone(),
+            dkg_end_messages: self.dkg_end_messages.clone(),
+            party_polynomials: self.party_polynomials.clone(),
+            message_nonces: self.message_nonces.clone(),
+            signature_shares: self.signature_shares.clone(),
+            aggregate_public_key: self.aggregate_public_key,
+            signature: self.signature.clone(),
+            schnorr_proof: self.schnorr_proof.clone(),
+            message: self.message.clone(),
+            dkg_wait_signer_ids: self.dkg_wait_signer_ids.clone(),
+            state: self.state.clone(),
+            dkg_public_start: self.dkg_public_start,
+            dkg_private_start: self.dkg_private_start,
+            dkg_end_start: self.dkg_end_start,
+            nonce_start: self.nonce_start,
+            sign_start: self.sign_start,
+            malicious_signer_ids: self.malicious_signer_ids.clone(),
+            malicious_dkg_signer_ids: self.malicious_dkg_signer_ids.clone(),
+        }
+    }
+
     /// Retrieve the config
     fn get_config(&self) -> Config {
         self.config.clone()
@@ -1191,9 +1237,9 @@ pub mod test {
             coordinator::{
                 fire::Coordinator as FireCoordinator,
                 test::{
-                    coordinator_state_machine, feedback_messages, feedback_mutated_messages,
-                    new_coordinator, process_inbound_messages, setup, setup_with_timeouts,
-                    start_dkg_round,
+                    coordinator_state_machine, equal_after_save_load, feedback_messages,
+                    feedback_mutated_messages, new_coordinator, process_inbound_messages, setup,
+                    setup_with_timeouts, start_dkg_round,
                 },
                 Config, Coordinator as CoordinatorTrait, State,
             },
@@ -1215,6 +1261,16 @@ pub mod test {
     #[test]
     fn new_coordinator_v2() {
         new_coordinator::<FireCoordinator<v2::Aggregator>>();
+    }
+
+    #[test]
+    fn equal_after_save_load_v1() {
+        equal_after_save_load::<FireCoordinator<v1::Aggregator>, v1::Signer>(2, 2);
+    }
+
+    #[test]
+    fn equal_after_save_load_v2() {
+        equal_after_save_load::<FireCoordinator<v2::Aggregator>, v2::Signer>(2, 2);
     }
 
     #[test]
