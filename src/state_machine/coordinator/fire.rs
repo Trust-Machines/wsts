@@ -1238,7 +1238,7 @@ pub mod test {
                 fire::Coordinator as FireCoordinator,
                 test::{
                     coordinator_state_machine, equal_after_save_load, feedback_messages,
-                    feedback_mutated_messages, new_coordinator, process_inbound_messages, setup,
+                    feedback_mutated_messages, new_coordinator, run_dkg_sign, setup,
                     setup_with_timeouts, start_dkg_round,
                 },
                 Config, Coordinator as CoordinatorTrait, State,
@@ -1341,13 +1341,13 @@ pub mod test {
     }
 
     #[test]
-    fn process_inbound_messages_v1() {
-        process_inbound_messages::<FireCoordinator<v1::Aggregator>, v1::Signer>(5, 2);
+    fn run_dkg_sign_v1() {
+        run_dkg_sign::<FireCoordinator<v1::Aggregator>, v1::Signer>(5, 2);
     }
 
     #[test]
-    fn process_inbound_messages_v2() {
-        process_inbound_messages::<FireCoordinator<v2::Aggregator>, v2::Signer>(5, 2);
+    fn run_dkg_sign_v2() {
+        run_dkg_sign::<FireCoordinator<v2::Aggregator>, v2::Signer>(5, 2);
     }
 
     #[test]

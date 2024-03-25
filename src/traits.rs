@@ -15,7 +15,7 @@ use crate::{
 /// The saved state required to reconstruct a party
 pub struct PartyState {
     /// The party's private polynomial
-    pub polynomial: Polynomial<Scalar>,
+    pub polynomial: Option<Polynomial<Scalar>>,
     /// The key IDS and associate private keys for this party
     pub private_keys: Vec<(u32, Scalar)>,
     /// The nonce being used by this party
@@ -71,8 +71,11 @@ pub trait Signer: Clone + Debug + PartialEq {
     /// Get all poly commitments for this signer
     fn get_poly_commitments<RNG: RngCore + CryptoRng>(&self, rng: &mut RNG) -> Vec<PolyCommitment>;
 
-    /// Reset all poly commitments for this signer
+    /// Reset all polynomials for this signer
     fn reset_polys<RNG: RngCore + CryptoRng>(&mut self, rng: &mut RNG);
+
+    /// Clear all polynomials for this signer
+    fn clear_polys(&mut self);
 
     /// Get all private shares for this signer
     fn get_shares(&self) -> HashMap<u32, HashMap<u32, Scalar>>;

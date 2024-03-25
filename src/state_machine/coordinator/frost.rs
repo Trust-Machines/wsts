@@ -751,8 +751,8 @@ pub mod test {
         state_machine::coordinator::{
             frost::Coordinator as FrostCoordinator,
             test::{
-                coordinator_state_machine, equal_after_save_load, new_coordinator,
-                process_inbound_messages, start_dkg_round,
+                coordinator_state_machine, equal_after_save_load, new_coordinator, run_dkg_sign,
+                start_dkg_round,
             },
             Config, Coordinator as CoordinatorTrait, State,
         },
@@ -849,12 +849,12 @@ pub mod test {
     }
 
     #[test]
-    fn process_inbound_messages_v1() {
-        process_inbound_messages::<FrostCoordinator<v1::Aggregator>, v1::Signer>(5, 2);
+    fn run_dkg_sign_v1() {
+        run_dkg_sign::<FrostCoordinator<v1::Aggregator>, v1::Signer>(5, 2);
     }
 
     #[test]
     fn process_inbound_messages_v2() {
-        process_inbound_messages::<FrostCoordinator<v2::Aggregator>, v2::Signer>(5, 2);
+        run_dkg_sign::<FrostCoordinator<v2::Aggregator>, v2::Signer>(5, 2);
     }
 }
