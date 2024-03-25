@@ -585,7 +585,7 @@ pub mod test {
         (messages, results)
     }
 
-    pub fn process_inbound_messages<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
+    pub fn run_dkg_sign<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
         num_signers: u32,
         keys_per_signer: u32,
     ) {
@@ -684,6 +684,11 @@ pub mod test {
                 }
             }
             _ => panic!("Expected Dkg Operation result"),
+        }
+
+        // clear the polynomials before persisting
+        for signer in &mut signers {
+            signer.signer.clear_polys();
         }
 
         // persist the state machines before continuing

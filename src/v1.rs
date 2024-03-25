@@ -2,6 +2,7 @@ use hashbrown::HashMap;
 use num_traits::{One, Zero};
 use polynomial::Polynomial;
 use rand_core::{CryptoRng, RngCore};
+use tracing::warn;
 
 use crate::{
     common::{CheckPrivateShares, Nonce, PolyCommitment, PublicNonce, Signature, SignatureShare},
@@ -25,8 +26,9 @@ pub struct Party {
     /// The public key
     pub public_key: Point,
     /// The polynomial used for Lagrange interpolation
-    pub f: Polynomial<Scalar>,
-    n: u32,
+    pub f: Option<Polynomial<Scalar>>,
+    num_keys: u32,
+    threshold: u32,
     private_key: Scalar,
     /// The aggregate group public key
     pub group_key: Point,
@@ -38,8 +40,9 @@ impl Party {
     pub fn new<RNG: RngCore + CryptoRng>(id: u32, n: u32, t: u32, rng: &mut RNG) -> Self {
         Self {
             id,
-            n,
-            f: VSS::random_poly(t - 1, rng),
+            num_keys: n,
+            threshold: t,
+            f: Some(VSS::random_poly(t - 1, rng)),
             private_key: Scalar::zero(),
             public_key: Point::zero(),
             group_key: Point::zero(),
@@ -48,7 +51,7 @@ impl Party {
     }
 
     /// Load a party from `state`
-    pub fn load(id: u32, n: u32, group_key: &Point, state: &traits::PartyState) -> Self {
+    pub fn load(id: u32, n: u32, t: u32, group_key: &Point, state: &traits::PartyState) -> Self {
         assert_eq!(state.private_keys.len(), 1);
         assert_eq!(state.private_keys[0].0, id);
 
@@ -56,7 +59,8 @@ impl Party {
 
         Self {
             id,
-            n,
+            num_keys: n,
+            threshold: t,
             f: state.polynomial.clone(),
             public_key: private_key * G,
             private_key,
@@ -82,28 +86,45 @@ impl Party {
     }
 
     /// Get a public commitment to the private polynomial
-    pub fn get_poly_commitment<RNG: RngCore + CryptoRng>(&self, rng: &mut RNG) -> PolyCommitment {
-        PolyCommitment {
-            id: ID::new(&self.id(), &self.f.data()[0], rng),
-            poly: (0..self.f.data().len())
-                .map(|i| &self.f.data()[i] * G)
-                .collect(),
+    pub fn get_poly_commitment<RNG: RngCore + CryptoRng>(
+        &self,
+        rng: &mut RNG,
+    ) -> Option<PolyCommitment> {
+        if let Some(poly) = &self.f {
+            Some(PolyCommitment {
+                id: ID::new(&self.id(), &poly.data()[0], rng),
+                poly: (0..poly.data().len())
+                    .map(|i| &poly.data()[i] * G)
+                    .collect(),
+            })
+        } else {
+            warn!("get_poly_commitment called with no polynomial");
+            None
         }
     }
 
     /// Make a new polynomial
     pub fn reset_poly<RNG: RngCore + CryptoRng>(&mut self, rng: &mut RNG) {
-        let t = self.f.data().len() - 1;
-        self.f = VSS::random_poly(t.try_into().unwrap(), rng);
+        self.f = Some(VSS::random_poly(self.threshold - 1, rng));
+    }
+
+    /// Clear the polynomial
+    pub fn clear_poly(&mut self) {
+        self.f = None;
     }
 
     /// Get the shares of this party's private polynomial for all parties
     pub fn get_shares(&self) -> HashMap<u32, Scalar> {
-        let mut shares = HashMap::new();
-        for i in 1..self.n + 1 {
-            shares.insert(i, self.f.eval(compute::id(i)));
+        if let Some(poly) = &self.f {
+            let mut shares = HashMap::new();
+            for i in 1..self.num_keys + 1 {
+                shares.insert(i, poly.eval(compute::id(i)));
+            }
+            shares
+        } else {
+            warn!("get_shares called with no polynomial");
+            Default::default()
         }
-        shares
     }
 
     /// Compute this party's share of the group secret key
@@ -419,6 +440,8 @@ pub struct Signer {
     id: u32,
     /// The total number of keys
     num_keys: u32,
+    /// The threshold of the keys needed to make a valid signature
+    threshold: u32,
     /// The aggregate group public key
     group_key: Point,
     /// The parties which this object encapsulates
@@ -441,6 +464,7 @@ impl Signer {
         Signer {
             id,
             num_keys,
+            threshold,
             group_key: Point::zero(),
             parties,
         }
@@ -464,12 +488,13 @@ impl traits::Signer for Signer {
         let parties = state
             .parties
             .iter()
-            .map(|(id, ps)| Party::load(*id, state.num_keys, &state.group_key, ps))
+            .map(|(id, ps)| Party::load(*id, state.num_keys, state.threshold, &state.group_key, ps))
             .collect();
 
         Self {
             id: state.id,
             num_keys: state.num_keys,
+            threshold: state.threshold,
             group_key: state.group_key,
             parties,
         }
@@ -490,7 +515,7 @@ impl traits::Signer for Signer {
             key_ids,
             num_keys: self.num_keys,
             num_parties: self.num_keys,
-            threshold: self.num_keys,
+            threshold: self.threshold,
             group_key: self.group_key,
             parties,
         }
@@ -509,15 +534,25 @@ impl traits::Signer for Signer {
     }
 
     fn get_poly_commitments<RNG: RngCore + CryptoRng>(&self, rng: &mut RNG) -> Vec<PolyCommitment> {
-        self.parties
-            .iter()
-            .map(|p| p.get_poly_commitment(rng))
-            .collect()
+        let mut polys = Vec::new();
+        for party in &self.parties {
+            let comm = party.get_poly_commitment(rng);
+            if let Some(poly) = &comm {
+                polys.push(poly.clone());
+            }
+        }
+        polys
     }
 
     fn reset_polys<RNG: RngCore + CryptoRng>(&mut self, rng: &mut RNG) {
         for party in self.parties.iter_mut() {
             party.reset_poly(rng);
+        }
+    }
+
+    fn clear_polys(&mut self) {
+        for party in self.parties.iter_mut() {
+            party.clear_poly();
         }
     }
 
@@ -715,6 +750,31 @@ mod tests {
         let loaded = v1::Signer::load(&state);
 
         assert_eq!(signer, loaded);
+    }
+
+    #[test]
+    fn clear_polys() {
+        let mut rng = OsRng;
+        let id = 1;
+        let key_ids = [1, 2, 3];
+        let n: u32 = 10;
+        let t: u32 = 7;
+
+        let mut signer = v1::Signer::new(id, &key_ids, n, t, &mut rng);
+
+        assert_eq!(signer.get_poly_commitments(&mut rng).len(), key_ids.len());
+        assert_eq!(signer.get_shares().len(), key_ids.len());
+        for (_id, shares) in signer.get_shares() {
+            assert_eq!(shares.len(), n.try_into().unwrap());
+        }
+
+        signer.clear_polys();
+
+        assert_eq!(signer.get_poly_commitments(&mut rng).len(), 0);
+        assert_eq!(signer.get_shares().len(), 3);
+        for (_id, shares) in signer.get_shares() {
+            assert_eq!(shares.len(), 0);
+        }
     }
 
     #[allow(non_snake_case)]
