@@ -61,6 +61,10 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 State::Idle => {
                     // Did we receive a coordinator message?
                     if let Message::DkgBegin(dkg_begin) = &packet.msg {
+                        if self.current_dkg_id >= dkg_begin.dkg_id {
+                            // We have already processed this DKG round
+                            return Ok((None, None));
+                        }
                         // Set the current sign id to one before the current message to ensure
                         // that we start the next round at the correct id. (Do this rather
                         // then overwriting afterwards to ensure logging is accurate)
@@ -68,6 +72,10 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                         let packet = self.start_dkg_round()?;
                         return Ok((Some(packet), None));
                     } else if let Message::NonceRequest(nonce_request) = &packet.msg {
+                        if self.current_sign_id >= nonce_request.sign_id {
+                            // We have already processed this sign round
+                            return Ok((None, None));
+                        }
                         // Set the current sign id to one before the current message to ensure
                         // that we start the next round at the correct id. (Do this rather
                         // then overwriting afterwards to ensure logging is accurate)
