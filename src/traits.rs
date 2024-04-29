@@ -145,3 +145,79 @@ pub trait Aggregator: Clone + Debug + PartialEq {
         merkle_root: Option<MerkleRoot>,
     ) -> Result<SchnorrProof, AggregatorError>;
 }
+
+/// Helper functions for tests
+pub mod test_helpers {
+    use hashbrown::HashMap;
+    use rand_core::{CryptoRng, OsRng, RngCore};
+
+    use crate::{common::PolyCommitment, errors::DkgError};
+
+    #[allow(non_snake_case)]
+    /// Remove the provided key ids from the list of private shares and execute compute secrets
+    fn compute_secrets_not_enough_shares<RNG: RngCore + CryptoRng, Signer: super::Signer>(
+        signers: &mut [Signer],
+        rng: &mut RNG,
+        missing_key_ids: &[u32],
+    ) -> Result<HashMap<u32, PolyCommitment>, HashMap<u32, DkgError>> {
+        assert!(
+            !missing_key_ids.is_empty(),
+            "Cannot run a missing shares test without specificying at least one missing key id"
+        );
+        let polys: HashMap<u32, PolyCommitment> = signers
+            .iter()
+            .flat_map(|s| s.get_poly_commitments(rng))
+            .map(|comm| (comm.id.id.get_u32(), comm))
+            .collect();
+        let mut private_shares = HashMap::new();
+
+        for signer in signers.iter() {
+            for (signer_id, mut signer_shares) in signer.get_shares() {
+                for key_id in missing_key_ids {
+                    if signer.get_key_ids().contains(key_id) {
+                        signer_shares.remove(key_id);
+                    }
+                }
+                private_shares.insert(signer_id, signer_shares);
+            }
+        }
+
+        let mut secret_errors = HashMap::new();
+        for signer in signers.iter_mut() {
+            if let Err(signer_secret_errors) = signer.compute_secrets(&private_shares, &polys) {
+                secret_errors.extend(signer_secret_errors.into_iter());
+            }
+        }
+
+        if secret_errors.is_empty() {
+            Ok(polys)
+        } else {
+            Err(secret_errors)
+        }
+    }
+
+    #[allow(non_snake_case)]
+    /// Run compute secrets test to trigger NotEnoughShares code path
+    pub fn run_compute_secrets_not_enough_shares<Signer: super::Signer>() {
+        let Nk: u32 = 10;
+        let Np: u32 = 4;
+        let T: u32 = 7;
+        let signer_ids: Vec<Vec<u32>> = vec![vec![1, 2, 3], vec![4, 5], vec![6, 7, 8], vec![9, 10]];
+        let missing_key_ids = vec![1, 7];
+        let mut rng = OsRng;
+        let mut signers: Vec<Signer> = signer_ids
+            .iter()
+            .enumerate()
+            .map(|(id, ids)| Signer::new(id.try_into().unwrap(), ids, Nk, Np, T, &mut rng))
+            .collect();
+
+        match compute_secrets_not_enough_shares(&mut signers, &mut rng, &missing_key_ids) {
+            Ok(polys) => panic!("Got a result with missing public shares: {polys:?}"),
+            Err(secret_errors) => {
+                for (_, error) in secret_errors {
+                    assert!(matches!(error, DkgError::NotEnoughShares(_)));
+                }
+            }
+        }
+    }
+}

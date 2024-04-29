@@ -109,7 +109,7 @@ impl Party {
             }
         }
         if !missing_shares.is_empty() {
-            return Err(DkgError::MissingShares(missing_shares));
+            return Err(DkgError::MissingPublicShares(missing_shares));
         }
 
         self.private_keys.clear();
@@ -123,7 +123,7 @@ impl Party {
             self.group_key += comm.poly[0];
         }
         if !bad_ids.is_empty() {
-            return Err(DkgError::BadIds(bad_ids));
+            return Err(DkgError::BadPublicShares(bad_ids));
         }
 
         let mut not_enough_shares = Vec::new();
@@ -146,7 +146,7 @@ impl Party {
             }
         }
         if !bad_shares.is_empty() {
-            return Err(DkgError::BadShares(bad_shares));
+            return Err(DkgError::BadPrivateShares(bad_shares));
         }
 
         for key_id in &self.key_ids {
@@ -252,8 +252,8 @@ impl Aggregator {
         }
 
         // optimistically try to create the aggregate signature without checking for bad keys or sig shares
-        for i in 0..sig_shares.len() {
-            z += sig_shares[i].z_i;
+        for sig_share in sig_shares {
+            z += sig_share.z_i;
         }
 
         z += cx_sign * c * tweak;
@@ -498,12 +498,14 @@ impl traits::Signer for Party {
     ) -> Result<(), HashMap<u32, DkgError>> {
         // go through the shares, looking for this party's
         let mut key_shares = HashMap::new();
-        for key_id in self.get_key_ids() {
+        for dest_key_id in self.get_key_ids() {
             let mut shares = HashMap::new();
-            for (signer_id, signer_shares) in private_shares.iter() {
-                shares.insert(*signer_id, signer_shares[&key_id]);
+            for (src_party_id, signer_shares) in private_shares.iter() {
+                if let Some(signer_share) = signer_shares.get(&dest_key_id) {
+                    shares.insert(*src_party_id, *signer_share);
+                }
             }
-            key_shares.insert(key_id, shares);
+            key_shares.insert(dest_key_id, shares);
         }
 
         match self.compute_secret(&key_shares, polys) {
@@ -590,7 +592,9 @@ pub mod test_helpers {
                 let mut key_shares = HashMap::new();
 
                 for (id, shares) in &broadcast_shares {
-                    key_shares.insert(*id, shares[&key_id]);
+                    if let Some(share) = shares.get(&key_id) {
+                        key_shares.insert(*id, *share);
+                    }
                 }
 
                 party_shares.insert(key_id, key_shares);
@@ -629,7 +633,7 @@ pub mod test_helpers {
 #[cfg(test)]
 mod tests {
     use crate::{
-        traits::{Aggregator, Signer},
+        traits::{test_helpers::run_compute_secrets_not_enough_shares, Aggregator, Signer},
         v2,
     };
 
@@ -708,5 +712,12 @@ mod tests {
                 panic!("Aggregator sign failed: {:?}", e);
             }
         }
+    }
+
+    #[allow(non_snake_case)]
+    #[test]
+    /// Run a distributed key generation round with not enough shares
+    pub fn run_compute_secrets_missing_shares() {
+        run_compute_secrets_not_enough_shares::<v2::Signer>()
     }
 }

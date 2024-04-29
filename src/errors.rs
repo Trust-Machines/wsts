@@ -6,18 +6,21 @@ use crate::curve::{point::Error as PointError, scalar::Scalar};
 #[derive(Error, Debug, Clone, Serialize, Deserialize, PartialEq)]
 /// Errors which can happen during distributed key generation
 pub enum DkgError {
-    #[error("missing shares from {0:?}")]
-    /// The shares which were missing
-    MissingShares(Vec<u32>),
-    #[error("bad IDs {0:?}")]
-    /// The IDs which failed to verify
-    BadIds(Vec<u32>),
+    #[error("missing public shares from {0:?}")]
+    /// The public shares which were missing
+    MissingPublicShares(Vec<u32>),
+    #[error("missing private shares from {0:?}")]
+    /// The private shares which were missing
+    MissingPrivateShares(Vec<u32>),
+    #[error("bad public shares {0:?}")]
+    /// The bad public shares that failed to verify
+    BadPublicShares(Vec<u32>),
     #[error("not enough shares {0:?}")]
     /// Not enough shares to complete DKG
     NotEnoughShares(Vec<u32>),
-    #[error("bad shares {0:?}")]
-    /// The shares which failed to verify
-    BadShares(Vec<u32>),
+    #[error("bad private shares {0:?}")]
+    /// The private shares which failed to verify
+    BadPrivateShares(Vec<u32>),
     #[error("point error {0:?}")]
     /// An error during point operations
     Point(PointError),

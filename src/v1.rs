@@ -133,6 +133,9 @@ impl Party {
         shares: HashMap<u32, Scalar>,
         polys: &HashMap<u32, PolyCommitment>,
     ) -> Result<(), DkgError> {
+        if shares.len() != polys.len() {
+            return Err(DkgError::NotEnoughShares(vec![self.id]));
+        }
         let mut missing_shares = Vec::new();
         for i in polys.keys() {
             if shares.get(i).is_none() {
@@ -140,7 +143,7 @@ impl Party {
             }
         }
         if !missing_shares.is_empty() {
-            return Err(DkgError::MissingShares(missing_shares));
+            return Err(DkgError::MissingPublicShares(missing_shares));
         }
 
         self.private_key = Scalar::zero();
@@ -154,11 +157,7 @@ impl Party {
             self.group_key += comm.poly[0];
         }
         if !bad_ids.is_empty() {
-            return Err(DkgError::BadIds(bad_ids));
-        }
-
-        if shares.len() != polys.len() {
-            return Err(DkgError::NotEnoughShares(vec![self.id]));
+            return Err(DkgError::BadPublicShares(bad_ids));
         }
 
         // let's optimize for the case where all shares are good, and test them as a batch
@@ -176,7 +175,7 @@ impl Party {
                     bad_shares.push(*i);
                 }
             }
-            return Err(DkgError::BadShares(bad_shares));
+            return Err(DkgError::BadPrivateShares(bad_shares));
         }
 
         for (_i, s) in shares.iter() {
@@ -287,8 +286,8 @@ impl Aggregator {
             cx_sign = -Scalar::one();
         }
 
-        for i in 0..sig_shares.len() {
-            z += sig_shares[i].z_i;
+        for sig_share in sig_shares {
+            z += sig_share.z_i;
         }
 
         z += cx_sign * c * tweak;
@@ -573,8 +572,10 @@ impl traits::Signer for Signer {
         for party in &mut self.parties {
             // go through the shares, looking for this party's
             let mut key_shares = HashMap::with_capacity(polys.len());
-            for (signer_id, signer_shares) in private_shares.iter() {
-                key_shares.insert(*signer_id, signer_shares[&party.id]);
+            for (party_id, signer_shares) in private_shares.iter() {
+                if let Some(share) = signer_shares.get(&party.id) {
+                    key_shares.insert(*party_id, *share);
+                }
             }
             if let Err(e) = party.compute_secret(key_shares, polys) {
                 dkg_errors.insert(party.id, e);
@@ -694,6 +695,7 @@ pub mod test_helpers {
 
 #[cfg(test)]
 mod tests {
+    use crate::traits::test_helpers::run_compute_secrets_not_enough_shares;
     use crate::traits::{Aggregator, Signer};
     use crate::v1;
 
@@ -815,5 +817,12 @@ mod tests {
                 panic!("Aggregator sign failed: {:?}", e);
             }
         }
+    }
+
+    #[allow(non_snake_case)]
+    #[test]
+    /// Run a distributed key generation round with not enough shares
+    pub fn run_compute_secrets_missing_shares() {
+        run_compute_secrets_not_enough_shares::<v1::Signer>()
     }
 }
