@@ -282,48 +282,9 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             let outbounds = self.process(&message.msg)?;
             for out in outbounds {
                 let msg = Packet {
-                    sig: match &out {
-                        Message::DkgBegin(msg) => msg
-                            .sign(&self.network_private_key)
-                            .expect("failed to sign DkgBegin")
-                            .to_vec(),
-                        Message::DkgPrivateBegin(msg) => msg
-                            .sign(&self.network_private_key)
-                            .expect("failed to sign DkgPrivateBegin")
-                            .to_vec(),
-                        Message::DkgEndBegin(msg) => msg
-                            .sign(&self.network_private_key)
-                            .expect("failed to sign DkgEndBegin")
-                            .to_vec(),
-                        Message::DkgEnd(msg) => msg
-                            .sign(&self.network_private_key)
-                            .expect("failed to sign DkgEnd")
-                            .to_vec(),
-                        Message::DkgPublicShares(msg) => msg
-                            .sign(&self.network_private_key)
-                            .expect("failed to sign DkgPublicShares")
-                            .to_vec(),
-                        Message::DkgPrivateShares(msg) => msg
-                            .sign(&self.network_private_key)
-                            .expect("failed to sign DkgPrivateShare")
-                            .to_vec(),
-                        Message::NonceRequest(msg) => msg
-                            .sign(&self.network_private_key)
-                            .expect("failed to sign NonceRequest")
-                            .to_vec(),
-                        Message::NonceResponse(msg) => msg
-                            .sign(&self.network_private_key)
-                            .expect("failed to sign NonceResponse")
-                            .to_vec(),
-                        Message::SignatureShareRequest(msg) => msg
-                            .sign(&self.network_private_key)
-                            .expect("failed to sign SignShareRequest")
-                            .to_vec(),
-                        Message::SignatureShareResponse(msg) => msg
-                            .sign(&self.network_private_key)
-                            .expect("failed to sign SignShareResponse")
-                            .to_vec(),
-                    },
+                    sig: out
+                        .sign(&self.network_private_key)
+                        .expect("Failed to sign message"),
                     msg: out,
                 };
                 responses.push(msg);
