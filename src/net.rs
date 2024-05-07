@@ -103,6 +103,23 @@ pub enum Message {
     SignatureShareResponse(SignatureShareResponse),
 }
 
+impl Signable for Message {
+    fn hash(&self, hasher: &mut Sha256) {
+        match self {
+            Message::DkgBegin(msg) => msg.hash(hasher),
+            Message::DkgPublicShares(msg) => msg.hash(hasher),
+            Message::DkgPrivateBegin(msg) => msg.hash(hasher),
+            Message::DkgPrivateShares(msg) => msg.hash(hasher),
+            Message::DkgEndBegin(msg) => msg.hash(hasher),
+            Message::DkgEnd(msg) => msg.hash(hasher),
+            Message::NonceRequest(msg) => msg.hash(hasher),
+            Message::NonceResponse(msg) => msg.hash(hasher),
+            Message::SignatureShareRequest(msg) => msg.hash(hasher),
+            Message::SignatureShareResponse(msg) => msg.hash(hasher),
+        }
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 /// DKG begin message from coordinator to signers
 pub struct DkgBegin {
@@ -903,5 +920,23 @@ mod test {
             &test_config.public_keys,
             &test_config.coordinator_public_key
         ));
+    }
+
+    #[test]
+    fn signature_share_response_wrapped_verify_msg() {
+        let test_config = TestConfig::default();
+
+        let signature_share_response = SignatureShareResponse {
+            dkg_id: 0,
+            sign_id: 0,
+            sign_iter_id: 0,
+            signer_id: 0,
+            signature_shares: vec![],
+        };
+        let msg = Message::SignatureShareResponse(signature_share_response.clone());
+        let sig = msg
+            .sign(&test_config.coordinator_private_key)
+            .expect("Failed to sign");
+        assert!(msg.verify(&sig, &test_config.coordinator_public_key));
     }
 }
