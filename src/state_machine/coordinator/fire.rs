@@ -1427,6 +1427,87 @@ pub mod test {
     }
 
     #[test]
+    fn missing_public_keys_dkg_v1() {
+        missing_public_keys_dkg::<v1::Aggregator, v1::Signer>(10, 1);
+    }
+
+    #[test]
+    fn missing_public_keys_dkg_v2() {
+        missing_public_keys_dkg::<v2::Aggregator, v2::Signer>(10, 1);
+    }
+
+    fn missing_public_keys_dkg<Aggregator: AggregatorTrait, SignerType: SignerTrait>(
+        num_signers: u32,
+        keys_per_signer: u32,
+    ) -> (Vec<FireCoordinator<Aggregator>>, Vec<Signer<SignerType>>) {
+        let timeout = Duration::from_millis(1024);
+        let expire = Duration::from_millis(1280);
+        let (mut coordinators, signers) =
+            setup_with_timeouts::<FireCoordinator<Aggregator>, SignerType>(
+                num_signers,
+                keys_per_signer,
+                Some(timeout),
+                Some(timeout),
+                Some(timeout),
+                Some(timeout),
+                Some(timeout),
+            );
+
+        // Start a DKG round where we will not allow all signers to recv DkgBegin, so they will not respond with DkgPublicShares
+        let message = coordinators.first_mut().unwrap().start_dkg_round().unwrap();
+        assert!(coordinators.first().unwrap().aggregate_public_key.is_none());
+        assert_eq!(coordinators.first().unwrap().state, State::DkgPublicGather);
+
+        let mut minimum_coordinators = coordinators.clone();
+        let mut minimum_signers = signers.clone();
+
+        // Let us also remove that signers public key from the config including all of its key ids
+        let mut removed_signer = minimum_signers.pop().expect("Failed to pop signer");
+        let public_key = removed_signer
+            .public_keys
+            .signers
+            .remove(&removed_signer.signer_id)
+            .expect("Failed to remove public key");
+        removed_signer
+            .public_keys
+            .key_ids
+            .retain(|_k, pk| pk.to_bytes() != public_key.to_bytes());
+
+        for signer in minimum_signers.iter_mut() {
+            // Overwrite all other signers to use the new public keys missing the removed signers public key
+            signer.public_keys = removed_signer.public_keys.clone();
+        }
+
+        // Send the DKG Begin message to minimum signers and gather responses by sharing with signers and coordinator
+        let (outbound_messages, operation_results) = feedback_messages(
+            &mut minimum_coordinators,
+            &mut minimum_signers,
+            &[message.clone()],
+        );
+
+        assert_eq!(outbound_messages.len(), 0);
+        assert_eq!(operation_results.len(), 0);
+        assert_eq!(coordinators.first().unwrap().state, State::DkgPublicGather,);
+
+        // Sleep long enough to hit the timeout
+        thread::sleep(expire);
+
+        let (outbound_messages, operation_results) = minimum_coordinators
+            .first_mut()
+            .unwrap()
+            .process_inbound_messages(&[])
+            .unwrap();
+
+        assert_eq!(outbound_messages.len(), 1);
+        assert_eq!(operation_results.len(), 0);
+        assert_eq!(
+            minimum_coordinators.first().unwrap().state,
+            State::DkgPrivateGather,
+        );
+        (minimum_coordinators, minimum_signers)
+    }
+
+    #[test]
     fn minimum_signers_dkg_v1() {
         minimum_signers_dkg::<v1::Aggregator, v1::Signer>(10, 2);
     }
@@ -1945,6 +2026,97 @@ pub mod test {
         }
         for _ in 0..num_signers_to_remove {
             signers.pop();
+        }
+
+        // Start a signing round
+        let msg = "It was many and many a year ago, in a kingdom by the sea"
+            .as_bytes()
+            .to_vec();
+        let is_taproot = false;
+        let merkle_root = None;
+        let message = coordinators
+            .first_mut()
+            .unwrap()
+            .start_signing_round(&msg, is_taproot, merkle_root)
+            .unwrap();
+        assert_eq!(
+            coordinators.first().unwrap().state,
+            State::NonceGather(is_taproot, merkle_root)
+        );
+
+        // Send the message to all signers and gather responses by sharing with all other signers and coordinator
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &[message]);
+        assert!(operation_results.is_empty());
+        for coordinator in &coordinators {
+            assert_eq!(
+                coordinator.state,
+                State::SigShareGather(is_taproot, merkle_root)
+            );
+        }
+
+        assert_eq!(outbound_messages.len(), 1);
+        match &outbound_messages[0].msg {
+            Message::SignatureShareRequest(_) => {}
+            _ => {
+                panic!("Expected SignatureShareRequest message");
+            }
+        }
+        // Send the SignatureShareRequest message to all signers and share their responses with the coordinator and signers
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
+        assert!(outbound_messages.is_empty());
+        assert_eq!(operation_results.len(), 1);
+        match &operation_results[0] {
+            OperationResult::Sign(sig) => {
+                assert!(sig.verify(
+                    &coordinators
+                        .first()
+                        .unwrap()
+                        .aggregate_public_key
+                        .expect("No aggregate public key set!"),
+                    &msg
+                ));
+            }
+            _ => panic!("Expected Signature Operation result"),
+        }
+
+        for coordinator in &coordinators {
+            assert_eq!(coordinator.state, State::Idle);
+        }
+    }
+
+    #[test]
+    fn missing_public_keys_sign_v1() {
+        missing_public_keys_sign::<v1::Aggregator, v1::Signer>();
+    }
+
+    #[test]
+    fn minimum_missing_public_keys_sign_v2() {
+        missing_public_keys_sign::<v2::Aggregator, v2::Signer>();
+    }
+
+    fn missing_public_keys_sign<Aggregator: AggregatorTrait, Signer: SignerTrait>() {
+        let num_signers = 10;
+        let keys_per_signer = 2;
+
+        let (mut coordinators, mut signers) =
+            minimum_signers_dkg::<Aggregator, Signer>(num_signers, keys_per_signer);
+
+        // Let us also remove that signers public key from the config including all of its key ids
+        let mut removed_signer = signers.pop().expect("Failed to pop signer");
+        let public_key = removed_signer
+            .public_keys
+            .signers
+            .remove(&removed_signer.signer_id)
+            .expect("Failed to remove public key");
+        removed_signer
+            .public_keys
+            .key_ids
+            .retain(|_k, pk| pk.to_bytes() != public_key.to_bytes());
+
+        for signer in signers.iter_mut() {
+            signer.public_keys = removed_signer.public_keys.clone();
         }
 
         // Start a signing round
