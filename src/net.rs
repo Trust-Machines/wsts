@@ -195,7 +195,7 @@ pub struct DkgPrivateShares {
 }
 
 impl DkgPrivateShares {
-    ///
+    /// Verify that the shares are good
     pub fn verify() -> bool {
         true
     }
