@@ -803,7 +803,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             );
             if nonce_info.nonce_recv_key_ids.len() >= self.config.threshold as usize {
                 // We have a winning message!
-                self.message = nonce_response.message.clone();
+                self.message.clone_from(&nonce_response.message);
                 let aggregate_nonce = self.compute_aggregate_nonce();
                 info!("Aggregate nonce: {}", aggregate_nonce);
 
