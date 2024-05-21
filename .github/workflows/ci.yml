@@ -32,21 +32,6 @@ jobs:
         with:
           command: test
 
-  coverage:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
-      - run: cargo install cargo-tarpaulin
-      - run: cargo tarpaulin --verbose --all-features --workspace --timeout 120 --out xml --avoid-cfg-tarpaulin
-      - uses: codecov/codecov-action@v3
-        with:
-          fail_ci_if_error: true
-
   fmt:
     name: fmt
     runs-on: ubuntu-latest
