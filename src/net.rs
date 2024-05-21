@@ -46,11 +46,11 @@ pub trait Signable {
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
-///
+/// A bad private share
 pub struct BadPrivateShare {
-    ///
+    /// the DH shared key between these participants
     pub shared_key: Point,
-    ///
+    /// prooof that the shared key is a valid DH tuple as per chaum-pedersen
     pub tuple_proof: TupleProof,
 }
 
@@ -195,7 +195,7 @@ pub struct DkgPrivateShares {
 }
 
 impl DkgPrivateShares {
-    ///
+    /// Verify that the shares are good
     pub fn verify() -> bool {
         true
     }

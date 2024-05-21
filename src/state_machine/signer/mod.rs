@@ -275,7 +275,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         self.state = State::Idle;
     }
 
-    ///
+    /// Process the slice of packets
     pub fn process_inbound_messages(&mut self, messages: &[Packet]) -> Result<Vec<Packet>, Error> {
         let mut responses = vec![];
         for message in messages {
