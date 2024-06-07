@@ -734,8 +734,6 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
     ) -> Result<Vec<Message>, Error> {
         // go ahead and decrypt here, since we know the signer_id and hence the pubkey of the sender
         let src_signer_id = dkg_private_shares.signer_id;
-        self.dkg_private_shares
-            .insert(src_signer_id, dkg_private_shares.clone());
 
         // make a HashSet of our key_ids so we can quickly query them
         let key_ids: HashSet<u32> = self.signer.get_key_ids().into_iter().collect();
@@ -743,15 +741,17 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         let public_key = Point::try_from(&compressed).unwrap();
         let shared_key = self.network_private_key * public_key;
         let shared_secret = make_shared_secret(&self.network_private_key, &public_key);
-
+        let mut verified_shares = Vec::with_capacity(dkg_private_shares.shares.len());
         for (src_id, shares) in &dkg_private_shares.shares {
             let mut decrypted_shares = HashMap::new();
+            let mut encrypted_shares = HashMap::new();
             for (dst_key_id, bytes) in shares {
                 if key_ids.contains(dst_key_id) {
                     match decrypt(&shared_secret, bytes) {
                         Ok(plain) => match Scalar::try_from(&plain[..]) {
                             Ok(s) => {
                                 decrypted_shares.insert(*dst_key_id, s);
+                                encrypted_shares.insert(*dst_key_id, bytes.clone());
                             }
                             Err(e) => {
                                 warn!("Failed to parse Scalar for dkg private share from src_id {} to dst_id {}: {:?}", src_id, dst_key_id, e);
@@ -772,7 +772,16 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             self.decrypted_shares.insert(*src_id, decrypted_shares);
             self.decryption_keys
                 .insert(*src_id, (dkg_private_shares.signer_id, shared_key));
+            verified_shares.push((*src_id, encrypted_shares));
         }
+        self.dkg_private_shares.insert(
+            src_signer_id,
+            DkgPrivateShares {
+                dkg_id: dkg_private_shares.dkg_id,
+                signer_id: dkg_private_shares.signer_id,
+                shares: verified_shares,
+            },
+        );
         debug!(
             "received DkgPrivateShares from signer {} {}/{}",
             dkg_private_shares.signer_id,
