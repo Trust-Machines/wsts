@@ -36,10 +36,10 @@ impl From<PointError> for DkgError {
 /// Errors which can happen during signature aggregation
 pub enum AggregatorError {
     #[error("bad poly commitment length (expected {0} got {1})")]
-    /// The polynomial commitment was the wrong size (unused)
+    /// The number of polynomial commitments was wrong (no longer used)
     BadPolyCommitmentLen(usize, usize),
     #[error("bad poly commitments {0:?}")]
-    /// The polynomial commitments which failed verification or was the wrong size
+    /// The polynomial commitments which failed verification or were the wrong size
     BadPolyCommitments(Vec<Scalar>),
     #[error("bad nonce length (expected {0} got {1}")]
     /// The nonce length was the wrong size
