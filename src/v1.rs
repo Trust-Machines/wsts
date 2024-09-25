@@ -149,12 +149,14 @@ impl Party {
         self.private_key = Scalar::zero();
         self.group_key = Point::zero();
 
+        let threshold: usize = self.threshold.try_into().unwrap();
         let mut bad_ids = Vec::new(); //: Vec<u32> = polys
         for (i, comm) in polys.iter() {
-            if !comm.verify() {
+            if comm.poly.len() != threshold || !comm.verify() {
                 bad_ids.push(*i);
+            } else {
+                self.group_key += comm.poly[0];
             }
-            self.group_key += comm.poly[0];
         }
         if !bad_ids.is_empty() {
             return Err(DkgError::BadPublicShares(bad_ids));
@@ -370,9 +372,10 @@ impl traits::Aggregator for Aggregator {
 
     /// Initialize the Aggregator polynomial
     fn init(&mut self, comms: &HashMap<u32, PolyCommitment>) -> Result<(), AggregatorError> {
+        let threshold = self.threshold.try_into().unwrap();
         let mut bad_poly_commitments = Vec::new();
         for (_id, comm) in comms {
-            if !comm.verify() {
+            if comm.poly.len() != threshold || !comm.verify() {
                 bad_poly_commitments.push(comm.id.id);
             }
         }
@@ -380,7 +383,7 @@ impl traits::Aggregator for Aggregator {
             return Err(AggregatorError::BadPolyCommitments(bad_poly_commitments));
         }
 
-        let mut poly = Vec::with_capacity(self.threshold.try_into().unwrap());
+        let mut poly = Vec::with_capacity(threshold);
 
         for i in 0..poly.capacity() {
             poly.push(Point::zero());
