@@ -276,7 +276,7 @@ pub mod test_helpers {
             })
             .collect();
 
-        if let Ok(_) = dkg(&mut signers, &mut rng) {
+        if dkg(&mut signers, &mut rng).is_ok() {
             panic!("DKG should have failed")
         }
 
