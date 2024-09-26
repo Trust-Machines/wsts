@@ -154,7 +154,7 @@ pub mod test_helpers {
     use crate::{common::PolyCommitment, errors::DkgError};
 
     #[allow(non_snake_case)]
-    /// Remove the provided key ids from the list of private shares and execute compute secrets
+    /// Run DKG on the passed signers
     pub fn dkg<RNG: RngCore + CryptoRng, Signer: super::Signer>(
         signers: &mut [Signer],
         rng: &mut RNG,
