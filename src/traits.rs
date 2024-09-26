@@ -257,7 +257,7 @@ pub mod test_helpers {
     }
 
     #[allow(non_snake_case)]
-    /// Run compute secrets test to trigger NotEnoughShares code path
+    /// Check that bad polynomial lengths are properly caught as errors
     pub fn bad_polynomial_length<Signer: super::Signer, Aggregator: super::Aggregator>() {
         let Nk: u32 = 10;
         let Np: u32 = 4;
@@ -290,7 +290,7 @@ pub mod test_helpers {
         match aggregator.init(&polys) {
             Ok(_) => panic!("Aggregator::init should not have succeeded"),
             Err(e) => match e {
-                crate::traits::AggregatorError::BadPolyCommitments(_) => (),
+                super::AggregatorError::BadPolyCommitments(_) => (),
                 _ => panic!("Should have failed with BadPolyCommitments"),
             },
         }
