@@ -698,6 +698,7 @@ pub mod test_helpers {
 
 #[cfg(test)]
 mod tests {
+    use crate::traits;
     use crate::traits::test_helpers::run_compute_secrets_not_enough_shares;
     use crate::traits::{Aggregator, Signer};
     use crate::v1;
@@ -802,7 +803,7 @@ mod tests {
             .map(|(id, ids)| v1::Signer::new(id.try_into().unwrap(), ids, N, T, &mut rng))
             .collect();
 
-        let comms = match v1::test_helpers::dkg(&mut signers, &mut rng) {
+        let comms = match traits::test_helpers::dkg(&mut signers, &mut rng) {
             Ok(comms) => comms,
             Err(secret_errors) => {
                 panic!("Got secret errors from DKG: {:?}", secret_errors);
@@ -827,5 +828,12 @@ mod tests {
     /// Run a distributed key generation round with not enough shares
     pub fn run_compute_secrets_missing_shares() {
         run_compute_secrets_not_enough_shares::<v1::Signer>()
+    }
+
+    #[allow(non_snake_case)]
+    #[test]
+    /// Run DKG and aggregator init with a bad polynomial
+    pub fn bad_polynomial_length() {
+        traits::test_helpers::bad_polynomial_length::<v1::Signer, v1::Aggregator>()
     }
 }

@@ -155,6 +155,41 @@ pub mod test_helpers {
 
     #[allow(non_snake_case)]
     /// Remove the provided key ids from the list of private shares and execute compute secrets
+    pub fn dkg<RNG: RngCore + CryptoRng, Signer: super::Signer>(
+        signers: &mut [Signer],
+        rng: &mut RNG,
+    ) -> Result<HashMap<u32, PolyCommitment>, HashMap<u32, DkgError>> {
+        let public_shares: HashMap<u32, PolyCommitment> = signers
+            .iter()
+            .flat_map(|s| s.get_poly_commitments(rng))
+            .map(|comm| (comm.id.id.get_u32(), comm))
+            .collect();
+        let mut private_shares = HashMap::new();
+
+        for signer in signers.iter() {
+            for (signer_id, signer_shares) in signer.get_shares() {
+                private_shares.insert(signer_id, signer_shares);
+            }
+        }
+
+        let mut secret_errors = HashMap::new();
+        for signer in signers.iter_mut() {
+            if let Err(signer_secret_errors) =
+                signer.compute_secrets(&private_shares, &public_shares)
+            {
+                secret_errors.extend(signer_secret_errors.into_iter());
+            }
+        }
+
+        if secret_errors.is_empty() {
+            Ok(public_shares)
+        } else {
+            Err(secret_errors)
+        }
+    }
+
+    #[allow(non_snake_case)]
+    /// Remove the provided key ids from the list of private shares and execute compute secrets
     fn compute_secrets_not_enough_shares<RNG: RngCore + CryptoRng, Signer: super::Signer>(
         signers: &mut [Signer],
         rng: &mut RNG,
@@ -218,6 +253,47 @@ pub mod test_helpers {
                     assert!(matches!(error, DkgError::NotEnoughShares(_)));
                 }
             }
+        }
+    }
+
+    #[allow(non_snake_case)]
+    /// Run compute secrets test to trigger NotEnoughShares code path
+    pub fn bad_polynomial_length<Signer: super::Signer, Aggregator: super::Aggregator>() {
+        let Nk: u32 = 10;
+        let Np: u32 = 4;
+        let T: u32 = 7;
+        let signer_ids: Vec<Vec<u32>> = vec![vec![1, 2, 3], vec![4, 5], vec![6, 7, 8, 9], vec![10]];
+        let mut rng = OsRng;
+        let mut signers: Vec<Signer> = signer_ids
+            .iter()
+            .enumerate()
+            .map(|(id, ids)| {
+                if *ids == vec![10] {
+                    Signer::new(id.try_into().unwrap(), ids, Nk, Np, T - 1, &mut rng)
+                } else {
+                    Signer::new(id.try_into().unwrap(), ids, Nk, Np, T, &mut rng)
+                }
+            })
+            .collect();
+
+        match dkg(&mut signers, &mut rng) {
+            Ok(_) => panic!("DKG should have failed"),
+            _ => (),
+        }
+
+        let polys: HashMap<u32, PolyCommitment> = signers
+            .iter()
+            .flat_map(|s| s.get_poly_commitments(&mut rng))
+            .map(|comm| (comm.id.id.get_u32(), comm))
+            .collect();
+
+        let mut aggregator = Aggregator::new(Nk, T);
+        match aggregator.init(&polys) {
+            Ok(_) => panic!("Aggregator::init should not have succeeded"),
+            Err(e) => match e {
+                crate::traits::AggregatorError::BadPolyCommitments(_) => (),
+                _ => panic!("Should have failed with BadPolyCommitments"),
+            },
         }
     }
 }
