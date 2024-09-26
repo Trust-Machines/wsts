@@ -276,9 +276,8 @@ pub mod test_helpers {
             })
             .collect();
 
-        match dkg(&mut signers, &mut rng) {
-            Ok(_) => panic!("DKG should have failed"),
-            _ => (),
+        if let Ok(_) = dkg(&mut signers, &mut rng) {
+            panic!("DKG should have failed")
         }
 
         let polys: HashMap<u32, PolyCommitment> = signers
