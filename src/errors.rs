@@ -1,3 +1,4 @@
+use core::num::TryFromIntError;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -24,11 +25,20 @@ pub enum DkgError {
     #[error("point error {0:?}")]
     /// An error during point operations
     Point(PointError),
+    #[error("try_from failed")]
+    /// An error during try_from operations
+    TryFrom,
 }
 
 impl From<PointError> for DkgError {
     fn from(e: PointError) -> Self {
         DkgError::Point(e)
+    }
+}
+
+impl From<TryFromIntError> for DkgError {
+    fn from(_e: TryFromIntError) -> Self {
+        DkgError::TryFrom
     }
 }
 
@@ -53,4 +63,13 @@ pub enum AggregatorError {
     #[error("bad group sig")]
     /// The aggregate group signature failed to verify
     BadGroupSig,
+    #[error("try_from failed")]
+    /// An error during try_from operations
+    TryFrom,
+}
+
+impl From<TryFromIntError> for AggregatorError {
+    fn from(_e: TryFromIntError) -> Self {
+        AggregatorError::TryFrom
+    }
 }
