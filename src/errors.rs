@@ -27,7 +27,7 @@ pub enum DkgError {
     Point(PointError),
     #[error("try_from failed")]
     /// An error during try_from operations
-    TryFrom,
+    TryFromInt,
 }
 
 impl From<PointError> for DkgError {
@@ -38,16 +38,13 @@ impl From<PointError> for DkgError {
 
 impl From<TryFromIntError> for DkgError {
     fn from(_e: TryFromIntError) -> Self {
-        DkgError::TryFrom
+        DkgError::TryFromInt
     }
 }
 
 #[derive(Error, Debug, Clone, Serialize, Deserialize, PartialEq)]
 /// Errors which can happen during signature aggregation
 pub enum AggregatorError {
-    #[error("bad poly commitment length (expected {0} got {1})")]
-    /// The polynomial commitment was the wrong size
-    BadPolyCommitmentLen(usize, usize),
     #[error("bad poly commitments {0:?}")]
     /// The polynomial commitments which failed verification
     BadPolyCommitments(Vec<Scalar>),
@@ -65,11 +62,11 @@ pub enum AggregatorError {
     BadGroupSig,
     #[error("try_from failed")]
     /// An error during try_from operations
-    TryFrom,
+    TryFromInt,
 }
 
 impl From<TryFromIntError> for AggregatorError {
     fn from(_e: TryFromIntError) -> Self {
-        AggregatorError::TryFrom
+        AggregatorError::TryFromInt
     }
 }
