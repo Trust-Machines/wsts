@@ -221,13 +221,13 @@ impl TupleProof {
 /// First we evaluate each poly, then we subtract each s * G
 pub struct CheckPrivateShares {
     /// number of keys
-    n: u32,
+    n: usize,
     /// threshold, where the degree of each poly is (t-1)
-    t: u32,
+    t: usize,
     /// Powers of x, where x is the receiving key ID
     powers: Vec<Scalar>,
     /// Negated DKG private shares for the receiving key ID, indexed by sending key ID
-    pub neg_shares: HashMap<u32, Scalar>,
+    pub neg_shares: HashMap<usize, Scalar>,
     /// Polynomial commitments for each key ID
     polys: HashMap<u32, PolyCommitment>,
 }
@@ -243,8 +243,8 @@ impl CheckPrivateShares {
         if let Some((_id, comm)) = (&polys).into_iter().next() {
             l = comm.poly.len();
         }
-        let n: u32 = shares.len().try_into().unwrap();
-        let t: u32 = l.try_into().unwrap();
+        let n = shares.len();
+        let t = l;
         let x = id;
         let mut powers = Vec::with_capacity(l);
         let mut pow = Scalar::one();
@@ -256,7 +256,7 @@ impl CheckPrivateShares {
 
         let mut neg_shares = HashMap::with_capacity(polys.len());
         for (i, s) in shares.iter() {
-            neg_shares.insert(*i, -s);
+            neg_shares.insert((*i).try_into().unwrap(), -s);
         }
 
         Self {
@@ -272,8 +272,8 @@ impl CheckPrivateShares {
 impl MultiMult for CheckPrivateShares {
     /// The first n*t scalars will be powers, the last n will be the negation of shares
     fn get_scalar(&self, i: usize) -> &Scalar {
-        let h: u32 = i.try_into().unwrap();
-        let u: usize = self.t.try_into().unwrap();
+        let h = i;
+        let u = self.t;
         if h < self.n * self.t {
             &self.powers[i % u]
         } else {
@@ -283,8 +283,8 @@ impl MultiMult for CheckPrivateShares {
 
     /// The first n*t points will be poly coeffs, the last n will be G
     fn get_point(&self, i: usize) -> &Point {
-        let h: u32 = i.try_into().unwrap();
-        let u: usize = self.t.try_into().unwrap();
+        let h = i;
+        let u = self.t;
         if h < self.n * self.t {
             let j = i / u;
             let k = i % u;
@@ -296,7 +296,7 @@ impl MultiMult for CheckPrivateShares {
     }
 
     fn get_size(&self) -> usize {
-        ((self.t + 1) * self.n).try_into().unwrap()
+        (self.t + 1) * self.n
     }
 }
 

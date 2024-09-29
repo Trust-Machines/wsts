@@ -380,7 +380,7 @@ impl traits::Aggregator for Aggregator {
             return Err(AggregatorError::BadPolyCommitments(bad_poly_commitments));
         }
 
-        let mut poly = Vec::with_capacity(self.threshold.try_into().unwrap());
+        let mut poly = Vec::with_capacity(self.threshold.try_into()?);
 
         for i in 0..poly.capacity() {
             poly.push(Point::zero());

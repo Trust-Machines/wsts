@@ -1,3 +1,4 @@
+use core::num::TryFromIntError;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -24,6 +25,9 @@ pub enum DkgError {
     #[error("point error {0:?}")]
     /// An error during point operations
     Point(PointError),
+    #[error("try_from failed")]
+    /// An error during try_from operations
+    TryFromInt,
 }
 
 impl From<PointError> for DkgError {
@@ -32,12 +36,15 @@ impl From<PointError> for DkgError {
     }
 }
 
+impl From<TryFromIntError> for DkgError {
+    fn from(_e: TryFromIntError) -> Self {
+        DkgError::TryFromInt
+    }
+}
+
 #[derive(Error, Debug, Clone, Serialize, Deserialize, PartialEq)]
 /// Errors which can happen during signature aggregation
 pub enum AggregatorError {
-    #[error("bad poly commitment length (expected {0} got {1})")]
-    /// The polynomial commitment was the wrong size
-    BadPolyCommitmentLen(usize, usize),
     #[error("bad poly commitments {0:?}")]
     /// The polynomial commitments which failed verification
     BadPolyCommitments(Vec<Scalar>),
@@ -53,4 +60,13 @@ pub enum AggregatorError {
     #[error("bad group sig")]
     /// The aggregate group signature failed to verify
     BadGroupSig,
+    #[error("try_from failed")]
+    /// An error during try_from operations
+    TryFromInt,
+}
+
+impl From<TryFromIntError> for AggregatorError {
+    fn from(_e: TryFromIntError) -> Self {
+        AggregatorError::TryFromInt
+    }
 }
