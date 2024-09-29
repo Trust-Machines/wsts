@@ -256,18 +256,24 @@ pub mod test_helpers {
 
     #[allow(non_snake_case)]
     /// Check that bad polynomial lengths are properly caught as errors
-    pub fn bad_polynomial_length<Signer: super::Signer, Aggregator: super::Aggregator>() {
+    pub fn bad_polynomial_length<
+        Signer: super::Signer,
+        Aggregator: super::Aggregator,
+        F: Fn(u32) -> u32,
+    >(
+        func: F,
+    ) {
         let Nk: u32 = 10;
         let Np: u32 = 4;
         let T: u32 = 7;
-        let signer_ids: Vec<Vec<u32>> = vec![vec![1, 2, 3], vec![4, 5], vec![6, 7, 8, 9], vec![10]];
+        let signer_ids: Vec<Vec<u32>> = vec![vec![1, 2, 3, 4], vec![5, 6, 7], vec![8, 9], vec![10]];
         let mut rng = OsRng;
         let mut signers: Vec<Signer> = signer_ids
             .iter()
             .enumerate()
             .map(|(id, ids)| {
                 if *ids == vec![10] {
-                    Signer::new(id.try_into().unwrap(), ids, Nk, Np, T - 1, &mut rng)
+                    Signer::new(id.try_into().unwrap(), ids, Nk, Np, func(T), &mut rng)
                 } else {
                     Signer::new(id.try_into().unwrap(), ids, Nk, Np, T, &mut rng)
                 }

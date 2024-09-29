@@ -675,13 +675,12 @@ mod tests {
         assert_eq!(signer.get_shares().len(), 0);
     }
 
-    #[allow(non_snake_case)]
     #[test]
     fn aggregator_sign() {
         let mut rng = OsRng;
         let msg = "It was many and many a year ago".as_bytes();
-        let Nk: u32 = 10;
-        let T: u32 = 7;
+        let n_k: u32 = 10;
+        let t: u32 = 7;
         let party_key_ids: Vec<Vec<u32>> = [
             [1, 2, 3].to_vec(),
             [4, 5].to_vec(),
@@ -689,11 +688,13 @@ mod tests {
             [9, 10].to_vec(),
         ]
         .to_vec();
-        let Np = party_key_ids.len().try_into().unwrap();
+        let n_p = party_key_ids.len().try_into().unwrap();
         let mut signers: Vec<v2::Party> = party_key_ids
             .iter()
             .enumerate()
-            .map(|(pid, pkids)| v2::Party::new(pid.try_into().unwrap(), pkids, Np, Nk, T, &mut rng))
+            .map(|(pid, pkids)| {
+                v2::Party::new(pid.try_into().unwrap(), pkids, n_p, n_k, t, &mut rng)
+            })
             .collect();
 
         let comms = match traits::test_helpers::dkg(&mut signers, &mut rng) {
@@ -703,10 +704,10 @@ mod tests {
             }
         };
 
-        // signers [0,1,3] who have T keys
+        // signers [0,1,3] who have t keys
         {
             let mut signers = [signers[0].clone(), signers[1].clone(), signers[3].clone()].to_vec();
-            let mut sig_agg = v2::Aggregator::new(Nk, T);
+            let mut sig_agg = v2::Aggregator::new(n_k, t);
 
             sig_agg.init(&comms).expect("aggregator init failed");
 
@@ -717,17 +718,18 @@ mod tests {
         }
     }
 
-    #[allow(non_snake_case)]
     #[test]
     /// Run a distributed key generation round with not enough shares
     pub fn run_compute_secrets_missing_shares() {
         run_compute_secrets_not_enough_shares::<v2::Signer>()
     }
 
-    #[allow(non_snake_case)]
     #[test]
     /// Run DKG and aggregator init with a bad polynomial
     pub fn bad_polynomial_length() {
-        traits::test_helpers::bad_polynomial_length::<v2::Signer, v2::Aggregator>()
+        let gt = |t| t + 1;
+        let lt = |t| t + 1;
+        traits::test_helpers::bad_polynomial_length::<v2::Signer, v2::Aggregator, _>(gt);
+        traits::test_helpers::bad_polynomial_length::<v2::Signer, v2::Aggregator, _>(lt);
     }
 }
