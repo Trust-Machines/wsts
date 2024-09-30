@@ -2025,7 +2025,7 @@ pub mod test {
         assert_eq!(operation_results.len(), 1);
         match &operation_results[0] {
             OperationResult::DkgError(dkg_error) => {
-                // we mutated the private shares themselves, so we should see a BadPrivateShares from signer_id 0
+                // we mutated the public shares themselves, so we should see a BadPublicShares from signer_ids 0 and 1
                 match dkg_error {
                     DkgError::DkgEndFailure(failure_map) => {
                         for (_signer_id, dkg_failure) in failure_map {
