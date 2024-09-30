@@ -1958,7 +1958,7 @@ pub mod test {
             &mut signers,
             &[message],
             |signer, msgs| {
-                if signer.signer_id == 0 {
+                if signer.signer_id == 0 || signer.signer_id == 1 {
                     msgs.iter()
                         .map(|packet| {
                             if let Message::DkgPublicShares(shares) = &packet.msg {
@@ -1967,7 +1967,11 @@ pub mod test {
                                     .iter()
                                     .map(|(id, comm)| {
                                         let mut c = comm.clone();
-                                        c.poly.push(Point::new());
+					if signer.signer_id == 0 {
+                                            c.poly.push(Point::new());
+					} else {
+					    c.poly.pop();
+					}
                                         (*id, c)
                                     })
                                     .collect();
@@ -2028,7 +2032,7 @@ pub mod test {
                             match dkg_failure {
                                 DkgFailure::BadPublicShares(bad_shares) => {
                                     for bad_signer_id in bad_shares {
-                                        assert_eq!(*bad_signer_id, 0u32);
+                                        assert!(*bad_signer_id == 0u32 || *bad_signer_id == 1u32);
                                     }
                                 }
                                 _ => panic!("Expected DkgFailure::BadPublicShares"),
