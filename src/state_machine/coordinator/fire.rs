@@ -1967,11 +1967,11 @@ pub mod test {
                                     .iter()
                                     .map(|(id, comm)| {
                                         let mut c = comm.clone();
-					if signer.signer_id == 0 {
+                                        if signer.signer_id == 0 {
                                             c.poly.push(Point::new());
-					} else {
-					    c.poly.pop();
-					}
+                                        } else {
+                                            c.poly.pop();
+                                        }
                                         (*id, c)
                                     })
                                     .collect();
