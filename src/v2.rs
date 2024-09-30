@@ -728,7 +728,7 @@ mod tests {
     /// Run DKG and aggregator init with a bad polynomial
     pub fn bad_polynomial_length() {
         let gt = |t| t + 1;
-        let lt = |t| t + 1;
+        let lt = |t| t - 1;
         traits::test_helpers::bad_polynomial_length::<v2::Signer, v2::Aggregator, _>(gt);
         traits::test_helpers::bad_polynomial_length::<v2::Signer, v2::Aggregator, _>(lt);
     }
