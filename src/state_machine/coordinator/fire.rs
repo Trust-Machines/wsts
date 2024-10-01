@@ -1952,7 +1952,7 @@ pub mod test {
         assert!(coordinators.first().unwrap().aggregate_public_key.is_none());
         assert_eq!(coordinators.first().unwrap().state, State::DkgPublicGather);
 
-        // Send the DkgBegin message to all signers and share their responses with the coordinators and signers, but mutate two signer's DkgPublicShares: make one polynomial larger than the threshold, and the other smaller
+        // Send the DkgBegin message to all signers and share their responses with the coordinators and signers, but mutate two signers' DkgPublicShares: make one polynomial larger than the threshold, and the other smaller
         let (outbound_messages, operation_results) = feedback_mutated_messages(
             &mut coordinators,
             &mut signers,
