@@ -343,7 +343,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             for signer_id in &dkg_end_begin.signer_ids {
                 if let Some(shares) = self.dkg_public_shares.get(signer_id) {
                     for (party_id, comm) in shares.comms.iter() {
-                        if !comm.verify() {
+                        if comm.poly.len() != self.threshold.try_into().unwrap() || !comm.verify() {
                             bad_public_shares.insert(*signer_id);
                         } else {
                             self.commitments.insert(*party_id, comm.clone());

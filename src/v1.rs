@@ -149,12 +149,14 @@ impl Party {
         self.private_key = Scalar::zero();
         self.group_key = Point::zero();
 
+        let threshold: usize = self.threshold.try_into().unwrap();
         let mut bad_ids = Vec::new(); //: Vec<u32> = polys
         for (i, comm) in polys.iter() {
-            if !comm.verify() {
+            if comm.poly.len() != threshold || !comm.verify() {
                 bad_ids.push(*i);
+            } else {
+                self.group_key += comm.poly[0];
             }
-            self.group_key += comm.poly[0];
         }
         if !bad_ids.is_empty() {
             return Err(DkgError::BadPublicShares(bad_ids));
@@ -370,9 +372,10 @@ impl traits::Aggregator for Aggregator {
 
     /// Initialize the Aggregator polynomial
     fn init(&mut self, comms: &HashMap<u32, PolyCommitment>) -> Result<(), AggregatorError> {
+        let threshold = self.threshold.try_into().unwrap();
         let mut bad_poly_commitments = Vec::new();
         for (_id, comm) in comms {
-            if !comm.verify() {
+            if comm.poly.len() != threshold || !comm.verify() {
                 bad_poly_commitments.push(comm.id.id);
             }
         }
@@ -380,7 +383,7 @@ impl traits::Aggregator for Aggregator {
             return Err(AggregatorError::BadPolyCommitments(bad_poly_commitments));
         }
 
-        let mut poly = Vec::with_capacity(self.threshold.try_into().unwrap());
+        let mut poly = Vec::with_capacity(threshold);
 
         for i in 0..poly.capacity() {
             poly.push(Point::zero());
@@ -695,6 +698,7 @@ pub mod test_helpers {
 
 #[cfg(test)]
 mod tests {
+    use crate::traits;
     use crate::traits::test_helpers::run_compute_secrets_not_enough_shares;
     use crate::traits::{Aggregator, Signer};
     use crate::v1;
@@ -799,7 +803,7 @@ mod tests {
             .map(|(id, ids)| v1::Signer::new(id.try_into().unwrap(), ids, N, T, &mut rng))
             .collect();
 
-        let comms = match v1::test_helpers::dkg(&mut signers, &mut rng) {
+        let comms = match traits::test_helpers::dkg(&mut signers, &mut rng) {
             Ok(comms) => comms,
             Err(secret_errors) => {
                 panic!("Got secret errors from DKG: {:?}", secret_errors);
@@ -824,5 +828,15 @@ mod tests {
     /// Run a distributed key generation round with not enough shares
     pub fn run_compute_secrets_missing_shares() {
         run_compute_secrets_not_enough_shares::<v1::Signer>()
+    }
+
+    #[allow(non_snake_case)]
+    #[test]
+    /// Run DKG and aggregator init with a bad polynomial
+    pub fn bad_polynomial_length() {
+        let gt = |t| t + 1;
+        let lt = |t| t - 1;
+        traits::test_helpers::bad_polynomial_length::<v1::Signer, v1::Aggregator, _>(gt);
+        traits::test_helpers::bad_polynomial_length::<v1::Signer, v1::Aggregator, _>(lt);
     }
 }

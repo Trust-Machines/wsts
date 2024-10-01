@@ -115,12 +115,14 @@ impl Party {
         self.private_keys.clear();
         self.group_key = Point::zero();
 
+        let threshold: usize = self.threshold.try_into().unwrap();
         let mut bad_ids = Vec::new();
         for (i, comm) in comms.iter() {
-            if !comm.verify() {
+            if comm.poly.len() != threshold || !comm.verify() {
                 bad_ids.push(*i);
+            } else {
+                self.group_key += comm.poly[0];
             }
-            self.group_key += comm.poly[0];
         }
         if !bad_ids.is_empty() {
             return Err(DkgError::BadPublicShares(bad_ids));
@@ -338,9 +340,10 @@ impl traits::Aggregator for Aggregator {
 
     /// Initialize the Aggregator polynomial
     fn init(&mut self, comms: &HashMap<u32, PolyCommitment>) -> Result<(), AggregatorError> {
+        let threshold = self.threshold.try_into().unwrap();
         let mut bad_poly_commitments = Vec::new();
         for (_id, comm) in comms {
-            if !comm.verify() {
+            if comm.poly.len() != threshold || !comm.verify() {
                 bad_poly_commitments.push(comm.id.id);
             }
         }
@@ -633,7 +636,7 @@ pub mod test_helpers {
 #[cfg(test)]
 mod tests {
     use crate::{
-        traits::{test_helpers::run_compute_secrets_not_enough_shares, Aggregator, Signer},
+        traits::{self, test_helpers::run_compute_secrets_not_enough_shares, Aggregator, Signer},
         v2,
     };
 
@@ -672,13 +675,12 @@ mod tests {
         assert_eq!(signer.get_shares().len(), 0);
     }
 
-    #[allow(non_snake_case)]
     #[test]
     fn aggregator_sign() {
         let mut rng = OsRng;
         let msg = "It was many and many a year ago".as_bytes();
-        let Nk: u32 = 10;
-        let T: u32 = 7;
+        let n_k: u32 = 10;
+        let t: u32 = 7;
         let party_key_ids: Vec<Vec<u32>> = [
             [1, 2, 3].to_vec(),
             [4, 5].to_vec(),
@@ -686,24 +688,26 @@ mod tests {
             [9, 10].to_vec(),
         ]
         .to_vec();
-        let Np = party_key_ids.len().try_into().unwrap();
+        let n_p = party_key_ids.len().try_into().unwrap();
         let mut signers: Vec<v2::Party> = party_key_ids
             .iter()
             .enumerate()
-            .map(|(pid, pkids)| v2::Party::new(pid.try_into().unwrap(), pkids, Np, Nk, T, &mut rng))
+            .map(|(pid, pkids)| {
+                v2::Party::new(pid.try_into().unwrap(), pkids, n_p, n_k, t, &mut rng)
+            })
             .collect();
 
-        let comms = match v2::test_helpers::dkg(&mut signers, &mut rng) {
+        let comms = match traits::test_helpers::dkg(&mut signers, &mut rng) {
             Ok(comms) => comms,
             Err(secret_errors) => {
                 panic!("Got secret errors from DKG: {:?}", secret_errors);
             }
         };
 
-        // signers [0,1,3] who have T keys
+        // signers [0,1,3] who have t keys
         {
             let mut signers = [signers[0].clone(), signers[1].clone(), signers[3].clone()].to_vec();
-            let mut sig_agg = v2::Aggregator::new(Nk, T);
+            let mut sig_agg = v2::Aggregator::new(n_k, t);
 
             sig_agg.init(&comms).expect("aggregator init failed");
 
@@ -714,10 +718,18 @@ mod tests {
         }
     }
 
-    #[allow(non_snake_case)]
     #[test]
     /// Run a distributed key generation round with not enough shares
     pub fn run_compute_secrets_missing_shares() {
         run_compute_secrets_not_enough_shares::<v2::Signer>()
+    }
+
+    #[test]
+    /// Run DKG and aggregator init with a bad polynomial
+    pub fn bad_polynomial_length() {
+        let gt = |t| t + 1;
+        let lt = |t| t - 1;
+        traits::test_helpers::bad_polynomial_length::<v2::Signer, v2::Aggregator, _>(gt);
+        traits::test_helpers::bad_polynomial_length::<v2::Signer, v2::Aggregator, _>(lt);
     }
 }

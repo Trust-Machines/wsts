@@ -1240,7 +1240,9 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
 pub mod test {
     use crate::{
         curve::{point::Point, scalar::Scalar},
-        net::{DkgBegin, DkgFailure, DkgPrivateShares, Message, NonceRequest, Packet},
+        net::{
+            DkgBegin, DkgFailure, DkgPrivateShares, DkgPublicShares, Message, NonceRequest, Packet,
+        },
         state_machine::{
             coordinator::{
                 fire::Coordinator as FireCoordinator,
@@ -1917,6 +1919,123 @@ pub mod test {
                                     }
                                 }
                                 _ => panic!("Expected DkgFailure::BadPrivateShares"),
+                            }
+                        }
+                    }
+                    _ => panic!("Expected DkgError::DkgEndFailure"),
+                }
+            }
+            _ => panic!("Expected OperationResult::DkgError"),
+        }
+        (coordinators, signers)
+    }
+
+    #[test]
+    fn bad_poly_length_dkg_v1() {
+        bad_poly_length_dkg::<v1::Aggregator, v1::Signer>(5, 2);
+    }
+
+    #[test]
+    fn bad_poly_length_dkg_v2() {
+        bad_poly_length_dkg::<v2::Aggregator, v2::Signer>(5, 2);
+    }
+
+    fn bad_poly_length_dkg<Aggregator: AggregatorTrait, SignerType: SignerTrait>(
+        num_signers: u32,
+        keys_per_signer: u32,
+    ) -> (Vec<FireCoordinator<Aggregator>>, Vec<Signer<SignerType>>) {
+        let (mut coordinators, mut signers) =
+            setup::<FireCoordinator<Aggregator>, SignerType>(num_signers, keys_per_signer);
+
+        // We have started a dkg round
+        let message = coordinators.first_mut().unwrap().start_dkg_round().unwrap();
+        assert!(coordinators.first().unwrap().aggregate_public_key.is_none());
+        assert_eq!(coordinators.first().unwrap().state, State::DkgPublicGather);
+
+        // Send the DkgBegin message to all signers and share their responses with the coordinators and signers, but mutate two signers' DkgPublicShares: make one polynomial larger than the threshold, and the other smaller
+        let (outbound_messages, operation_results) = feedback_mutated_messages(
+            &mut coordinators,
+            &mut signers,
+            &[message],
+            |signer, msgs| {
+                if signer.signer_id == 0 || signer.signer_id == 1 {
+                    msgs.iter()
+                        .map(|packet| {
+                            if let Message::DkgPublicShares(shares) = &packet.msg {
+                                let comms = shares
+                                    .comms
+                                    .iter()
+                                    .map(|(id, comm)| {
+                                        let mut c = comm.clone();
+                                        if signer.signer_id == 0 {
+                                            c.poly.push(Point::new());
+                                        } else {
+                                            c.poly.pop();
+                                        }
+                                        (*id, c)
+                                    })
+                                    .collect();
+                                Packet {
+                                    msg: Message::DkgPublicShares(DkgPublicShares {
+                                        dkg_id: shares.dkg_id,
+                                        signer_id: shares.signer_id,
+                                        comms,
+                                    }),
+                                    sig: vec![],
+                                }
+                            } else {
+                                packet.clone()
+                            }
+                        })
+                        .collect()
+                } else {
+                    msgs
+                }
+            },
+        );
+
+        assert!(operation_results.is_empty());
+        for coordinator in &coordinators {
+            assert_eq!(coordinator.state, State::DkgPrivateGather);
+        }
+
+        assert_eq!(outbound_messages.len(), 1);
+        match &outbound_messages[0].msg {
+            Message::DkgPrivateBegin(_) => {}
+            _ => {
+                panic!("Expected DkgPrivateBegin message");
+            }
+        }
+
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
+        assert_eq!(operation_results.len(), 0);
+        assert_eq!(outbound_messages.len(), 1);
+        match &outbound_messages[0].msg {
+            Message::DkgEndBegin(_) => {}
+            _ => {
+                panic!("Expected DkgEndBegin message");
+            }
+        }
+
+        // Send the DkgEndBegin message to all signers and share their responses with the coordinators and signers
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
+        assert_eq!(outbound_messages.len(), 0);
+        assert_eq!(operation_results.len(), 1);
+        match &operation_results[0] {
+            OperationResult::DkgError(dkg_error) => {
+                // we mutated the public shares themselves, so we should see a BadPublicShares from signer_ids 0 and 1
+                match dkg_error {
+                    DkgError::DkgEndFailure(failure_map) => {
+                        for (_signer_id, dkg_failure) in failure_map {
+                            match dkg_failure {
+                                DkgFailure::BadPublicShares(bad_shares) => {
+                                    for bad_signer_id in bad_shares {
+                                        assert!(*bad_signer_id == 0u32 || *bad_signer_id == 1u32);
+                                    }
+                                }
+                                _ => panic!("Expected DkgFailure::BadPublicShares"),
                             }
                         }
                     }
