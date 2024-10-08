@@ -743,4 +743,9 @@ mod tests {
         traits::test_helpers::bad_polynomial_length::<v2::Signer, v2::Aggregator, _>(gt);
         traits::test_helpers::bad_polynomial_length::<v2::Signer, v2::Aggregator, _>(lt);
     }
+
+    #[test]
+    fn reset_polys() {
+        traits::test_helpers::reset_polys::<v2::Signer>();
+    }
 }

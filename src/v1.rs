@@ -794,6 +794,11 @@ mod tests {
         }
     }
 
+    #[test]
+    fn reset_polys() {
+        traits::test_helpers::reset_polys::<v1::Signer>();
+    }
+
     #[allow(non_snake_case)]
     #[test]
     fn aggregator_sign() {

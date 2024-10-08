@@ -250,7 +250,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 }
                 State::DkgPublicDistribute => {
                     // XXX does this ever happen? start_dkg_round should call start_public_shares
-                    panic!("Got message in DkgPublicDistribute");
+                    //panic!("Got message in DkgPublicDistribute");
                     let packet = self.start_public_shares(false)?;
                     return Ok((Some(packet), None));
                 }
@@ -1433,6 +1433,88 @@ pub mod test {
             _ => panic!("Expected Dkg Operation result"),
         }
         (coordinators, signers)
+    }
+
+    #[test]
+    fn all_signers_dkg_keep_constant_v1() {
+        all_signers_dkg_keep_constant::<v1::Aggregator, v1::Signer>(5, 2);
+    }
+
+    #[test]
+    fn all_signers_dkg_keep_constant_v2() {
+        all_signers_dkg_keep_constant::<v2::Aggregator, v2::Signer>(5, 2);
+    }
+
+    fn all_signers_dkg_keep_constant<Aggregator: AggregatorTrait, SignerType: SignerTrait>(
+        num_signers: u32,
+        keys_per_signer: u32,
+    ) {
+        let (mut coordinators, mut signers) =
+            setup::<FireCoordinator<Aggregator>, SignerType>(num_signers, keys_per_signer);
+
+        let key0 = all_signers_rerun_dkg(&mut coordinators, &mut signers, false);
+        let key1 = all_signers_rerun_dkg(&mut coordinators, &mut signers, false);
+        let key2 = all_signers_rerun_dkg(&mut coordinators, &mut signers, true);
+
+        assert!(key0 != key1);
+        assert_eq!(key1, key2);
+    }
+
+    fn all_signers_rerun_dkg<Aggregator: AggregatorTrait, SignerType: SignerTrait>(
+        coordinators: &mut Vec<FireCoordinator<Aggregator>>,
+        signers: &mut Vec<Signer<SignerType>>,
+        keep_constant: bool,
+    ) -> Point {
+        // We have started a dkg round
+        let message = coordinators
+            .first_mut()
+            .unwrap()
+            .start_dkg_round(keep_constant)
+            .unwrap();
+        assert_eq!(coordinators.first().unwrap().state, State::DkgPublicGather);
+
+        // Send the DKG Begin message to all signers and gather responses by sharing with all other signers and coordinators
+        let (outbound_messages, operation_results) =
+            feedback_messages(coordinators, signers, &[message]);
+        assert!(operation_results.is_empty());
+
+        // Successfully got an Aggregate Public Key...
+        assert_eq!(outbound_messages.len(), 1);
+        match &outbound_messages[0].msg {
+            Message::DkgPrivateBegin(_) => {}
+            _ => {
+                panic!("Expected DkgPrivateBegin message");
+            }
+        }
+        // Send the DKG Private Begin message to all signers and share their responses with the coordinators and signers
+        let (outbound_messages, operation_results) =
+            feedback_messages(coordinators, signers, &outbound_messages);
+        assert_eq!(operation_results.len(), 0);
+        assert_eq!(outbound_messages.len(), 1);
+        match &outbound_messages[0].msg {
+            Message::DkgEndBegin(_) => {}
+            _ => {
+                panic!("Expected DkgEndBegin message");
+            }
+        }
+
+        // Send the DkgEndBegin message to all signers and share their responses with the coordinators and signers
+        let (outbound_messages, operation_results) =
+            feedback_messages(coordinators, signers, &outbound_messages);
+        assert_eq!(outbound_messages.len(), 0);
+        assert_eq!(operation_results.len(), 1);
+        match operation_results[0] {
+            OperationResult::Dkg(point) => {
+                assert_ne!(point, Point::default());
+                for coordinator in coordinators.iter() {
+                    assert_eq!(coordinator.get_aggregate_public_key(), Some(point));
+                    assert_eq!(coordinator.get_state(), State::Idle);
+                }
+            }
+            _ => panic!("Expected Dkg Operation result"),
+        }
+
+        coordinators[0].get_aggregate_public_key().unwrap()
     }
 
     #[test]

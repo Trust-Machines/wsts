@@ -298,4 +298,33 @@ pub mod test_helpers {
             },
         }
     }
+
+    /// Check that the keep_constant param of reset_polys works
+    pub fn reset_polys<Signer: super::Signer>() {
+        let mut rng = OsRng;
+        let id = 1;
+        let key_ids = [1, 2, 3];
+        let n: u32 = 10;
+        let n_p = 4;
+        let t: u32 = 7;
+
+        let mut signer = Signer::new(id, &key_ids, n, n_p, t, &mut rng);
+        let comms0 = signer.get_poly_commitments(&mut rng);
+
+        signer.reset_polys(false, &mut rng);
+
+        let comms1 = signer.get_poly_commitments(&mut rng);
+
+        for (comm0, comm1) in comms0.into_iter().zip(comms1.clone()) {
+            assert!(comm0.poly[0] != comm1.poly[0]);
+        }
+
+        signer.reset_polys(true, &mut rng);
+
+        let comms2 = signer.get_poly_commitments(&mut rng);
+
+        for (comm1, comm2) in comms1.into_iter().zip(comms2) {
+            assert!(comm1.poly[0] == comm2.poly[0]);
+        }
+    }
 }
