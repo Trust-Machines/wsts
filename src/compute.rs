@@ -184,7 +184,6 @@ pub fn merkle_root(data: &[u8]) -> [u8; 32] {
 
 #[cfg(test)]
 pub mod test {
-    //use num_traits::Zero;
     use rand_core::OsRng;
 
     use crate::{
