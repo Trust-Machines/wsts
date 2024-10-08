@@ -25,7 +25,7 @@ pub type MerkleRoot = [u8; 32];
 /// A Polynomial where the parameters are not necessarily the same type as the args
 pub struct Polynomial<Param, Arg> {
     /// parameters for the polynomial
-    pub data: Vec<Param>,
+    pub params: Vec<Param>,
     _x: std::marker::PhantomData<Arg>,
 }
 
@@ -34,11 +34,21 @@ impl<
         Arg: Clone + std::ops::Mul<Param>,
     > Polynomial<Param, Arg>
 {
+    /*
+        /// evaluate the polynomial with the passed arg
+        pub fn new<RNG: RngCore + CryptoRng>(n: usize, rng: &RNG) -> Self {
+        let data = (0..n).map(|_| Param::random(rng)).collect::<Vec<Param>>();
+        Self {
+            data,
+            _x: std::marker::PhantomData,
+        }
+        }
+    */
     /// evaluate the polynomial with the passed arg
     pub fn eval(&self, x: Arg) -> Param {
         let mut ret = Param::zero();
-        for i in 0..self.data.len() {
-            ret += x.clone() * self.data[i].clone();
+        for i in 0..self.params.len() {
+            ret += x.clone() * self.params[i].clone();
         }
         ret
     }
@@ -343,12 +353,50 @@ pub mod test_helpers {
 
 #[cfg(test)]
 pub mod test {
+    use num_traits::Zero;
     use rand_core::OsRng;
 
     use crate::{
         common::TupleProof,
         curve::{point::Point, scalar::Scalar},
     };
+
+    #[test]
+    #[allow(non_snake_case)]
+    fn polynomial() {
+        let mut rng = OsRng;
+        let n = 16usize;
+
+        let params = (0..n)
+            .map(|_| Scalar::random(&mut rng))
+            .collect::<Vec<Scalar>>();
+        let poly = super::Polynomial {
+            params,
+            _x: std::marker::PhantomData,
+        };
+
+        let y = poly.eval(Scalar::from(1));
+        let mut z = Scalar::zero();
+        for i in 0..poly.params.len() {
+            z += poly.params[i];
+        }
+        assert_eq!(y, z);
+
+        let params = (0..n)
+            .map(|_| Point::from(Scalar::random(&mut rng)))
+            .collect::<Vec<Point>>();
+        let poly = super::Polynomial {
+            params,
+            _x: std::marker::PhantomData,
+        };
+
+        let y = poly.eval(Scalar::from(1));
+        let mut z = Point::zero();
+        for i in 0..poly.params.len() {
+            z += poly.params[i];
+        }
+        assert_eq!(y, z);
+    }
 
     #[test]
     #[allow(non_snake_case)]
