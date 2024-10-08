@@ -35,14 +35,14 @@ impl<
     > Polynomial<Param, Arg>
 {
     /*
-       /// evaluate the polynomial with the passed arg
-       pub fn new<RNG: RngCore + CryptoRng>(n: usize, rng: &RNG) -> Self {
+    /// construct new random polynomial of the specified size
+    pub fn random<RNG: RngCore + CryptoRng>(n: usize, rng: &RNG) -> Self {
        let data = (0..n).map(|_| Param::random(rng)).collect::<Vec<Param>>();
        Self {
            data,
            _x: std::marker::PhantomData,
        }
-       }
+    }
     */
     /// construct new polynomial from passed params
     pub fn new(params: Vec<Param>) -> Self {
