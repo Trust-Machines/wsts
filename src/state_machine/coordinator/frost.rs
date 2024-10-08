@@ -889,7 +889,10 @@ pub mod test {
         let (packets, results) = coordinator
             .process_inbound_messages(&[Packet {
                 sig: vec![],
-                msg: Message::DkgBegin(DkgBegin { dkg_id: old_id }),
+                msg: Message::DkgBegin(DkgBegin {
+                    dkg_id: old_id,
+                    keep_constant: false,
+                }),
             }])
             .unwrap();
         assert!(packets.is_empty());
@@ -901,7 +904,10 @@ pub mod test {
         let (packets, results) = coordinator
             .process_inbound_messages(&[Packet {
                 sig: vec![],
-                msg: Message::DkgBegin(DkgBegin { dkg_id: id }),
+                msg: Message::DkgBegin(DkgBegin {
+                    dkg_id: id,
+                    keep_constant: false,
+                }),
             }])
             .unwrap();
         assert!(packets.is_empty());

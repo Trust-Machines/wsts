@@ -935,7 +935,10 @@ pub mod test {
         assert!(!signer.can_dkg_end());
 
         // meet the conditions for DKG_END
-        let dkg_begin = Message::DkgBegin(DkgBegin { dkg_id: 1 });
+        let dkg_begin = Message::DkgBegin(DkgBegin {
+            dkg_id: 1,
+            keep_constant: false,
+        });
         let dkg_public_shares = signer
             .process(&dkg_begin)
             .expect("failed to process DkgBegin");

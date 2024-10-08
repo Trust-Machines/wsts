@@ -130,12 +130,14 @@ pub fn poly(x: &Scalar, f: &Vec<Point>) -> Result<Point, PointError> {
     Point::multimult(s, f.clone())
 }
 
-/// Evaluate the public polynomial `f` at scalar `x` using multi-exponentiation
+/// Evaluate the private polynomial `f` at scalar `x`
 #[allow(clippy::ptr_arg)]
 pub fn private_poly(x: Scalar, f: &Vec<Scalar>) -> Scalar {
+    let mut pow = Scalar::one();
     let mut sum = Scalar::zero();
     for i in 0..f.len() {
-        sum += x * f[i];
+        sum += pow * f[i];
+        pow *= x;
     }
     sum
 }
@@ -178,4 +180,35 @@ pub fn merkle_root(data: &[u8]) -> [u8; 32] {
     hasher.update(data);
 
     hasher.finalize().into()
+}
+
+#[cfg(test)]
+pub mod test {
+    //use num_traits::Zero;
+    use rand_core::OsRng;
+
+    use crate::{
+        compute,
+        curve::{
+            point::{Point, G},
+            scalar::Scalar,
+        },
+    };
+
+    #[test]
+    #[allow(non_snake_case)]
+    fn poly() {
+        let mut rng = OsRng;
+        let n = 16usize;
+
+        let private_poly = (0..n)
+            .map(|_| Scalar::random(&mut rng))
+            .collect::<Vec<Scalar>>();
+        let poly = private_poly.iter().map(|p| p * G).collect::<Vec<Point>>();
+
+        let x = compute::private_poly(Scalar::from(8), &private_poly);
+        let y = compute::poly(&Scalar::from(8), &poly);
+
+        assert_eq!(x * G, y.unwrap());
+    }
 }
