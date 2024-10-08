@@ -22,6 +22,24 @@ use crate::{
 /// A merkle root is a 256 bit hash
 pub type MerkleRoot = [u8; 32];
 
+/// A trait that allows us to create random instances of implementors
+pub trait Random {
+    /// Create a new instance with random data
+    fn fill<RNG: RngCore + CryptoRng>(rng: &mut RNG) -> Self;
+}
+
+impl Random for Point {
+    fn fill<RNG: RngCore + CryptoRng>(rng: &mut RNG) -> Self {
+        Point::from(Scalar::random(rng))
+    }
+}
+
+impl Random for Scalar {
+    fn fill<RNG: RngCore + CryptoRng>(rng: &mut RNG) -> Self {
+        Scalar::random(rng)
+    }
+}
+
 /// A Polynomial where the parameters are not necessarily the same type as the args
 pub struct Polynomial<Param, Arg> {
     /// parameters for the polynomial
@@ -30,20 +48,19 @@ pub struct Polynomial<Param, Arg> {
 }
 
 impl<
-        Param: Clone + Zero + Add + AddAssign<<Arg as Mul<Param>>::Output>,
+        Param: Clone + Zero + Random + Add + AddAssign<<Arg as Mul<Param>>::Output>,
         Arg: Clone + One + Mul<Param> + MulAssign,
     > Polynomial<Param, Arg>
 {
-    /*
     /// construct new random polynomial of the specified size
-    pub fn random<RNG: RngCore + CryptoRng>(n: usize, rng: &RNG) -> Self {
-       let data = (0..n).map(|_| Param::random(rng)).collect::<Vec<Param>>();
-       Self {
-           data,
-           _x: std::marker::PhantomData,
-       }
+    pub fn random<RNG: RngCore + CryptoRng>(n: usize, rng: &mut RNG) -> Self {
+        let params = (0..n).map(|_| Param::fill(rng)).collect::<Vec<Param>>();
+        Self {
+            params,
+            _x: std::marker::PhantomData,
+        }
     }
-    */
+
     /// construct new polynomial from passed params
     pub fn new(params: Vec<Param>) -> Self {
         Self {
