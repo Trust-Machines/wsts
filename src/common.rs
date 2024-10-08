@@ -52,9 +52,9 @@ impl<
         Arg: Clone + One + Mul<Param> + MulAssign,
     > Polynomial<Param, Arg>
 {
-    /// construct new random polynomial of the specified size
+    /// construct new random polynomial of the specified degree
     pub fn random<RNG: RngCore + CryptoRng>(n: usize, rng: &mut RNG) -> Self {
-        let params = (0..n).map(|_| Param::fill(rng)).collect::<Vec<Param>>();
+        let params = (0..n + 1).map(|_| Param::fill(rng)).collect::<Vec<Param>>();
         Self {
             params,
             _x: std::marker::PhantomData,
