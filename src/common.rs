@@ -397,10 +397,8 @@ pub mod test {
         let mut rng = OsRng;
         let n = 16usize;
 
-        let params = (0..n)
-            .map(|_| Scalar::random(&mut rng))
-            .collect::<Vec<Scalar>>();
-        let poly = super::Polynomial::new(params.clone());
+        let poly = super::Polynomial::<Scalar, Scalar>::random(n - 1, &mut rng);
+        let params = poly.params.clone();
         let y = poly.eval(Scalar::from(1));
         let mut z = Scalar::zero();
         for i in 0..poly.params.len() {
@@ -422,10 +420,8 @@ pub mod test {
         let b = compute::poly(&Scalar::from(8), &public_params);
         assert_eq!(a * G, b.unwrap());
 
-        let params = (0..n)
-            .map(|_| Point::from(Scalar::random(&mut rng)))
-            .collect::<Vec<Point>>();
-        let poly = super::Polynomial::new(params.clone());
+        let poly = super::Polynomial::random(n - 1, &mut rng);
+        let params = poly.params.clone();
         let y = poly.eval(Scalar::from(1));
         let mut z = Point::zero();
         for i in 0..poly.params.len() {
