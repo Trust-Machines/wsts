@@ -104,7 +104,7 @@ impl Party {
     pub fn reset_poly<RNG: RngCore + CryptoRng>(&mut self, keep_constant: bool, rng: &mut RNG) {
         let constant = if let Some(poly) = &self.f {
             if keep_constant {
-                Some(poly[0].clone())
+                Some(poly[0])
             } else {
                 None
             }

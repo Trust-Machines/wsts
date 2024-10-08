@@ -134,7 +134,7 @@ impl Signable for DkgBegin {
         let keep_constant = if self.keep_constant { [1u8] } else { [0u8] };
         hasher.update("DKG_BEGIN".as_bytes());
         hasher.update(self.dkg_id.to_be_bytes());
-        hasher.update(&keep_constant);
+        hasher.update(keep_constant);
     }
 }
 
