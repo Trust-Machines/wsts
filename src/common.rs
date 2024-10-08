@@ -22,6 +22,28 @@ use crate::{
 /// A merkle root is a 256 bit hash
 pub type MerkleRoot = [u8; 32];
 
+/// A Polynomial where the parameters are not necessarily the same type as the args
+pub struct Polynomial<Param, Arg> {
+    /// parameters for the polynomial
+    pub data: Vec<Param>,
+    _x: std::marker::PhantomData<Arg>,
+}
+
+impl<
+        Param: Clone + Zero + Add + std::ops::AddAssign<<Arg as std::ops::Mul<Param>>::Output>,
+        Arg: Clone + std::ops::Mul<Param>,
+    > Polynomial<Param, Arg>
+{
+    /// evaluate the polynomial with the passed arg
+    pub fn eval(&self, x: Arg) -> Param {
+        let mut ret = Param::zero();
+        for i in 0..self.data.len() {
+            ret += x.clone() * self.data[i].clone();
+        }
+        ret
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 /// A commitment to a polynonial, with a Schnorr proof of ownership bound to the ID
 pub struct PolyCommitment {

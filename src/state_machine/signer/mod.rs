@@ -260,14 +260,14 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
     }
 
     /// Reset internal state
-    pub fn reset<T: RngCore + CryptoRng>(&mut self, dkg_id: u64, rng: &mut T) {
+    pub fn reset<T: RngCore + CryptoRng>(&mut self, dkg_id: u64, keep_constant: bool, rng: &mut T) {
         self.dkg_id = dkg_id;
         self.commitments.clear();
         self.decrypted_shares.clear();
         self.decryption_keys.clear();
         self.invalid_private_shares.clear();
         self.public_nonces.clear();
-        self.signer.reset_polys(rng);
+        self.signer.reset_polys(keep_constant, rng);
         self.dkg_public_shares.clear();
         self.dkg_private_shares.clear();
         self.dkg_private_begin_msg = None;
@@ -594,7 +594,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
     fn dkg_begin(&mut self, dkg_begin: &DkgBegin) -> Result<Vec<Message>, Error> {
         let mut rng = OsRng;
 
-        self.reset(dkg_begin.dkg_id, &mut rng);
+        self.reset(dkg_begin.dkg_id, dkg_begin.keep_constant, &mut rng);
         self.move_to(State::DkgPublicDistribute)?;
 
         //let _party_state = self.signer.save();

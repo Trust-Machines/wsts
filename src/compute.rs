@@ -130,6 +130,16 @@ pub fn poly(x: &Scalar, f: &Vec<Point>) -> Result<Point, PointError> {
     Point::multimult(s, f.clone())
 }
 
+/// Evaluate the public polynomial `f` at scalar `x` using multi-exponentiation
+#[allow(clippy::ptr_arg)]
+pub fn private_poly(x: Scalar, f: &Vec<Scalar>) -> Scalar {
+    let mut sum = Scalar::zero();
+    for i in 0..f.len() {
+        sum += x * f[i];
+    }
+    sum
+}
+
 /// Create a BIP340 compliant tagged hash by double hashing the tag
 pub fn tagged_hash(tag: &str) -> Sha256 {
     let mut hasher = Sha256::new();

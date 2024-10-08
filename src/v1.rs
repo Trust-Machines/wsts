@@ -1,6 +1,5 @@
 use hashbrown::HashMap;
 use num_traits::{One, Zero};
-use polynomial::Polynomial;
 use rand_core::{CryptoRng, RngCore};
 use tracing::warn;
 
@@ -26,7 +25,7 @@ pub struct Party {
     /// The public key
     pub public_key: Point,
     /// The polynomial used for Lagrange interpolation
-    pub f: Option<Polynomial<Scalar>>,
+    pub f: Option<Vec<Scalar>>,
     num_keys: u32,
     threshold: u32,
     private_key: Scalar,
@@ -92,10 +91,8 @@ impl Party {
     ) -> Option<PolyCommitment> {
         if let Some(poly) = &self.f {
             Some(PolyCommitment {
-                id: ID::new(&self.id(), &poly.data()[0], rng),
-                poly: (0..poly.data().len())
-                    .map(|i| &poly.data()[i] * G)
-                    .collect(),
+                id: ID::new(&self.id(), &poly[0], rng),
+                poly: (0..poly.len()).map(|i| &poly[i] * G).collect(),
             })
         } else {
             warn!("get_poly_commitment called with no polynomial");
@@ -104,8 +101,22 @@ impl Party {
     }
 
     /// Make a new polynomial
-    pub fn reset_poly<RNG: RngCore + CryptoRng>(&mut self, rng: &mut RNG) {
-        self.f = Some(VSS::random_poly(self.threshold - 1, rng));
+    pub fn reset_poly<RNG: RngCore + CryptoRng>(&mut self, keep_constant: bool, rng: &mut RNG) {
+        let constant = if let Some(poly) = &self.f {
+            if keep_constant {
+                Some(poly[0].clone())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        if let Some(c) = constant {
+            self.f = Some(VSS::random_poly_with_constant(self.threshold - 1, c, rng));
+        } else {
+            self.f = Some(VSS::random_poly(self.threshold - 1, rng));
+        }
     }
 
     /// Clear the polynomial
@@ -118,7 +129,7 @@ impl Party {
         if let Some(poly) = &self.f {
             let mut shares = HashMap::new();
             for i in 1..self.num_keys + 1 {
-                shares.insert(i, poly.eval(compute::id(i)));
+                shares.insert(i, compute::private_poly(compute::id(i), poly));
             }
             shares
         } else {
@@ -546,9 +557,9 @@ impl traits::Signer for Signer {
         polys
     }
 
-    fn reset_polys<RNG: RngCore + CryptoRng>(&mut self, rng: &mut RNG) {
+    fn reset_polys<RNG: RngCore + CryptoRng>(&mut self, keep_constant: bool, rng: &mut RNG) {
         for party in self.parties.iter_mut() {
-            party.reset_poly(rng);
+            party.reset_poly(keep_constant, rng);
         }
     }
 

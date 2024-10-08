@@ -1,6 +1,5 @@
 use core::{cmp::PartialEq, fmt::Debug};
 use hashbrown::HashMap;
-use polynomial::Polynomial;
 use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
@@ -15,7 +14,7 @@ use crate::{
 /// The saved state required to reconstruct a party
 pub struct PartyState {
     /// The party's private polynomial
-    pub polynomial: Option<Polynomial<Scalar>>,
+    pub polynomial: Option<Vec<Scalar>>,
     /// The key IDS and associate private keys for this party
     pub private_keys: Vec<(u32, Scalar)>,
     /// The nonce being used by this party
@@ -72,7 +71,7 @@ pub trait Signer: Clone + Debug + PartialEq {
     fn get_poly_commitments<RNG: RngCore + CryptoRng>(&self, rng: &mut RNG) -> Vec<PolyCommitment>;
 
     /// Reset all polynomials for this signer
-    fn reset_polys<RNG: RngCore + CryptoRng>(&mut self, rng: &mut RNG);
+    fn reset_polys<RNG: RngCore + CryptoRng>(&mut self, keep_constant: bool, rng: &mut RNG);
 
     /// Clear all polynomials for this signer
     fn clear_polys(&mut self);

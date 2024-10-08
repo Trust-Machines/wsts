@@ -363,6 +363,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         );
         let dkg_begin = DkgBegin {
             dkg_id: self.current_dkg_id,
+            keep_constant: false,
         };
         let dkg_begin_packet = Packet {
             sig: dkg_begin

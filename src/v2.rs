@@ -1,6 +1,5 @@
 use hashbrown::HashMap;
 use num_traits::{One, Zero};
-use polynomial::Polynomial;
 use rand_core::{CryptoRng, RngCore};
 use tracing::warn;
 
@@ -29,7 +28,7 @@ pub struct Party {
     num_keys: u32,
     num_parties: u32,
     threshold: u32,
-    f: Option<Polynomial<Scalar>>,
+    f: Option<Vec<Scalar>>,
     private_keys: HashMap<u32, Scalar>,
     group_key: Point,
     nonce: Nonce,
@@ -72,10 +71,8 @@ impl Party {
     ) -> Option<PolyCommitment> {
         if let Some(poly) = &self.f {
             Some(PolyCommitment {
-                id: ID::new(&self.id(), &poly.data()[0], rng),
-                poly: (0..poly.data().len())
-                    .map(|i| &poly.data()[i] * G)
-                    .collect(),
+                id: ID::new(&self.id(), &poly[0], rng),
+                poly: (0..poly.len()).map(|i| &poly[i] * G).collect(),
             })
         } else {
             warn!("get_poly_commitment called with no polynomial");
@@ -88,7 +85,7 @@ impl Party {
         let mut shares = HashMap::new();
         if let Some(poly) = &self.f {
             for i in 1..self.num_keys + 1 {
-                shares.insert(i, poly.eval(compute::id(i)));
+                shares.insert(i, compute::private_poly(compute::id(i), poly));
             }
         } else {
             warn!("get_poly_commitment called with no polynomial");
@@ -478,8 +475,22 @@ impl traits::Signer for Party {
         }
     }
 
-    fn reset_polys<RNG: RngCore + CryptoRng>(&mut self, rng: &mut RNG) {
-        self.f = Some(VSS::random_poly(self.threshold - 1, rng));
+    fn reset_polys<RNG: RngCore + CryptoRng>(&mut self, keep_constant: bool, rng: &mut RNG) {
+        let constant = if let Some(poly) = &self.f {
+            if keep_constant {
+                Some(poly[0].clone())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        if let Some(c) = constant {
+            self.f = Some(VSS::random_poly_with_constant(self.threshold - 1, c, rng));
+        } else {
+            self.f = Some(VSS::random_poly(self.threshold - 1, rng));
+        }
     }
 
     fn clear_polys(&mut self) {

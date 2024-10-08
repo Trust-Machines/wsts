@@ -125,6 +125,8 @@ impl Signable for Message {
 pub struct DkgBegin {
     /// DKG round ID
     pub dkg_id: u64,
+    /// Keep the constant factor so DKG will produce the same key
+    pub keep_constant: bool,
 }
 
 impl Signable for DkgBegin {
