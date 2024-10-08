@@ -1,6 +1,6 @@
 use core::{
     fmt::{Debug, Display, Formatter, Result as FmtResult},
-    ops::{Add, AddAssign, Mul},
+    ops::{Add, AddAssign, Mul, MulAssign},
 };
 use hashbrown::HashMap;
 use num_traits::{One, Zero};
@@ -31,7 +31,7 @@ pub struct Polynomial<Param, Arg> {
 
 impl<
         Param: Clone + Zero + Add + AddAssign<<Arg as Mul<Param>>::Output>,
-        Arg: Clone + Mul<Param>,
+        Arg: Clone + One + Mul<Param> + MulAssign,
     > Polynomial<Param, Arg>
 {
     /*
@@ -53,11 +53,11 @@ impl<
     }
     /// evaluate the polynomial with the passed arg
     pub fn eval(&self, x: Arg) -> Param {
-        //let mut pow = Scalar::one();
+        let mut pow = Arg::one();
         let mut ret = Param::zero();
         for i in 0..self.params.len() {
-            ret += x.clone() * self.params[i].clone();
-            //pow *= x.clone();
+            ret += pow.clone() * self.params[i].clone();
+            pow *= x.clone();
         }
         ret
     }
@@ -362,38 +362,42 @@ pub mod test_helpers {
 
 #[cfg(test)]
 pub mod test {
-    //use num_traits::Zero;
+    use num_traits::Zero;
     use rand_core::OsRng;
 
     use crate::{
         common::TupleProof,
-        //compute,
-        curve::{point::Point, scalar::Scalar},
+        compute,
+        curve::{
+            point::{Point, G},
+            scalar::Scalar,
+        },
     };
 
     #[test]
     #[allow(non_snake_case)]
     fn polynomial() {
-        /*
-            let mut rng = OsRng;
-            let n = 16usize;
+        let mut rng = OsRng;
+        let n = 16usize;
 
-            let params = (0..n)
-                .map(|_| Scalar::random(&mut rng))
-                .collect::<Vec<Scalar>>();
-            let poly = super::Polynomial::new(params.clone());
-            let y = poly.eval(Scalar::from(1));
-            let mut z = Scalar::zero();
-            for i in 0..poly.params.len() {
-                z += poly.params[i];
-            }
-            assert_eq!(y, z);
+        let params = (0..n)
+            .map(|_| Scalar::random(&mut rng))
+            .collect::<Vec<Scalar>>();
+        let poly = super::Polynomial::new(params.clone());
+        let y = poly.eval(Scalar::from(1));
+        let mut z = Scalar::zero();
+        for i in 0..poly.params.len() {
+            z += poly.params[i];
+        }
+        assert_eq!(y, z);
 
+        let a = poly.eval(Scalar::from(8));
         let b = compute::private_poly(Scalar::from(8), &params);
-        assert_eq!(y, b);
+        assert_eq!(a, b);
 
-            let public_params = params.iter().map(|p| p * G).collect::<Vec<Point>>();
-            let public_poly: super::Polynomial<Point, Scalar> = super::Polynomial::new(public_params.clone());
+        let public_params = params.iter().map(|p| p * G).collect::<Vec<Point>>();
+        let public_poly: super::Polynomial<Point, Scalar> =
+            super::Polynomial::new(public_params.clone());
         let a = poly.eval(Scalar::from(8));
         let b = public_poly.eval(Scalar::from(8));
         assert_eq!(a * G, b);
@@ -401,17 +405,20 @@ pub mod test {
         let b = compute::poly(&Scalar::from(8), &public_params);
         assert_eq!(a * G, b.unwrap());
 
-            let params = (0..n)
-                .map(|_| Point::from(Scalar::random(&mut rng)))
-                .collect::<Vec<Point>>();
-            let poly = super::Polynomial::new(params);
-            let y = poly.eval(Scalar::from(1));
-            let mut z = Point::zero();
-            for i in 0..poly.params.len() {
-                z += poly.params[i];
-            }
-            assert_eq!(y, z);
-        */
+        let params = (0..n)
+            .map(|_| Point::from(Scalar::random(&mut rng)))
+            .collect::<Vec<Point>>();
+        let poly = super::Polynomial::new(params.clone());
+        let y = poly.eval(Scalar::from(1));
+        let mut z = Point::zero();
+        for i in 0..poly.params.len() {
+            z += poly.params[i];
+        }
+        assert_eq!(y, z);
+
+        let a = poly.eval(Scalar::from(8));
+        let b = compute::poly(&Scalar::from(8), &params);
+        assert_eq!(a, b.unwrap());
     }
 
     #[test]
