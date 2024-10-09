@@ -98,6 +98,26 @@ impl<Param, Arg> Index<usize> for Polynomial<Param, Arg> {
     }
 }
 
+impl<Param, Arg, Operand, OpResult> Mul<Operand> for &Polynomial<Param, Arg>
+where
+    Param: Clone
+        + Zero
+        + Random
+        + Add
+        + AddAssign<<Arg as Mul<Param>>::Output>
+        + Mul<Operand, Output = OpResult>,
+    Arg: Clone + One + Mul<OpResult> + Mul<Param> + MulAssign,
+    Operand: Clone,
+    OpResult: Clone + Zero + Random + Add + AddAssign<<Arg as Mul<OpResult>>::Output>,
+    Vec<OpResult>: FromIterator<<Param as Mul<Operand>>::Output>,
+{
+    type Output = Polynomial<OpResult, Arg>;
+    fn mul(self, x: Operand) -> Self::Output {
+        let params: Vec<OpResult> = self.params.iter().map(|p| p.clone() * x.clone()).collect();
+        Polynomial::new(params)
+    }
+}
+
 impl<Param, Arg, Operand, OpResult> Mul<Operand> for Polynomial<Param, Arg>
 where
     Param: Clone

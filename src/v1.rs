@@ -95,7 +95,7 @@ impl Party {
         if let Some(poly) = &self.f {
             Some(PolyCommitment {
                 id: ID::new(&self.id(), &poly[0], rng),
-                poly: (poly.clone() * G).params,
+                poly: (poly * G).params,
             })
         } else {
             warn!("get_poly_commitment called with no polynomial");
