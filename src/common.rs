@@ -456,43 +456,43 @@ pub mod test {
         let n = 16u32;
 
         let poly = super::Polynomial::<Scalar, Scalar>::random(n - 1, &mut rng);
-        let params = poly.params.clone();
-        let y = poly.eval(Scalar::from(1));
+        let x = Scalar::from(8);
+        let y = poly.eval(x);
         let mut z = Scalar::zero();
+        let mut pow = Scalar::from(1);
         for i in 0..poly.params.len() {
-            z += poly.params[i];
+            z += pow * poly.params[i];
+            pow *= x;
         }
         assert_eq!(y, z);
 
-        let a = poly.eval(Scalar::from(8));
-        let b = compute::private_poly(Scalar::from(8), &params);
-        assert_eq!(a, b);
-
-        let public_params = params.iter().map(|p| p * G).collect::<Vec<Point>>();
+        let public_params = poly.params.iter().map(|p| p * G).collect::<Vec<Point>>();
         let public_poly: super::Polynomial<Point, Scalar> =
             super::Polynomial::new(public_params.clone());
-        let a = poly.eval(Scalar::from(8));
-        let b = public_poly.eval(Scalar::from(8));
+        let a = poly.eval(x);
+        let b = public_poly.eval(x);
         assert_eq!(a * G, b);
 
         let mul_poly = poly * G;
-        let m = mul_poly.eval(Scalar::from(8));
-        assert_eq!(a * G, m);
+        let b = mul_poly.eval(x);
+        assert_eq!(a * G, b);
 
-        let b = compute::poly(&Scalar::from(8), &public_params);
+        let b = compute::poly(&x, &public_params);
         assert_eq!(a * G, b.unwrap());
 
         let poly = super::Polynomial::random(n - 1, &mut rng);
         let params = poly.params.clone();
-        let y = poly.eval(Scalar::from(1));
+        let y = poly.eval(x);
         let mut z = Point::zero();
+        let mut pow = Scalar::from(1);
         for i in 0..poly.params.len() {
-            z += poly.params[i];
+            z += pow * poly.params[i];
+            pow *= x;
         }
         assert_eq!(y, z);
 
-        let a = poly.eval(Scalar::from(8));
-        let b = compute::poly(&Scalar::from(8), &params);
+        let a = poly.eval(x);
+        let b = compute::poly(&x, &params);
         assert_eq!(a, b.unwrap());
     }
 

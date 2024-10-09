@@ -130,18 +130,6 @@ pub fn poly(x: &Scalar, f: &Vec<Point>) -> Result<Point, PointError> {
     Point::multimult(s, f.clone())
 }
 
-/// Evaluate the private polynomial `f` at scalar `x`
-#[allow(clippy::ptr_arg)]
-pub fn private_poly(x: Scalar, f: &Vec<Scalar>) -> Scalar {
-    let mut pow = Scalar::one();
-    let mut sum = Scalar::zero();
-    for i in 0..f.len() {
-        sum += pow * f[i];
-        pow *= x;
-    }
-    sum
-}
-
 /// Create a BIP340 compliant tagged hash by double hashing the tag
 pub fn tagged_hash(tag: &str) -> Sha256 {
     let mut hasher = Sha256::new();
@@ -187,27 +175,24 @@ pub mod test {
     use rand_core::OsRng;
 
     use crate::{
+        common::Polynomial,
         compute,
-        curve::{
-            point::{Point, G},
-            scalar::Scalar,
-        },
+        curve::{point::G, scalar::Scalar},
     };
 
     #[test]
     #[allow(non_snake_case)]
     fn poly() {
         let mut rng = OsRng;
-        let n = 16usize;
+        let n = 16u32;
 
-        let private_poly = (0..n)
-            .map(|_| Scalar::random(&mut rng))
-            .collect::<Vec<Scalar>>();
-        let poly = private_poly.iter().map(|p| p * G).collect::<Vec<Point>>();
+        let private_poly = Polynomial::<Scalar, Scalar>::random(n - 1, &mut rng);
+        let public_poly = &private_poly * G;
 
-        let x = compute::private_poly(Scalar::from(8), &private_poly);
-        let y = compute::poly(&Scalar::from(8), &poly);
+        let x = Scalar::from(8);
+        let a = private_poly.eval(x);
+        let b = compute::poly(&x, &public_poly.params);
 
-        assert_eq!(x * G, y.unwrap());
+        assert_eq!(a * G, b.unwrap());
     }
 }
