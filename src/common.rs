@@ -48,10 +48,10 @@ pub struct Polynomial<Param, Arg> {
     _x: std::marker::PhantomData<Arg>,
 }
 
-impl<
-        Param: Clone + Zero + Random + Add + AddAssign<<Arg as Mul<Param>>::Output>,
-        Arg: Clone + One + Mul<Param> + MulAssign,
-    > Polynomial<Param, Arg>
+impl<Param, Arg> Polynomial<Param, Arg>
+where
+    Param: Clone + Zero + Random + Add + AddAssign<<Arg as Mul<Param>>::Output>,
+    Arg: Clone + One + Mul<Param> + MulAssign,
 {
     /// construct new random polynomial of the specified degree
     pub fn random<RNG: RngCore + CryptoRng>(n: u32, rng: &mut RNG) -> Self {
