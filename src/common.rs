@@ -84,11 +84,16 @@ impl<
     pub fn len(&self) -> usize {
         self.params.len()
     }
+
+    /// is the length of the polynomial zero
+    pub fn is_empty(&self) -> bool {
+        self.params.is_empty()
+    }
 }
 
 impl<Param, Arg> Index<usize> for Polynomial<Param, Arg> {
     type Output = Param;
-    fn index<'a>(&'a self, i: usize) -> &'a Param {
+    fn index(&self, i: usize) -> &Param {
         &self.params[i]
     }
 }
