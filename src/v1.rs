@@ -4,7 +4,10 @@ use rand_core::{CryptoRng, RngCore};
 use tracing::warn;
 
 use crate::{
-    common::{CheckPrivateShares, Nonce, PolyCommitment, PublicNonce, Signature, SignatureShare},
+    common::{
+        CheckPrivateShares, Nonce, PolyCommitment, Polynomial, PublicNonce, Signature,
+        SignatureShare,
+    },
     compute,
     curve::{
         point::{Point, G},
@@ -25,7 +28,7 @@ pub struct Party {
     /// The public key
     pub public_key: Point,
     /// The polynomial used for Lagrange interpolation
-    pub f: Option<Vec<Scalar>>,
+    pub f: Option<Polynomial<Scalar, Scalar>>,
     num_keys: u32,
     threshold: u32,
     private_key: Scalar,
@@ -92,7 +95,7 @@ impl Party {
         if let Some(poly) = &self.f {
             Some(PolyCommitment {
                 id: ID::new(&self.id(), &poly[0], rng),
-                poly: (0..poly.len()).map(|i| &poly[i] * G).collect(),
+                poly: (poly.clone() * G).params,
             })
         } else {
             warn!("get_poly_commitment called with no polynomial");
@@ -129,7 +132,7 @@ impl Party {
         if let Some(poly) = &self.f {
             let mut shares = HashMap::new();
             for i in 1..self.num_keys + 1 {
-                shares.insert(i, compute::private_poly(compute::id(i), poly));
+                shares.insert(i, poly.eval(compute::id(i)));
             }
             shares
         } else {

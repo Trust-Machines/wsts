@@ -1,6 +1,6 @@
 use core::{
     fmt::{Debug, Display, Formatter, Result as FmtResult},
-    ops::{Add, AddAssign, Mul, MulAssign},
+    ops::{Add, AddAssign, Index, Mul, MulAssign},
 };
 use hashbrown::HashMap;
 use num_traits::{One, Zero};
@@ -41,6 +41,7 @@ impl Random for Scalar {
 }
 
 /// A Polynomial where the parameters are not necessarily the same type as the args
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct Polynomial<Param, Arg> {
     /// parameters for the polynomial
     pub params: Vec<Param>,
@@ -53,7 +54,7 @@ impl<
     > Polynomial<Param, Arg>
 {
     /// construct new random polynomial of the specified degree
-    pub fn random<RNG: RngCore + CryptoRng>(n: usize, rng: &mut RNG) -> Self {
+    pub fn random<RNG: RngCore + CryptoRng>(n: u32, rng: &mut RNG) -> Self {
         let params = (0..n + 1).map(|_| Param::fill(rng)).collect::<Vec<Param>>();
         Self {
             params,
@@ -77,6 +78,32 @@ impl<
             pow *= x.clone();
         }
         ret
+    }
+
+    /// length of the params
+    pub fn len(&self) -> usize {
+        self.params.len()
+    }
+}
+
+impl<Param, Arg> Index<usize> for Polynomial<Param, Arg> {
+    type Output = Param;
+    fn index<'a>(&'a self, i: usize) -> &'a Param {
+        &self.params[i]
+    }
+}
+
+impl<Param, Arg, T> Mul<T> for Polynomial<Param, Arg>
+where
+    Param: Clone + Zero + Random + Add + AddAssign<<Arg as Mul<Param>>::Output> + Mul<T>,
+    Arg: Clone + One + Mul<T> + Mul<Param> + MulAssign,
+    T: Clone + Zero + Random + Add + AddAssign<<Arg as Mul<T>>::Output>,
+    Vec<T>: FromIterator<<Param as Mul<T>>::Output>,
+{
+    type Output = Polynomial<T, Arg>;
+    fn mul(self, x: T) -> Self::Output {
+        let params: Vec<T> = self.params.iter().map(|p| p.clone() * x.clone()).collect();
+        Polynomial::new(params)
     }
 }
 
@@ -395,7 +422,7 @@ pub mod test {
     #[allow(non_snake_case)]
     fn polynomial() {
         let mut rng = OsRng;
-        let n = 16usize;
+        let n = 16u32;
 
         let poly = super::Polynomial::<Scalar, Scalar>::random(n - 1, &mut rng);
         let params = poly.params.clone();
@@ -416,6 +443,10 @@ pub mod test {
         let a = poly.eval(Scalar::from(8));
         let b = public_poly.eval(Scalar::from(8));
         assert_eq!(a * G, b);
+
+        let mul_poly = poly * G;
+        let m = mul_poly.eval(Scalar::from(8));
+        assert_eq!(a * G, m);
 
         let b = compute::poly(&Scalar::from(8), &public_params);
         assert_eq!(a * G, b.unwrap());

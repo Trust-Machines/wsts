@@ -4,7 +4,9 @@ use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    common::{MerkleRoot, Nonce, PolyCommitment, PublicNonce, Signature, SignatureShare},
+    common::{
+        MerkleRoot, Nonce, PolyCommitment, Polynomial, PublicNonce, Signature, SignatureShare,
+    },
     curve::{point::Point, scalar::Scalar},
     errors::{AggregatorError, DkgError},
     taproot::SchnorrProof,
@@ -14,7 +16,7 @@ use crate::{
 /// The saved state required to reconstruct a party
 pub struct PartyState {
     /// The party's private polynomial
-    pub polynomial: Option<Vec<Scalar>>,
+    pub polynomial: Option<Polynomial<Scalar, Scalar>>,
     /// The key IDS and associate private keys for this party
     pub private_keys: Vec<(u32, Scalar)>,
     /// The nonce being used by this party

@@ -4,7 +4,7 @@ use rand_core::{CryptoRng, RngCore};
 use tracing::warn;
 
 use crate::{
-    common::{Nonce, PolyCommitment, PublicNonce, Signature, SignatureShare},
+    common::{Nonce, PolyCommitment, Polynomial, PublicNonce, Signature, SignatureShare},
     compute,
     curve::{
         point::{Point, G},
@@ -28,7 +28,7 @@ pub struct Party {
     num_keys: u32,
     num_parties: u32,
     threshold: u32,
-    f: Option<Vec<Scalar>>,
+    f: Option<Polynomial<Scalar, Scalar>>,
     private_keys: HashMap<u32, Scalar>,
     group_key: Point,
     nonce: Nonce,
@@ -72,7 +72,7 @@ impl Party {
         if let Some(poly) = &self.f {
             Some(PolyCommitment {
                 id: ID::new(&self.id(), &poly[0], rng),
-                poly: (0..poly.len()).map(|i| &poly[i] * G).collect(),
+                poly: (poly.clone() * G).params,
             })
         } else {
             warn!("get_poly_commitment called with no polynomial");
@@ -85,7 +85,7 @@ impl Party {
         let mut shares = HashMap::new();
         if let Some(poly) = &self.f {
             for i in 1..self.num_keys + 1 {
-                shares.insert(i, compute::private_poly(compute::id(i), poly));
+                shares.insert(i, poly.eval(compute::id(i)));
             }
         } else {
             warn!("get_poly_commitment called with no polynomial");
