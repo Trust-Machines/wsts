@@ -277,19 +277,20 @@ impl Signature {
 
 #[allow(non_snake_case)]
 /// A Chaum-Pedersen proof that (G, A=a*G, B=b*G, K=(a*b)*G) is a DH tuple
+/// It consists of two Schnorr proofs.  The first shows knowledge of `a`, and the second is just the first multiplied by `b`
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct TupleProof {
     /// R = r*G for a random scalar r
     pub R: Point,
-    /// rB = r*B
+    /// rB = r*B = b*R
     pub rB: Point,
-    /// z = r + a*s where s = H(G,A,B,K,R) as per Fiat-Shamir
+    /// z = r + a*c where c = H(G,A,B,K,R) as per Fiat-Shamir
     pub z: Scalar,
 }
 
 impl TupleProof {
     #[allow(non_snake_case)]
-    /// Construct a Chaum-Pedersen proof that (G, A, B, K) is a DH tuple
+    /// Construct a Chaum-Pedersen proof that (A, B, K) is a DH tuple
     pub fn new<RNG: RngCore + CryptoRng>(
         a: &Scalar,
         A: &Point,
@@ -299,21 +300,21 @@ impl TupleProof {
     ) -> Self {
         let r = Scalar::random(rng);
         let R = r * G;
-        let s = Self::challenge(A, B, K, &R);
+        let c = Self::challenge(A, B, K, &R);
 
         Self {
             R,
             rB: r * B,
-            z: r + a * s,
+            z: r + a * c,
         }
     }
 
     #[allow(non_snake_case)]
     /// Verify the proof using the transcript and public parameters
     pub fn verify(&self, A: &Point, B: &Point, K: &Point) -> bool {
-        let s = Self::challenge(A, B, K, &self.R);
+        let c = Self::challenge(A, B, K, &self.R);
 
-        (self.z * G == self.R + s * A) && (self.z * B == self.rB + s * K)
+        (self.z * G == self.R + c * A) && (self.z * B == self.rB + c * K)
     }
 
     #[allow(non_snake_case)]
