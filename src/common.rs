@@ -1,6 +1,6 @@
 use core::{
     fmt::{Debug, Display, Formatter, Result as FmtResult},
-    ops::Add,
+    ops::{Add, AddAssign, Index, Mul, MulAssign},
 };
 use hashbrown::HashMap;
 use num_traits::{One, Zero};
@@ -21,6 +21,122 @@ use crate::{
 
 /// A merkle root is a 256 bit hash
 pub type MerkleRoot = [u8; 32];
+
+/// A trait that allows us to create random instances of implementors
+pub trait Random {
+    /// Create a new instance with random data
+    fn fill<RNG: RngCore + CryptoRng>(rng: &mut RNG) -> Self;
+}
+
+impl Random for Point {
+    fn fill<RNG: RngCore + CryptoRng>(rng: &mut RNG) -> Self {
+        Point::from(Scalar::random(rng))
+    }
+}
+
+impl Random for Scalar {
+    fn fill<RNG: RngCore + CryptoRng>(rng: &mut RNG) -> Self {
+        Scalar::random(rng)
+    }
+}
+
+/// A Polynomial where the parameters are not necessarily the same type as the args
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct Polynomial<Param, Arg> {
+    /// parameters for the polynomial
+    pub params: Vec<Param>,
+    _x: std::marker::PhantomData<Arg>,
+}
+
+impl<Param, Arg> Polynomial<Param, Arg>
+where
+    Param: Clone + Zero + Random + Add + AddAssign<<Arg as Mul<Param>>::Output>,
+    Arg: Clone + One + Mul<Param> + MulAssign,
+{
+    /// construct new random polynomial of the specified degree
+    pub fn random<RNG: RngCore + CryptoRng>(n: u32, rng: &mut RNG) -> Self {
+        let params = (0..n + 1).map(|_| Param::fill(rng)).collect::<Vec<Param>>();
+        Self {
+            params,
+            _x: std::marker::PhantomData,
+        }
+    }
+
+    /// construct new polynomial from passed params
+    pub fn new(params: Vec<Param>) -> Self {
+        Self {
+            params,
+            _x: std::marker::PhantomData,
+        }
+    }
+    /// evaluate the polynomial with the passed arg
+    pub fn eval(&self, x: Arg) -> Param {
+        let mut pow = Arg::one();
+        let mut ret = Param::zero();
+        for i in 0..self.params.len() {
+            ret += pow.clone() * self.params[i].clone();
+            pow *= x.clone();
+        }
+        ret
+    }
+
+    /// length of the params
+    pub fn len(&self) -> usize {
+        self.params.len()
+    }
+
+    /// is the length of the polynomial zero
+    pub fn is_empty(&self) -> bool {
+        self.params.is_empty()
+    }
+}
+
+impl<Param, Arg> Index<usize> for Polynomial<Param, Arg> {
+    type Output = Param;
+    fn index(&self, i: usize) -> &Param {
+        &self.params[i]
+    }
+}
+
+impl<Param, Arg, Operand, OpResult> Mul<Operand> for &Polynomial<Param, Arg>
+where
+    Param: Clone
+        + Zero
+        + Random
+        + Add
+        + AddAssign<<Arg as Mul<Param>>::Output>
+        + Mul<Operand, Output = OpResult>,
+    Arg: Clone + One + Mul<OpResult> + Mul<Param> + MulAssign,
+    Operand: Clone,
+    OpResult: Clone + Zero + Random + Add + AddAssign<<Arg as Mul<OpResult>>::Output>,
+    Vec<OpResult>: FromIterator<<Param as Mul<Operand>>::Output>,
+{
+    type Output = Polynomial<OpResult, Arg>;
+    fn mul(self, x: Operand) -> Self::Output {
+        let params: Vec<OpResult> = self.params.iter().map(|p| p.clone() * x.clone()).collect();
+        Polynomial::new(params)
+    }
+}
+
+impl<Param, Arg, Operand, OpResult> Mul<Operand> for Polynomial<Param, Arg>
+where
+    Param: Clone
+        + Zero
+        + Random
+        + Add
+        + AddAssign<<Arg as Mul<Param>>::Output>
+        + Mul<Operand, Output = OpResult>,
+    Arg: Clone + One + Mul<OpResult> + Mul<Param> + MulAssign,
+    Operand: Clone,
+    OpResult: Clone + Zero + Random + Add + AddAssign<<Arg as Mul<OpResult>>::Output>,
+    Vec<OpResult>: FromIterator<<Param as Mul<Operand>>::Output>,
+{
+    type Output = Polynomial<OpResult, Arg>;
+    fn mul(self, x: Operand) -> Self::Output {
+        let params: Vec<OpResult> = self.params.iter().map(|p| p.clone() * x.clone()).collect();
+        Polynomial::new(params)
+    }
+}
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 /// A commitment to a polynonial, with a Schnorr proof of ownership bound to the ID
@@ -161,19 +277,20 @@ impl Signature {
 
 #[allow(non_snake_case)]
 /// A Chaum-Pedersen proof that (G, A=a*G, B=b*G, K=(a*b)*G) is a DH tuple
+/// It consists of two Schnorr proofs.  The first shows knowledge of `a`, and the second is just the first multiplied by `b`
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct TupleProof {
     /// R = r*G for a random scalar r
     pub R: Point,
-    /// rB = r*B
+    /// rB = r*B = b*R
     pub rB: Point,
-    /// z = r + a*s where s = H(G,A,B,K,R) as per Fiat-Shamir
+    /// z = r + c*a where c = H(G,A,B,K,R) as per Fiat-Shamir
     pub z: Scalar,
 }
 
 impl TupleProof {
     #[allow(non_snake_case)]
-    /// Construct a Chaum-Pedersen proof that (G, A, B, K) is a DH tuple
+    /// Construct a Chaum-Pedersen proof that (A, B, K) is a DH tuple
     pub fn new<RNG: RngCore + CryptoRng>(
         a: &Scalar,
         A: &Point,
@@ -183,21 +300,21 @@ impl TupleProof {
     ) -> Self {
         let r = Scalar::random(rng);
         let R = r * G;
-        let s = Self::challenge(A, B, K, &R);
+        let c = Self::challenge(A, B, K, &R);
 
         Self {
             R,
             rB: r * B,
-            z: r + a * s,
+            z: r + c * a,
         }
     }
 
     #[allow(non_snake_case)]
     /// Verify the proof using the transcript and public parameters
     pub fn verify(&self, A: &Point, B: &Point, K: &Point) -> bool {
-        let s = Self::challenge(A, B, K, &self.R);
+        let c = Self::challenge(A, B, K, &self.R);
 
-        (self.z * G == self.R + s * A) && (self.z * B == self.rB + s * K)
+        (self.z * G == self.R + c * A) && (self.z * B == self.rB + c * K)
     }
 
     #[allow(non_snake_case)]
@@ -321,12 +438,64 @@ pub mod test_helpers {
 
 #[cfg(test)]
 pub mod test {
+    use num_traits::Zero;
     use rand_core::OsRng;
 
     use crate::{
         common::TupleProof,
-        curve::{point::Point, scalar::Scalar},
+        compute,
+        curve::{
+            point::{Point, G},
+            scalar::Scalar,
+        },
     };
+
+    #[test]
+    #[allow(non_snake_case)]
+    fn polynomial() {
+        let mut rng = OsRng;
+        let n = 16u32;
+
+        let poly = super::Polynomial::<Scalar, Scalar>::random(n - 1, &mut rng);
+        let x = Scalar::from(8);
+        let y = poly.eval(x);
+        let mut z = Scalar::zero();
+        let mut pow = Scalar::from(1);
+        for i in 0..poly.params.len() {
+            z += pow * poly.params[i];
+            pow *= x;
+        }
+        assert_eq!(y, z);
+
+        let public_params = poly.params.iter().map(|p| p * G).collect::<Vec<Point>>();
+        let public_poly: super::Polynomial<Point, Scalar> =
+            super::Polynomial::new(public_params.clone());
+        let a = poly.eval(x);
+        let b = public_poly.eval(x);
+        assert_eq!(a * G, b);
+
+        let mul_poly = poly * G;
+        let b = mul_poly.eval(x);
+        assert_eq!(a * G, b);
+
+        let b = compute::poly(&x, &public_params);
+        assert_eq!(a * G, b.unwrap());
+
+        let poly = super::Polynomial::random(n - 1, &mut rng);
+        let params = poly.params.clone();
+        let y = poly.eval(x);
+        let mut z = Point::zero();
+        let mut pow = Scalar::from(1);
+        for i in 0..poly.params.len() {
+            z += pow * poly.params[i];
+            pow *= x;
+        }
+        assert_eq!(y, z);
+
+        let a = poly.eval(x);
+        let b = compute::poly(&x, &params);
+        assert_eq!(a, b.unwrap());
+    }
 
     #[test]
     #[allow(non_snake_case)]

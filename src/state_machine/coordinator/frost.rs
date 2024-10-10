@@ -69,7 +69,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                         // that we start the next round at the correct id. (Do this rather
                         // then overwriting afterwards to ensure logging is accurate)
                         self.current_dkg_id = dkg_begin.dkg_id.wrapping_sub(1);
-                        let packet = self.start_dkg_round()?;
+                        let packet = self.start_dkg_round(dkg_begin.keep_constant)?;
                         return Ok((Some(packet), None));
                     } else if let Message::NonceRequest(nonce_request) = &packet.msg {
                         if self.current_sign_id >= nonce_request.sign_id {
@@ -91,7 +91,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                     return Ok((None, None));
                 }
                 State::DkgPublicDistribute => {
-                    let packet = self.start_public_shares()?;
+                    let packet = self.start_public_shares(false)?;
                     return Ok((Some(packet), None));
                 }
                 State::DkgPublicGather => {
@@ -184,7 +184,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
     }
 
     /// Ask signers to send DKG public shares
-    pub fn start_public_shares(&mut self) -> Result<Packet, Error> {
+    pub fn start_public_shares(&mut self, keep_constant: bool) -> Result<Packet, Error> {
         self.dkg_public_shares.clear();
         self.party_polynomials.clear();
         self.ids_to_await = (0..self.config.num_signers).collect();
@@ -194,6 +194,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         );
         let dkg_begin = DkgBegin {
             dkg_id: self.current_dkg_id,
+            keep_constant,
         };
 
         let dkg_begin_packet = Packet {
@@ -715,11 +716,11 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
     }
 
     /// Start a DKG round
-    fn start_dkg_round(&mut self) -> Result<Packet, Error> {
+    fn start_dkg_round(&mut self, keep_constant: bool) -> Result<Packet, Error> {
         self.current_dkg_id = self.current_dkg_id.wrapping_add(1);
         info!("Starting DKG round {}", self.current_dkg_id);
         self.move_to(State::DkgPublicDistribute)?;
-        self.start_public_shares()
+        self.start_public_shares(keep_constant)
     }
 
     /// Start a signing round
@@ -826,7 +827,7 @@ pub mod test {
 
         coordinator.state = State::DkgPublicDistribute; // Must be in this state before calling start public shares
 
-        let result = coordinator.start_public_shares().unwrap();
+        let result = coordinator.start_public_shares(false).unwrap();
 
         assert!(matches!(result.msg, Message::DkgBegin(_)));
         assert_eq!(coordinator.get_state(), State::DkgPublicGather);
@@ -888,7 +889,10 @@ pub mod test {
         let (packets, results) = coordinator
             .process_inbound_messages(&[Packet {
                 sig: vec![],
-                msg: Message::DkgBegin(DkgBegin { dkg_id: old_id }),
+                msg: Message::DkgBegin(DkgBegin {
+                    dkg_id: old_id,
+                    keep_constant: false,
+                }),
             }])
             .unwrap();
         assert!(packets.is_empty());
@@ -900,7 +904,10 @@ pub mod test {
         let (packets, results) = coordinator
             .process_inbound_messages(&[Packet {
                 sig: vec![],
-                msg: Message::DkgBegin(DkgBegin { dkg_id: id }),
+                msg: Message::DkgBegin(DkgBegin {
+                    dkg_id: id,
+                    keep_constant: false,
+                }),
             }])
             .unwrap();
         assert!(packets.is_empty());
