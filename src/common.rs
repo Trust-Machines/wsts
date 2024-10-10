@@ -284,7 +284,7 @@ pub struct TupleProof {
     pub R: Point,
     /// rB = r*B = b*R
     pub rB: Point,
-    /// z = r + a*c where c = H(G,A,B,K,R) as per Fiat-Shamir
+    /// z = r + c*a where c = H(G,A,B,K,R) as per Fiat-Shamir
     pub z: Scalar,
 }
 
@@ -305,7 +305,7 @@ impl TupleProof {
         Self {
             R,
             rB: r * B,
-            z: r + a * c,
+            z: r + c * a,
         }
     }
 
