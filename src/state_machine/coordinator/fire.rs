@@ -249,10 +249,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                     return Ok((None, None));
                 }
                 State::DkgPublicDistribute => {
-                    // XXX does this ever happen? start_dkg_round should call start_public_shares
-                    //panic!("Got message in DkgPublicDistribute");
-                    let packet = self.start_public_shares(false)?;
-                    return Ok((Some(packet), None));
+                    return Err(Error::BadStateChange("should never be in ephemeral DkgPublicDistribute during process_message loop".to_string()));
                 }
                 State::DkgPublicGather => {
                     self.gather_public_shares(packet)?;
