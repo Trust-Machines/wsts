@@ -425,6 +425,25 @@ impl traits::Aggregator for Aggregator {
         }
     }
 
+    /// Check and aggregate the party signatures
+    fn sign_schnorr(
+        &mut self,
+        msg: &[u8],
+        nonces: &[PublicNonce],
+        sig_shares: &[SignatureShare],
+        _key_ids: &[u32],
+    ) -> Result<SchnorrProof, AggregatorError> {
+        let tweak = Scalar::from(0);
+        let (key, sig) = self.sign_with_tweak(msg, nonces, sig_shares, Some(tweak))?;
+        let proof = SchnorrProof::new(&sig);
+
+        if proof.verify(&key.x(), msg) {
+            Ok(proof)
+        } else {
+            Err(self.check_signature_shares(msg, nonces, sig_shares, &tweak))
+        }
+    }
+
     /// Check and aggregate the party signatures using a merke root to make a tweak
     fn sign_taproot(
         &mut self,

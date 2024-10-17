@@ -165,6 +165,18 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                                     s: schnorr_proof.s,
                                 })),
                             ));
+                        } else if let SignatureType::Schnorr = signature_type {
+                            let schnorr_proof = self
+                                .schnorr_proof
+                                .as_ref()
+                                .ok_or(Error::MissingSchnorrProof)?;
+                            return Ok((
+                                None,
+                                Some(OperationResult::SignSchnorr(SchnorrProof {
+                                    r: schnorr_proof.r,
+                                    s: schnorr_proof.s,
+                                })),
+                            ));
                         } else {
                             let signature =
                                 self.signature.as_ref().ok_or(Error::MissingSignature)?;
@@ -493,6 +505,12 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                     &key_ids,
                     merkle_root,
                 )?;
+                info!("SchnorrProof ({}, {})", schnorr_proof.r, schnorr_proof.s);
+                self.schnorr_proof = Some(schnorr_proof);
+            } else if let SignatureType::Schnorr = signature_type {
+                let schnorr_proof =
+                    self.aggregator
+                        .sign_schnorr(&self.message, &nonces, shares, &key_ids)?;
                 info!("SchnorrProof ({}, {})", schnorr_proof.r, schnorr_proof.s);
                 self.schnorr_proof = Some(schnorr_proof);
             } else {

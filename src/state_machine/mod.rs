@@ -56,6 +56,8 @@ pub enum OperationResult {
     Dkg(Point),
     /// Sign succeeded with the wrapped Signature
     Sign(Signature),
+    /// Sign schnorr succeeded with the wrapped SchnorrProof
+    SignSchnorr(SchnorrProof),
     /// Sign taproot succeeded with the wrapped SchnorrProof
     SignTaproot(SchnorrProof),
     /// DKG error

@@ -145,6 +145,15 @@ pub trait Aggregator: Clone + Debug + PartialEq {
     ) -> Result<Signature, AggregatorError>;
 
     /// Check and aggregate the signature shares into a `SchnorrProof`
+    fn sign_schnorr(
+        &mut self,
+        msg: &[u8],
+        nonces: &[PublicNonce],
+        sig_shares: &[SignatureShare],
+        key_ids: &[u32],
+    ) -> Result<SchnorrProof, AggregatorError>;
+
+    /// Check and aggregate the signature shares into a `SchnorrProof`
     fn sign_taproot(
         &mut self,
         msg: &[u8],
