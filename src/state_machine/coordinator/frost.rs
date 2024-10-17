@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use tracing::{debug, info};
 
 use crate::{
-    common::{MerkleRoot, PolyCommitment, PublicNonce, Signature, SignatureShare},
+    common::{PolyCommitment, PublicNonce, Signature, SignatureShare},
     compute,
     curve::point::Point,
     net::{
@@ -136,7 +136,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                     return Ok((Some(packet), None));
                 }
                 State::NonceGather(signature_type) => {
-                    self.gather_nonces(packet, signature_type.clone())?;q
+                    self.gather_nonces(packet, signature_type.clone())?;
                     if self.state == State::NonceGather(signature_type) {
                         // We need more data
                         return Ok((None, None));
@@ -148,7 +148,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 }
                 State::SigShareGather(signature_type) => {
                     self.gather_sig_shares(packet, signature_type.clone())?;
-                    if self.state == State::SigShareGather(signature_type) {
+                    if self.state == State::SigShareGather(signature_type.clone()) {
                         // We need more data
                         return Ok((None, None));
                     } else if self.state == State::Idle {
