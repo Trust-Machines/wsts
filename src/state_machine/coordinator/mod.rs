@@ -1,5 +1,5 @@
 use crate::{
-    common::{MerkleRoot, PolyCommitment, Signature, SignatureShare},
+    common::{PolyCommitment, Signature, SignatureShare},
     curve::{point::Point, scalar::Scalar},
     errors::AggregatorError,
     net::{DkgEnd, DkgPrivateShares, DkgPublicShares, NonceResponse, Packet, SignatureType},
