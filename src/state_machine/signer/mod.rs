@@ -13,7 +13,7 @@ use crate::{
     net::{
         BadPrivateShare, DkgBegin, DkgEnd, DkgEndBegin, DkgFailure, DkgPrivateBegin,
         DkgPrivateShares, DkgPublicShares, DkgStatus, Message, NonceRequest, NonceResponse, Packet,
-        Signable, SignatureShareRequest, SignatureShareResponse,
+        Signable, SignatureShareRequest, SignatureShareResponse, SignatureType,
     },
     state_machine::{PublicKeys, StateMachine},
     traits::{Signer as SignerTrait, SignerState as SignerSavedState},
@@ -555,13 +555,20 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                     .iter()
                     .flat_map(|nr| nr.nonces.clone())
                     .collect::<Vec<PublicNonce>>();
-                let signature_shares = if sign_request.is_taproot {
+                let signature_shares = if let SignatureType::Taproot(m) = sign_request.signature_type {
                     self.signer.sign_taproot(
                         &sign_request.message,
                         &signer_ids,
                         &key_ids,
                         &nonces,
-                        sign_request.merkle_root,
+                        m,
+                    )
+                } else if let SignatureType::Schnorr = sign_request.signature_type {
+                    self.signer.sign_schnorr(
+                        &sign_request.message,
+                        &signer_ids,
+                        &key_ids,
+                        &nonces,
                     )
                 } else {
                     self.signer
