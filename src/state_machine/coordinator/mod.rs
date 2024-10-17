@@ -779,6 +779,59 @@ pub mod test {
             }
             _ => panic!("Expected Signature Operation result"),
         }
+
+        // Start a signing round
+        let msg = "It was many and many a year ago, in a kingdom by the sea"
+            .as_bytes()
+            .to_vec();
+        let signature_type = SignatureType::Schnorr;
+        let message = coordinators
+            .first_mut()
+            .unwrap()
+            .start_signing_round(&msg, signature_type.clone())
+            .unwrap();
+        assert_eq!(
+            coordinators.first_mut().unwrap().get_state(),
+            State::NonceGather(signature_type.clone())
+        );
+
+        // Send the message to all signers and gather responses by sharing with all other signers and coordinator
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &[message]);
+        assert!(operation_results.is_empty());
+        assert_eq!(
+            coordinators.first_mut().unwrap().get_state(),
+            State::SigShareGather(signature_type.clone())
+        );
+
+        assert_eq!(outbound_messages.len(), 1);
+        match &outbound_messages[0].msg {
+            Message::SignatureShareRequest(_) => {}
+            _ => {
+                panic!("Expected SignatureShareRequest message");
+            }
+        }
+
+        // Send the SignatureShareRequest message to all signers and share their responses with the coordinator and signers
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
+        assert!(outbound_messages.is_empty());
+        assert_eq!(operation_results.len(), 1);
+        match &operation_results[0] {
+            OperationResult::SignSchnorr(sig) => {
+                for coordinator in coordinators.iter() {
+                    assert!(sig.verify(
+                        &coordinator
+                            .get_aggregate_public_key()
+                            .expect("No aggregate public key set!")
+                            .x(),
+                        &msg
+                    ));
+                    assert_eq!(coordinator.get_state(), State::Idle);
+                }
+            }
+            _ => panic!("Expected Signature Operation result"),
+        }
     }
 
     pub fn equal_after_save_load<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
