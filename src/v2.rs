@@ -190,10 +190,10 @@ impl Party {
         tweak: Option<Scalar>,
     ) -> SignatureShare {
         let tweaked_public_key = if let Some(t) = tweak {
-	    self.group_key + t * G
-	} else {
-	    self.group_key
-	};
+            self.group_key + t * G
+        } else {
+            self.group_key
+        };
         let (_, R) = compute::intermediate(msg, party_ids, nonces);
         let c = compute::challenge(&tweaked_public_key, &R, msg);
         let mut r = &self.nonce.d + &self.nonce.e * compute::binding(&self.id(), nonces, msg);
@@ -251,10 +251,10 @@ impl Aggregator {
         let mut z = Scalar::zero();
         let aggregate_public_key = self.poly[0];
         let tweaked_public_key = if let Some(t) = tweak {
-	    aggregate_public_key + t * G
-	} else {
-	    aggregate_public_key
-	};
+            aggregate_public_key + t * G
+        } else {
+            aggregate_public_key
+        };
         let c = compute::challenge(&tweaked_public_key, &R, msg);
         let mut cx_sign = Scalar::one();
         if tweak.is_some() && !tweaked_public_key.has_even_y() {
@@ -266,9 +266,9 @@ impl Aggregator {
             z += sig_share.z_i;
         }
 
-	if let Some(t) = tweak {
+        if let Some(t) = tweak {
             z += cx_sign * c * t;
-	}
+        }
 
         let sig = Signature { R, z };
 

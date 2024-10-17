@@ -296,13 +296,13 @@ impl Signable for NonceRequest {
         hasher.update(self.sign_id.to_be_bytes());
         hasher.update(self.sign_iter_id.to_be_bytes());
         hasher.update(self.message.as_slice());
-	hasher.update(format!("{:?}", self.signature_type));
-	/*
-        hasher.update((self.is_taproot as u16).to_be_bytes());
-        if let Some(merkle_root) = self.merkle_root {
-            hasher.update(merkle_root);
-        }
-	*/
+        hasher.update(format!("{:?}", self.signature_type));
+        /*
+            hasher.update((self.is_taproot as u16).to_be_bytes());
+            if let Some(merkle_root) = self.merkle_root {
+                hasher.update(merkle_root);
+            }
+        */
     }
 }
 
@@ -393,7 +393,7 @@ pub struct SignatureShareRequest {
     pub message: Vec<u8>,
     /// What type of signature to create
     pub signature_type: SignatureType,
- }
+}
 
 impl Debug for SignatureShareRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -419,13 +419,13 @@ impl Signable for SignatureShareRequest {
         }
 
         hasher.update(self.message.as_slice());
-	hasher.update(format!("{:?}", self.signature_type));
-	/*
-        hasher.update((self.is_taproot as u16).to_be_bytes());
-        if let Some(merkle_root) = self.merkle_root {
-            hasher.update(merkle_root);
-        }
-	*/
+        hasher.update(format!("{:?}", self.signature_type));
+        /*
+            hasher.update((self.is_taproot as u16).to_be_bytes());
+            if let Some(merkle_root) = self.merkle_root {
+                hasher.update(merkle_root);
+            }
+        */
     }
 }
 
@@ -802,8 +802,7 @@ mod test {
             sign_id: 0,
             sign_iter_id: 0,
             message: vec![],
-            is_taproot: false,
-            merkle_root: None,
+            signature_type: SignatureType::Frost,
         };
         let msg = Message::NonceRequest(nonce_request.clone());
         let coordinator_packet_nonce_request = Packet {
@@ -872,8 +871,7 @@ mod test {
             sign_iter_id: 0,
             nonce_responses: vec![],
             message: vec![],
-            is_taproot: false,
-            merkle_root: None,
+            signature_type: SignatureType::Frost,
         };
         let msg = Message::SignatureShareRequest(signature_share_request.clone());
         let coordinator_packet_signature_share_request = Packet {

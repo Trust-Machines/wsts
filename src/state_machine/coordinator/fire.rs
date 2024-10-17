@@ -704,10 +704,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         self.move_to(State::Idle)
     }
 
-    fn request_nonces(
-        &mut self,
-	signature_type: SignatureType,
-    ) -> Result<Packet, Error> {
+    fn request_nonces(&mut self, signature_type: SignatureType) -> Result<Packet, Error> {
         self.message_nonces.clear();
         self.current_sign_iter_id = self.current_sign_iter_id.wrapping_add(1);
         info!(
@@ -719,7 +716,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             sign_id: self.current_sign_id,
             sign_iter_id: self.current_sign_iter_id,
             message: self.message.clone(),
-	    signature_type: signature_type.clone(),
+            signature_type: signature_type.clone(),
         };
         let nonce_request_msg = Packet {
             sig: nonce_request
@@ -736,7 +733,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
     fn gather_nonces(
         &mut self,
         packet: &Packet,
-	signature_type: SignatureType,
+        signature_type: SignatureType,
     ) -> Result<(), Error> {
         if let Message::NonceResponse(nonce_response) = &packet.msg {
             if nonce_response.dkg_id != self.current_dkg_id {
@@ -809,10 +806,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         Ok(())
     }
 
-    fn request_sig_shares(
-        &mut self,
-	signature_type: SignatureType,
-    ) -> Result<Packet, Error> {
+    fn request_sig_shares(&mut self, signature_type: SignatureType) -> Result<Packet, Error> {
         self.signature_shares.clear();
         info!(
             "Sign Round {} Requesting Signature Shares",
@@ -832,7 +826,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             sign_iter_id: self.current_sign_iter_id,
             nonce_responses,
             message: self.message.clone(),
-	    signature_type: signature_type.clone(),
+            signature_type: signature_type.clone(),
         };
         let sig_share_request_msg = Packet {
             sig: sig_share_request
@@ -849,7 +843,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
     fn gather_sig_shares(
         &mut self,
         packet: &Packet,
-	signature_type: SignatureType,
+        signature_type: SignatureType,
     ) -> Result<(), Error> {
         if let Message::SignatureShareResponse(sig_share_response) = &packet.msg {
             if sig_share_response.dkg_id != self.current_dkg_id {
@@ -1200,7 +1194,7 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
     fn start_signing_round(
         &mut self,
         message: &[u8],
-	signature_type: SignatureType,
+        signature_type: SignatureType,
     ) -> Result<Packet, Error> {
         // We cannot sign if we haven't first set DKG (either manually or via DKG round).
         if self.aggregate_public_key.is_none() {
@@ -1234,6 +1228,7 @@ pub mod test {
         curve::{point::Point, scalar::Scalar},
         net::{
             DkgBegin, DkgFailure, DkgPrivateShares, DkgPublicShares, Message, NonceRequest, Packet,
+            SignatureType,
         },
         state_machine::{
             coordinator::{
@@ -2056,16 +2051,15 @@ pub mod test {
         let msg = "It was many and many a year ago, in a kingdom by the sea"
             .as_bytes()
             .to_vec();
-        let is_taproot = false;
-        let merkle_root = None;
+        let signature_type = SignatureType::Frost;
         let message = coordinators
             .first_mut()
             .unwrap()
-            .start_signing_round(&msg, signature_type)
+            .start_signing_round(&msg, signature_type.clone())
             .unwrap();
         assert_eq!(
             coordinators.first().unwrap().state,
-            State::NonceGather(signature_type)
+            State::NonceGather(signature_type.clone())
         );
 
         // Send the message to all signers and gather responses by sharing with all other signers and coordinator
@@ -2075,7 +2069,7 @@ pub mod test {
         for coordinator in &coordinators {
             assert_eq!(
                 coordinator.state,
-                State::SigShareGather(signature_type)
+                State::SigShareGather(signature_type.clone())
             );
         }
 
@@ -2143,16 +2137,15 @@ pub mod test {
         let msg = "It was many and many a year ago, in a kingdom by the sea"
             .as_bytes()
             .to_vec();
-        let is_taproot = false;
-        let merkle_root = None;
+        let signature_type = SignatureType::Frost;
         let message = coordinators
             .first_mut()
             .unwrap()
-            .start_signing_round(&msg, signature_type)
+            .start_signing_round(&msg, signature_type.clone())
             .unwrap();
         assert_eq!(
             coordinators.first().unwrap().state,
-            State::NonceGather(signature_type)
+            State::NonceGather(signature_type.clone())
         );
 
         // Send the message to all signers and gather responses by sharing with all other signers and coordinator
@@ -2162,7 +2155,7 @@ pub mod test {
         for coordinator in &coordinators {
             assert_eq!(
                 coordinator.state,
-                State::SigShareGather(signature_type)
+                State::SigShareGather(signature_type.clone())
             );
         }
 
@@ -2234,16 +2227,15 @@ pub mod test {
         let msg = "It was many and many a year ago, in a kingdom by the sea"
             .as_bytes()
             .to_vec();
-        let is_taproot = false;
-        let merkle_root = None;
+        let signature_type = SignatureType::Frost;
         let message = coordinators
             .first_mut()
             .unwrap()
-            .start_signing_round(&msg, signature_type)
+            .start_signing_round(&msg, signature_type.clone())
             .unwrap();
         assert_eq!(
             coordinators.first().unwrap().state,
-            State::NonceGather(signature_type)
+            State::NonceGather(signature_type.clone())
         );
 
         // Send the message to all signers and gather responses by sharing with all other signers and coordinator
@@ -2253,7 +2245,7 @@ pub mod test {
         for coordinator in &coordinators {
             assert_eq!(
                 coordinator.state,
-                State::SigShareGather(signature_type)
+                State::SigShareGather(signature_type.clone())
             );
         }
 
@@ -2378,16 +2370,15 @@ pub mod test {
         let msg = "It was many and many a year ago, in a kingdom by the sea"
             .as_bytes()
             .to_vec();
-        let is_taproot = false;
-        let merkle_root = None;
+        let signature_type = SignatureType::Frost;
         let message = insufficient_coordinators
             .first_mut()
             .unwrap()
-            .start_signing_round(&msg, signature_type)
+            .start_signing_round(&msg, signature_type.clone())
             .unwrap();
         assert_eq!(
             insufficient_coordinators.first().unwrap().state,
-            State::NonceGather(signature_type)
+            State::NonceGather(signature_type.clone())
         );
 
         // Send the message to all signers and gather responses by sharing with all other signers and coordinator
@@ -2400,7 +2391,7 @@ pub mod test {
         for coordinator in &insufficient_coordinators {
             assert_eq!(
                 coordinator.state,
-                State::NonceGather(signature_type)
+                State::NonceGather(signature_type.clone())
             );
         }
 
@@ -2420,7 +2411,7 @@ pub mod test {
         for coordinator in &insufficient_coordinators {
             assert_eq!(
                 coordinator.state,
-                State::NonceGather(signature_type)
+                State::NonceGather(signature_type.clone())
             );
         }
         match &operation_results[0] {
@@ -2438,11 +2429,11 @@ pub mod test {
         let message = insufficient_coordinators
             .first_mut()
             .unwrap()
-            .start_signing_round(&msg, signature_type)
+            .start_signing_round(&msg, signature_type.clone())
             .unwrap();
         assert_eq!(
             insufficient_coordinators.first().unwrap().state,
-            State::NonceGather(signature_type)
+            State::NonceGather(signature_type.clone())
         );
 
         // Send the message to all signers and gather responses by sharing with all other signers and insufficient_coordinator
@@ -2455,7 +2446,7 @@ pub mod test {
         for coordinator in &insufficient_coordinators {
             assert_eq!(
                 coordinator.state,
-                State::SigShareGather(signature_type)
+                State::SigShareGather(signature_type.clone())
             );
         }
 
@@ -2479,7 +2470,7 @@ pub mod test {
         for coordinator in &insufficient_coordinators {
             assert_eq!(
                 coordinator.state,
-                State::SigShareGather(signature_type)
+                State::SigShareGather(signature_type.clone())
             );
         }
 
@@ -2496,7 +2487,7 @@ pub mod test {
         assert_eq!(operation_results.len(), 0);
         assert_eq!(
             insufficient_coordinators.first().unwrap().state,
-            State::NonceGather(signature_type)
+            State::NonceGather(signature_type.clone())
         );
 
         // put the malicious signers back in
@@ -2516,7 +2507,7 @@ pub mod test {
         for coordinator in &insufficient_coordinators {
             assert_eq!(
                 coordinator.state,
-                State::SigShareGather(signature_type)
+                State::SigShareGather(signature_type.clone())
             );
         }
 
@@ -2537,7 +2528,7 @@ pub mod test {
         for coordinator in &insufficient_coordinators {
             assert_eq!(
                 coordinator.state,
-                State::SigShareGather(signature_type)
+                State::SigShareGather(signature_type.clone())
             );
         }
 
@@ -2554,7 +2545,7 @@ pub mod test {
         assert_eq!(operation_results.len(), 1);
         assert_eq!(
             insufficient_coordinators.first_mut().unwrap().state,
-            State::SigShareGather(signature_type)
+            State::SigShareGather(signature_type.clone())
         );
         match &operation_results[0] {
             OperationResult::SignError(sign_error) => match sign_error {
@@ -2585,18 +2576,17 @@ pub mod test {
         let orig_msg = "It was many and many a year ago, in a kingdom by the sea"
             .as_bytes()
             .to_vec();
-        let is_taproot = false;
-        let merkle_root = None;
+        let signature_type = SignatureType::Frost;
         let message = coordinators
             .first_mut()
             .unwrap()
-            .start_signing_round(&orig_msg, signature_type)
+            .start_signing_round(&orig_msg, signature_type.clone())
             .unwrap();
 
         let mut alt_packet = message.clone();
         assert_eq!(
             coordinators.first().unwrap().state,
-            State::NonceGather(signature_type)
+            State::NonceGather(signature_type.clone())
         );
 
         // Send the original message to the first 1/4 of the signers and gather responses by sharing with the rest of the signers and the coordinators
@@ -2629,7 +2619,7 @@ pub mod test {
         for coordinator in &coordinators {
             assert_eq!(
                 coordinator.state,
-                State::SigShareGather(signature_type)
+                State::SigShareGather(signature_type.clone())
             );
         }
         // Assert that the first 1/4 signers did not receive a result
@@ -2717,8 +2707,7 @@ pub mod test {
                         sign_id: old_id,
                         message: vec![],
                         sign_iter_id: id,
-                        is_taproot: false,
-                        merkle_root: None,
+                        signature_type: SignatureType::Frost,
                     }),
                 }])
                 .unwrap();
@@ -2736,8 +2725,7 @@ pub mod test {
                         sign_id: id,
                         message: vec![],
                         sign_iter_id: id,
-                        is_taproot: false,
-                        merkle_root: None,
+                        signature_type: SignatureType::Frost,
                     }),
                 }])
                 .unwrap();

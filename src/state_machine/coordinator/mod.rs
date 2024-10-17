@@ -286,7 +286,7 @@ pub trait Coordinator: Clone + Debug + PartialEq {
     fn start_signing_round(
         &mut self,
         message: &[u8],
-	signature_type: SignatureType,
+        signature_type: SignatureType,
     ) -> Result<Packet, Error>;
 
     /// Reset internal state
@@ -713,15 +713,15 @@ pub mod test {
         let msg = "It was many and many a year ago, in a kingdom by the sea"
             .as_bytes()
             .to_vec();
-	let signature_type = SignatureType::Frost;
+        let signature_type = SignatureType::Frost;
         let message = coordinators
             .first_mut()
             .unwrap()
-            .start_signing_round(&msg, signature_type)
+            .start_signing_round(&msg, signature_type.clone())
             .unwrap();
         assert_eq!(
             coordinators.first_mut().unwrap().get_state(),
-            State::NonceGather(is_taproot, merkle_root)
+            State::NonceGather(signature_type.clone())
         );
 
         // Send the message to all signers and gather responses by sharing with all other signers and coordinator
@@ -730,7 +730,7 @@ pub mod test {
         assert!(operation_results.is_empty());
         assert_eq!(
             coordinators.first_mut().unwrap().get_state(),
-            State::SigShareGather(is_taproot, merkle_root)
+            State::SigShareGather(signature_type.clone())
         );
 
         assert_eq!(outbound_messages.len(), 1);

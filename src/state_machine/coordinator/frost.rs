@@ -331,10 +331,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         Ok(())
     }
 
-    fn request_nonces(
-        &mut self,
-	signature_type: SignatureType,
-    ) -> Result<Packet, Error> {
+    fn request_nonces(&mut self, signature_type: SignatureType) -> Result<Packet, Error> {
         self.public_nonces.clear();
         info!(
             "Sign Round {} Nonce round {} Requesting Nonces",
@@ -345,7 +342,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             sign_id: self.current_sign_id,
             sign_iter_id: self.current_sign_iter_id,
             message: self.message.clone(),
-	    signature_type: signature_type.clone(),
+            signature_type: signature_type.clone(),
         };
         let nonce_request_msg = Packet {
             sig: nonce_request
@@ -361,7 +358,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
     fn gather_nonces(
         &mut self,
         packet: &Packet,
-	signature_type: SignatureType,
+        signature_type: SignatureType,
     ) -> Result<(), Error> {
         if let Message::NonceResponse(nonce_response) = &packet.msg {
             if nonce_response.dkg_id != self.current_dkg_id {
@@ -400,10 +397,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         Ok(())
     }
 
-    fn request_sig_shares(
-        &mut self,
-	signature_type: SignatureType,
-    ) -> Result<Packet, Error> {
+    fn request_sig_shares(&mut self, signature_type: SignatureType) -> Result<Packet, Error> {
         self.signature_shares.clear();
         info!(
             "Sign Round {} Requesting Signature Shares",
@@ -418,7 +412,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             sign_iter_id: self.current_sign_iter_id,
             nonce_responses,
             message: self.message.clone(),
-	    signature_type: signature_type.clone(),
+            signature_type: signature_type.clone(),
         };
         let sig_share_request_msg = Packet {
             sig: sig_share_request
@@ -435,7 +429,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
     fn gather_sig_shares(
         &mut self,
         packet: &Packet,
-	signature_type: SignatureType,
+        signature_type: SignatureType,
     ) -> Result<(), Error> {
         if let Message::SignatureShareResponse(sig_share_response) = &packet.msg {
             if sig_share_response.dkg_id != self.current_dkg_id {
@@ -719,7 +713,7 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
     fn start_signing_round(
         &mut self,
         message: &[u8],
-	signature_type: SignatureType,
+        signature_type: SignatureType,
     ) -> Result<Packet, Error> {
         // We cannot sign if we haven't first set DKG (either manually or via DKG round).
         if self.aggregate_public_key.is_none() {
@@ -747,7 +741,7 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
 pub mod test {
     use crate::{
         curve::scalar::Scalar,
-        net::{DkgBegin, Message, NonceRequest, Packet},
+        net::{DkgBegin, Message, NonceRequest, Packet, SignatureType},
         state_machine::coordinator::{
             frost::Coordinator as FrostCoordinator,
             test::{
@@ -909,8 +903,7 @@ pub mod test {
                     sign_id: old_id,
                     message: vec![],
                     sign_iter_id: id,
-                    is_taproot: false,
-                    merkle_root: None,
+                    signature_type: SignatureType::Frost,
                 }),
             }])
             .unwrap();
@@ -928,8 +921,7 @@ pub mod test {
                     sign_id: id,
                     message: vec![],
                     sign_iter_id: id,
-                    is_taproot: false,
-                    merkle_root: None,
+                    signature_type: SignatureType::Frost,
                 }),
             }])
             .unwrap();

@@ -234,11 +234,11 @@ impl Party {
         }
 
         let tweaked_public_key = if let Some(t) = tweak {
-	    self.group_key + t * G
-	} else {
-	    self.group_key
-	};
-	    
+            self.group_key + t * G
+        } else {
+            self.group_key
+        };
+
         let mut cx = compute::challenge(&tweaked_public_key, aggregate_nonce, msg)
             * &self.private_key
             * compute::lambda(self.id, signers);
@@ -287,10 +287,10 @@ impl Aggregator {
         let mut z = Scalar::zero();
         let aggregate_public_key = self.poly[0];
         let tweaked_public_key = if let Some(t) = tweak {
-	    aggregate_public_key + t * G
-	} else {
-	    aggregate_public_key
-	};
+            aggregate_public_key + t * G
+        } else {
+            aggregate_public_key
+        };
         let c = compute::challenge(&tweaked_public_key, &R, msg);
         let mut cx_sign = Scalar::one();
         if tweak.is_some() && !tweaked_public_key.has_even_y() {
@@ -301,9 +301,9 @@ impl Aggregator {
             z += sig_share.z_i;
         }
 
-	if let Some(t) = tweak {
+        if let Some(t) = tweak {
             z += cx_sign * c * t;
-	}
+        }
 
         let sig = Signature { R, z };
 
@@ -643,7 +643,9 @@ impl traits::Signer for Signer {
         let tweak = compute::tweak(&self.parties[0].group_key, merkle_root);
         self.parties
             .iter()
-            .map(|p| p.sign_precomputed_with_tweak(msg, key_ids, nonces, &aggregate_nonce, Some(tweak)))
+            .map(|p| {
+                p.sign_precomputed_with_tweak(msg, key_ids, nonces, &aggregate_nonce, Some(tweak))
+            })
             .collect()
     }
 
@@ -657,7 +659,15 @@ impl traits::Signer for Signer {
         let aggregate_nonce = compute::aggregate_nonce(msg, key_ids, nonces).unwrap();
         self.parties
             .iter()
-            .map(|p| p.sign_precomputed_with_tweak(msg, key_ids, nonces, &aggregate_nonce, Some(Scalar::from(0))))
+            .map(|p| {
+                p.sign_precomputed_with_tweak(
+                    msg,
+                    key_ids,
+                    nonces,
+                    &aggregate_nonce,
+                    Some(Scalar::from(0)),
+                )
+            })
             .collect()
     }
 }
