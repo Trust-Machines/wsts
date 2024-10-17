@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, time::Instant};
 use tracing::{debug, error, info, warn};
 
 use crate::{
-    common::{MerkleRoot, PolyCommitment, PublicNonce, Signature, SignatureShare},
+    common::{PolyCommitment, PublicNonce, Signature, SignatureShare},
     compute,
     curve::{
         point::{Point, G},
@@ -68,7 +68,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
     /// Process the message inside the passed packet
     pub fn process_timeout(&mut self) -> Result<(Option<Packet>, Option<OperationResult>), Error> {
         let now = Instant::now();
-        match self.state {
+        match self.state.clone() {
             State::Idle => {}
             State::DkgPublicDistribute => {}
             State::DkgPublicGather => {
@@ -199,7 +199,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                                 ));
                             }
 
-                            self.move_to(State::NonceRequest(signature_type))?;
+                            self.move_to(State::NonceRequest(signature_type.clone()))?;
                             let packet = self.request_nonces(signature_type)?;
                             return Ok((Some(packet), None));
                         }
@@ -215,7 +215,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         packet: &Packet,
     ) -> Result<(Option<Packet>, Option<OperationResult>), Error> {
         loop {
-            match self.state {
+            match self.state.clone() {
                 State::Idle => {
                     // Did we receive a coordinator message?
                     if let Message::DkgBegin(dkg_begin) = &packet.msg {
@@ -241,8 +241,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                         self.current_sign_iter_id = nonce_request.sign_iter_id.wrapping_sub(1);
                         let packet = self.start_signing_round(
                             nonce_request.message.as_slice(),
-                            nonce_request.is_taproot,
-                            nonce_request.merkle_root,
+                            nonce_request.signature_type.clone(),
                         )?;
                         return Ok((Some(packet), None));
                     }
@@ -302,23 +301,23 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                     }
                 }
                 State::NonceRequest(signature_type) => {
-                    let packet = self.request_nonces(signature_type)?;
+                    let packet = self.request_nonces(signature_type.clone())?;
                     return Ok((Some(packet), None));
                 }
                 State::NonceGather(signature_type) => {
-                    self.gather_nonces(packet, signature_type)?;
-                    if self.state == State::NonceGather(signature_type) {
+                    self.gather_nonces(packet, signature_type.clone())?;
+                    if self.state == State::NonceGather(signature_type.clone()) {
                         // We need more data
                         return Ok((None, None));
                     }
                 }
                 State::SigShareRequest(signature_type) => {
-                    let packet = self.request_sig_shares(signature_type)?;
+                    let packet = self.request_sig_shares(signature_type.clone())?;
                     return Ok((Some(packet), None));
                 }
                 State::SigShareGather(signature_type) => {
-                    self.gather_sig_shares(packet, signature_type)?;
-                    if self.state == State::SigShareGather(signature_type) {
+                    self.gather_sig_shares(packet, signature_type.clone())?;
+                    if self.state == State::SigShareGather(signature_type.clone()) {
                         // We need more data
                         return Ok((None, None));
                     } else if self.state == State::Idle {
@@ -850,8 +849,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
     fn gather_sig_shares(
         &mut self,
         packet: &Packet,
-        is_taproot: bool,
-        merkle_root: Option<MerkleRoot>,
+	signature_type: SignatureType,
     ) -> Result<(), Error> {
         if let Message::SignatureShareResponse(sig_share_response) = &packet.msg {
             if sig_share_response.dkg_id != self.current_dkg_id {
@@ -937,7 +935,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
 
             self.aggregator.init(&self.party_polynomials)?;
 
-            if is_taproot {
+            if let SignatureType::Taproot(merkle_root) = signature_type {
                 let schnorr_proof = self.aggregator.sign_taproot(
                     &self.message,
                     &nonces,
@@ -1023,18 +1021,18 @@ impl<Aggregator: AggregatorTrait> StateMachine<State, Error> for Coordinator<Agg
             State::NonceRequest(signature_type) => {
                 prev_state == &State::Idle
                     || prev_state == &State::DkgEndGather
-                    || prev_state == &State::SigShareGather(*is_taproot, *merkle_root)
+                    || prev_state == &State::SigShareGather(signature_type.clone())
             }
             State::NonceGather(signature_type) => {
-                prev_state == &State::NonceRequest(*is_taproot, *merkle_root)
-                    || prev_state == &State::NonceGather(*is_taproot, *merkle_root)
+                prev_state == &State::NonceRequest(signature_type.clone())
+                    || prev_state == &State::NonceGather(signature_type.clone())
             }
             State::SigShareRequest(signature_type) => {
-                prev_state == &State::NonceGather(*is_taproot, *merkle_root)
+                prev_state == &State::NonceGather(signature_type.clone())
             }
             State::SigShareGather(signature_type) => {
-                prev_state == &State::SigShareRequest(*is_taproot, *merkle_root)
-                    || prev_state == &State::SigShareGather(*is_taproot, *merkle_root)
+                prev_state == &State::SigShareRequest(signature_type.clone())
+                    || prev_state == &State::SigShareGather(signature_type.clone())
             }
         };
         if accepted {
@@ -1211,7 +1209,7 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
         self.message = message.to_vec();
         self.current_sign_id = self.current_sign_id.wrapping_add(1);
         info!("Starting signing round {}", self.current_sign_id);
-        self.move_to(State::NonceRequest(signature_type))?;
+        self.move_to(State::NonceRequest(signature_type.clone()))?;
         self.request_nonces(signature_type)
     }
 
