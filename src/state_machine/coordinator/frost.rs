@@ -57,7 +57,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         packet: &Packet,
     ) -> Result<(Option<Packet>, Option<OperationResult>), Error> {
         loop {
-            match self.state {
+            match self.state.clone() {
                 State::Idle => {
                     // Did we receive a coordinator message?
                     if let Message::DkgBegin(dkg_begin) = &packet.msg {
@@ -83,7 +83,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                         self.current_sign_iter_id = nonce_request.sign_iter_id;
                         let packet = self.start_signing_round(
                             nonce_request.message.as_slice(),
-                            nonce_request.signature_type,
+                            nonce_request.signature_type.clone(),
                         )?;
                         return Ok((Some(packet), None));
                     }
@@ -136,7 +136,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                     return Ok((Some(packet), None));
                 }
                 State::NonceGather(signature_type) => {
-                    self.gather_nonces(packet, signature_type)?;
+                    self.gather_nonces(packet, signature_type.clone())?;q
                     if self.state == State::NonceGather(signature_type) {
                         // We need more data
                         return Ok((None, None));
@@ -147,7 +147,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                     return Ok((Some(packet), None));
                 }
                 State::SigShareGather(signature_type) => {
-                    self.gather_sig_shares(packet, signature_type)?;
+                    self.gather_sig_shares(packet, signature_type.clone())?;
                     if self.state == State::SigShareGather(signature_type) {
                         // We need more data
                         return Ok((None, None));
@@ -491,7 +491,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
 
             self.aggregator.init(&self.party_polynomials)?;
 
-            if is_taproot {
+            if let SignatureType::Taproot(merkle_root) = signature_type {
                 let schnorr_proof = self.aggregator.sign_taproot(
                     &self.message,
                     &nonces,
