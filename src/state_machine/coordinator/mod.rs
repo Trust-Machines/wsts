@@ -2,7 +2,7 @@ use crate::{
     common::{MerkleRoot, PolyCommitment, Signature, SignatureShare},
     curve::{point::Point, scalar::Scalar},
     errors::AggregatorError,
-    net::{DkgEnd, DkgPrivateShares, DkgPublicShares, NonceResponse, Packet},
+    net::{DkgEnd, DkgPrivateShares, DkgPublicShares, NonceResponse, Packet, SignatureType},
     state_machine::{DkgFailure, OperationResult},
     taproot::SchnorrProof,
 };
@@ -32,13 +32,13 @@ pub enum State {
     /// The coordinator is gathering DKG End messages
     DkgEndGather,
     /// The coordinator is requesting nonces
-    NonceRequest(bool, Option<MerkleRoot>),
+    NonceRequest(SignatureType),
     /// The coordinator is gathering nonces
-    NonceGather(bool, Option<MerkleRoot>),
+    NonceGather(SignatureType),
     /// The coordinator is requesting signature shares
-    SigShareRequest(bool, Option<MerkleRoot>),
+    SigShareRequest(SignatureType),
     /// The coordinator is gathering signature shares
-    SigShareGather(bool, Option<MerkleRoot>),
+    SigShareGather(SignatureType),
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -286,8 +286,7 @@ pub trait Coordinator: Clone + Debug + PartialEq {
     fn start_signing_round(
         &mut self,
         message: &[u8],
-        is_taproot: bool,
-        merkle_root: Option<MerkleRoot>,
+	signature_type: SignatureType,
     ) -> Result<Packet, Error>;
 
     /// Reset internal state
@@ -312,7 +311,7 @@ pub mod test {
 
     use crate::{
         curve::{ecdsa, point::Point, scalar::Scalar},
-        net::{Message, Packet},
+        net::{Message, Packet, SignatureType},
         state_machine::{
             coordinator::{Config, Coordinator as CoordinatorTrait, Error, State},
             signer::Signer,
@@ -714,12 +713,11 @@ pub mod test {
         let msg = "It was many and many a year ago, in a kingdom by the sea"
             .as_bytes()
             .to_vec();
-        let is_taproot = false;
-        let merkle_root = None;
+	let signature_type = SignatureType::Frost;
         let message = coordinators
             .first_mut()
             .unwrap()
-            .start_signing_round(&msg, is_taproot, merkle_root)
+            .start_signing_round(&msg, signature_type)
             .unwrap();
         assert_eq!(
             coordinators.first_mut().unwrap().get_state(),

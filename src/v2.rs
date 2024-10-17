@@ -176,7 +176,7 @@ impl Party {
         key_ids: &[u32],
         nonces: &[PublicNonce],
     ) -> SignatureShare {
-        self.sign_with_tweak(msg, party_ids, key_ids, nonces, &Scalar::from(0))
+        self.sign_with_tweak(msg, party_ids, key_ids, nonces, None)
     }
 
     /// Sign `msg` with this party's shares of the group private key, using the set of `party_ids`, `key_ids` and corresponding `nonces` with a tweaked public key
@@ -187,13 +187,17 @@ impl Party {
         party_ids: &[u32],
         key_ids: &[u32],
         nonces: &[PublicNonce],
-        tweak: &Scalar,
+        tweak: Option<Scalar>,
     ) -> SignatureShare {
-        let tweaked_public_key = self.group_key + tweak * G;
+        let tweaked_public_key = if let Some(t) = tweak {
+	    self.group_key + t * G
+	} else {
+	    self.group_key
+	};
         let (_, R) = compute::intermediate(msg, party_ids, nonces);
         let c = compute::challenge(&tweaked_public_key, &R, msg);
         let mut r = &self.nonce.d + &self.nonce.e * compute::binding(&self.id(), nonces, msg);
-        if tweak != &Scalar::zero() && !R.has_even_y() {
+        if tweak.is_some() && !R.has_even_y() {
             r = -r;
         }
 
@@ -202,7 +206,7 @@ impl Party {
             cx += c * &self.private_keys[key_id] * compute::lambda(*key_id, key_ids);
         }
 
-        if tweak != &Scalar::zero() && !tweaked_public_key.has_even_y() {
+        if tweak.is_some() && !tweaked_public_key.has_even_y() {
             cx = -cx;
         }
 
@@ -236,7 +240,7 @@ impl Aggregator {
         nonces: &[PublicNonce],
         sig_shares: &[SignatureShare],
         _key_ids: &[u32],
-        tweak: &Scalar,
+        tweak: Option<Scalar>,
     ) -> Result<(Point, Signature), AggregatorError> {
         if nonces.len() != sig_shares.len() {
             return Err(AggregatorError::BadNonceLen(nonces.len(), sig_shares.len()));
@@ -246,10 +250,14 @@ impl Aggregator {
         let (_Rs, R) = compute::intermediate(msg, &party_ids, nonces);
         let mut z = Scalar::zero();
         let aggregate_public_key = self.poly[0];
-        let tweaked_public_key = aggregate_public_key + tweak * G;
+        let tweaked_public_key = if let Some(t) = tweak {
+	    aggregate_public_key + t * G
+	} else {
+	    aggregate_public_key
+	};
         let c = compute::challenge(&tweaked_public_key, &R, msg);
         let mut cx_sign = Scalar::one();
-        if tweak != &Scalar::zero() && !tweaked_public_key.has_even_y() {
+        if tweak.is_some() && !tweaked_public_key.has_even_y() {
             cx_sign = -Scalar::one();
         }
 
@@ -258,7 +266,9 @@ impl Aggregator {
             z += sig_share.z_i;
         }
 
-        z += cx_sign * c * tweak;
+	if let Some(t) = tweak {
+            z += cx_sign * c * t;
+	}
 
         let sig = Signature { R, z };
 
@@ -373,7 +383,7 @@ impl traits::Aggregator for Aggregator {
         sig_shares: &[SignatureShare],
         key_ids: &[u32],
     ) -> Result<Signature, AggregatorError> {
-        let (key, sig) = self.sign_with_tweak(msg, nonces, sig_shares, key_ids, &Scalar::zero())?;
+        let (key, sig) = self.sign_with_tweak(msg, nonces, sig_shares, key_ids, None)?;
 
         if sig.verify(&key, msg) {
             Ok(sig)
@@ -392,7 +402,7 @@ impl traits::Aggregator for Aggregator {
         merkle_root: Option<[u8; 32]>,
     ) -> Result<SchnorrProof, AggregatorError> {
         let tweak = compute::tweak(&self.poly[0], merkle_root);
-        let (key, sig) = self.sign_with_tweak(msg, nonces, sig_shares, key_ids, &tweak)?;
+        let (key, sig) = self.sign_with_tweak(msg, nonces, sig_shares, key_ids, Some(tweak))?;
         let proof = SchnorrProof::new(&sig);
 
         if proof.verify(&key.x(), msg) {
@@ -544,6 +554,16 @@ impl traits::Signer for Party {
         vec![self.sign(msg, signer_ids, key_ids, nonces)]
     }
 
+    fn sign_schnorr(
+        &self,
+        msg: &[u8],
+        signer_ids: &[u32],
+        key_ids: &[u32],
+        nonces: &[PublicNonce],
+    ) -> Vec<SignatureShare> {
+        vec![self.sign_with_tweak(msg, signer_ids, key_ids, nonces, Some(Scalar::from(0)))]
+    }
+
     fn sign_taproot(
         &self,
         msg: &[u8],
@@ -553,7 +573,7 @@ impl traits::Signer for Party {
         merkle_root: Option<[u8; 32]>,
     ) -> Vec<SignatureShare> {
         let tweak = compute::tweak(&self.group_key, merkle_root);
-        vec![self.sign_with_tweak(msg, signer_ids, key_ids, nonces, &tweak)]
+        vec![self.sign_with_tweak(msg, signer_ids, key_ids, nonces, Some(tweak))]
     }
 }
 

@@ -273,10 +273,8 @@ pub struct NonceRequest {
     pub sign_iter_id: u64,
     /// The message to sign
     pub message: Vec<u8>,
-    /// Whether to make a taproot signature
-    pub is_taproot: bool,
-    /// Taproot merkle root
-    pub merkle_root: Option<MerkleRoot>,
+    /// What type of signature to create
+    pub signature_type: SignatureType,
 }
 
 impl Debug for NonceRequest {
@@ -286,8 +284,7 @@ impl Debug for NonceRequest {
             .field("sign_id", &self.sign_id)
             .field("sign_iter_id", &self.sign_iter_id)
             .field("message", &hex::encode(&self.message))
-            .field("is_taproot", &self.is_taproot)
-            .field("merkle_root", &self.merkle_root.as_ref().map(hex::encode))
+            .field("signature_type", &self.signature_type)
             .finish()
     }
 }
@@ -299,10 +296,13 @@ impl Signable for NonceRequest {
         hasher.update(self.sign_id.to_be_bytes());
         hasher.update(self.sign_iter_id.to_be_bytes());
         hasher.update(self.message.as_slice());
+	hasher.update(format!("{:?}", self.signature_type));
+	/*
         hasher.update((self.is_taproot as u16).to_be_bytes());
         if let Some(merkle_root) = self.merkle_root {
             hasher.update(merkle_root);
         }
+	*/
     }
 }
 
@@ -367,6 +367,17 @@ impl Signable for NonceResponse {
     }
 }
 
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+/// Signature type
+pub enum SignatureType {
+    /// FROST signature
+    Frost,
+    /// BIP-340 Schnorr proof
+    Schnorr,
+    /// BIP-341 Taproot style schnorr proof with a merkle root
+    Taproot(Option<MerkleRoot>),
+}
+
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
 /// Signature share request message from coordinator to signers
 pub struct SignatureShareRequest {
@@ -380,11 +391,9 @@ pub struct SignatureShareRequest {
     pub nonce_responses: Vec<NonceResponse>,
     /// Bytes to sign
     pub message: Vec<u8>,
-    /// Whether to make a taproot signature
-    pub is_taproot: bool,
-    /// Taproot merkle root
-    pub merkle_root: Option<MerkleRoot>,
-}
+    /// What type of signature to create
+    pub signature_type: SignatureType,
+ }
 
 impl Debug for SignatureShareRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -394,8 +403,7 @@ impl Debug for SignatureShareRequest {
             .field("sign_iter_id", &self.sign_iter_id)
             .field("nonce_responses", &self.nonce_responses)
             .field("message", &hex::encode(&self.message))
-            .field("is_taproot", &self.is_taproot)
-            .field("merkle_root", &self.merkle_root.as_ref().map(hex::encode))
+            .field("signature_type", &self.signature_type)
             .finish()
     }
 }
@@ -411,11 +419,13 @@ impl Signable for SignatureShareRequest {
         }
 
         hasher.update(self.message.as_slice());
-
+	hasher.update(format!("{:?}", self.signature_type));
+	/*
         hasher.update((self.is_taproot as u16).to_be_bytes());
         if let Some(merkle_root) = self.merkle_root {
             hasher.update(merkle_root);
         }
+	*/
     }
 }
 

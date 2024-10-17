@@ -107,6 +107,15 @@ pub trait Signer: Clone + Debug + PartialEq {
         nonces: &[PublicNonce],
     ) -> Vec<SignatureShare>;
 
+    /// Sign `msg` using all this signer's keys
+    fn sign_schnorr(
+        &self,
+        msg: &[u8],
+        signer_ids: &[u32],
+        key_ids: &[u32],
+        nonces: &[PublicNonce],
+    ) -> Vec<SignatureShare>;
+
     /// Sign `msg` using all this signer's keys and a tweaked public key
     fn sign_taproot(
         &self,
