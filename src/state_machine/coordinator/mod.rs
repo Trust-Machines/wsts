@@ -299,7 +299,7 @@ pub mod frost;
 /// The coordinator for the FIRE algorithm
 pub mod fire;
 
-#[cfg(test)]
+#[allow(missing_docs)]
 pub mod test {
     use hashbrown::{HashMap, HashSet};
     use rand_core::OsRng;
