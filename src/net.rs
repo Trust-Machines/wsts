@@ -297,12 +297,6 @@ impl Signable for NonceRequest {
         hasher.update(self.sign_iter_id.to_be_bytes());
         hasher.update(self.message.as_slice());
         hasher.update(format!("{:?}", self.signature_type));
-        /*
-            hasher.update((self.is_taproot as u16).to_be_bytes());
-            if let Some(merkle_root) = self.merkle_root {
-                hasher.update(merkle_root);
-            }
-        */
     }
 }
 
@@ -420,12 +414,6 @@ impl Signable for SignatureShareRequest {
 
         hasher.update(self.message.as_slice());
         hasher.update(format!("{:?}", self.signature_type));
-        /*
-            hasher.update((self.is_taproot as u16).to_be_bytes());
-            if let Some(merkle_root) = self.merkle_root {
-                hasher.update(merkle_root);
-            }
-        */
     }
 }
 
