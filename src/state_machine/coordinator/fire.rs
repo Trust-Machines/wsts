@@ -949,19 +949,19 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                     &key_ids,
                     merkle_root,
                 )?;
-                info!("SchnorrProof ({}, {})", schnorr_proof.r, schnorr_proof.s);
+                debug!("SchnorrProof ({}, {})", schnorr_proof.r, schnorr_proof.s);
                 self.schnorr_proof = Some(schnorr_proof);
             } else if let SignatureType::Schnorr = signature_type {
                 let schnorr_proof =
                     self.aggregator
                         .sign_schnorr(&self.message, &nonces, &shares, &key_ids)?;
-                info!("SchnorrProof ({}, {})", schnorr_proof.r, schnorr_proof.s);
+                debug!("SchnorrProof ({}, {})", schnorr_proof.r, schnorr_proof.s);
                 self.schnorr_proof = Some(schnorr_proof);
             } else {
                 let signature = self
                     .aggregator
                     .sign(&self.message, &nonces, &shares, &key_ids)?;
-                info!("Signature ({}, {})", signature.R, signature.z);
+                debug!("Signature ({}, {})", signature.R, signature.z);
                 self.signature = Some(signature);
             }
 
@@ -1357,12 +1357,16 @@ pub mod test {
 
     #[test]
     fn run_dkg_sign_v1() {
-        run_dkg_sign::<FireCoordinator<v1::Aggregator>, v1::Signer>(5, 2);
+        for _ in 0..4 {
+            run_dkg_sign::<FireCoordinator<v1::Aggregator>, v1::Signer>(5, 2);
+        }
     }
 
     #[test]
     fn run_dkg_sign_v2() {
-        run_dkg_sign::<FireCoordinator<v2::Aggregator>, v2::Signer>(5, 2);
+        for _ in 0..4 {
+            run_dkg_sign::<FireCoordinator<v2::Aggregator>, v2::Signer>(5, 2);
+        }
     }
 
     #[test]
