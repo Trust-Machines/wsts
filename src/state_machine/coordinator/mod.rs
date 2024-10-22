@@ -718,7 +718,7 @@ pub mod test {
         signers: &mut Vec<Signer<SignerType>>,
         msg: &Vec<u8>,
         signature_type: SignatureType,
-    ) {
+    ) -> OperationResult {
         // Start a signing round
         let message = coordinators
             .first_mut()
@@ -818,6 +818,8 @@ pub mod test {
             }
             _ => panic!("Expected OperationResult"),
         }
+
+        operation_results[0].clone()
     }
 
     pub fn run_dkg_sign<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(

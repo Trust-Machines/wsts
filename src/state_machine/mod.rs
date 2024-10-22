@@ -51,6 +51,7 @@ pub enum SignError {
 }
 
 /// Result of a DKG or sign operation
+#[derive(Debug, Clone)]
 pub enum OperationResult {
     /// DKG succeeded with the wrapped public key
     Dkg(Point),
