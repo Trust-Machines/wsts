@@ -107,6 +107,15 @@ pub trait Signer: Clone + Debug + PartialEq {
         nonces: &[PublicNonce],
     ) -> Vec<SignatureShare>;
 
+    /// Sign `msg` using all this signer's keys
+    fn sign_schnorr(
+        &self,
+        msg: &[u8],
+        signer_ids: &[u32],
+        key_ids: &[u32],
+        nonces: &[PublicNonce],
+    ) -> Vec<SignatureShare>;
+
     /// Sign `msg` using all this signer's keys and a tweaked public key
     fn sign_taproot(
         &self,
@@ -134,6 +143,15 @@ pub trait Aggregator: Clone + Debug + PartialEq {
         sig_shares: &[SignatureShare],
         key_ids: &[u32],
     ) -> Result<Signature, AggregatorError>;
+
+    /// Check and aggregate the signature shares into a `SchnorrProof`
+    fn sign_schnorr(
+        &mut self,
+        msg: &[u8],
+        nonces: &[PublicNonce],
+        sig_shares: &[SignatureShare],
+        key_ids: &[u32],
+    ) -> Result<SchnorrProof, AggregatorError>;
 
     /// Check and aggregate the signature shares into a `SchnorrProof`
     fn sign_taproot(

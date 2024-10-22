@@ -51,11 +51,14 @@ pub enum SignError {
 }
 
 /// Result of a DKG or sign operation
+#[derive(Debug, Clone)]
 pub enum OperationResult {
     /// DKG succeeded with the wrapped public key
     Dkg(Point),
     /// Sign succeeded with the wrapped Signature
     Sign(Signature),
+    /// Sign schnorr succeeded with the wrapped SchnorrProof
+    SignSchnorr(SchnorrProof),
     /// Sign taproot succeeded with the wrapped SchnorrProof
     SignTaproot(SchnorrProof),
     /// DKG error
