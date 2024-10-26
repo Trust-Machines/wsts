@@ -189,13 +189,27 @@ impl Party {
         nonces: &[PublicNonce],
         tweak: Option<Scalar>,
     ) -> SignatureShare {
+        let mut cx_sign = Scalar::one();
         let tweaked_public_key = if let Some(t) = tweak {
-            self.group_key + t * G
+            if t != Scalar::zero() {
+                let key = compute::tweaked_public_key_from_tweak(&self.group_key, t);
+                if compute::xor(key.has_even_y(), self.group_key.has_even_y()) {
+                    cx_sign = -cx_sign;
+                }
+
+                key
+            } else {
+                if !self.group_key.has_even_y() {
+                    cx_sign = -cx_sign;
+                }
+                self.group_key
+            }
         } else {
             self.group_key
         };
         let (_, R) = compute::intermediate(msg, party_ids, nonces);
         let c = compute::challenge(&tweaked_public_key, &R, msg);
+        println!("v2 sign_with_tweak: challenge {}", c);
         let mut r = &self.nonce.d + &self.nonce.e * compute::binding(&self.id(), nonces, msg);
         if tweak.is_some() && !R.has_even_y() {
             r = -r;
@@ -206,9 +220,7 @@ impl Party {
             cx += c * &self.private_keys[key_id] * compute::lambda(*key_id, key_ids);
         }
 
-        if tweak.is_some() && !tweaked_public_key.has_even_y() {
-            cx = -cx;
-        }
+        cx = cx_sign * cx;
 
         let z = r + cx;
 
@@ -249,18 +261,22 @@ impl Aggregator {
         let party_ids: Vec<u32> = sig_shares.iter().map(|ss| ss.id).collect();
         let (_Rs, R) = compute::intermediate(msg, &party_ids, nonces);
         let mut z = Scalar::zero();
+        let mut cx_sign = Scalar::one();
         let aggregate_public_key = self.poly[0];
         let tweaked_public_key = if let Some(t) = tweak {
-            aggregate_public_key + t * G
+            if t != Scalar::zero() {
+                let key = compute::tweaked_public_key_from_tweak(&aggregate_public_key, t);
+                if !key.has_even_y() {
+                    cx_sign = -cx_sign;
+                }
+                key
+            } else {
+                aggregate_public_key
+            }
         } else {
             aggregate_public_key
         };
         let c = compute::challenge(&tweaked_public_key, &R, msg);
-        let mut cx_sign = Scalar::one();
-        if tweak.is_some() && !tweaked_public_key.has_even_y() {
-            cx_sign = -Scalar::one();
-        }
-
         // optimistically try to create the aggregate signature without checking for bad keys or sig shares
         for sig_share in sig_shares {
             z += sig_share.z_i;
@@ -283,7 +299,7 @@ impl Aggregator {
         nonces: &[PublicNonce],
         sig_shares: &[SignatureShare],
         key_ids: &[u32],
-        tweak: &Scalar,
+        tweak: Option<Scalar>,
     ) -> AggregatorError {
         if nonces.len() != sig_shares.len() {
             return AggregatorError::BadNonceLen(nonces.len(), sig_shares.len());
@@ -294,16 +310,24 @@ impl Aggregator {
         let mut bad_party_keys = Vec::new();
         let mut bad_party_sigs = Vec::new();
         let aggregate_public_key = self.poly[0];
-        let tweaked_public_key = aggregate_public_key + tweak * G;
+        let tweaked_public_key = if let Some(t) = tweak {
+            if t != Scalar::zero() {
+                compute::tweaked_public_key_from_tweak(&aggregate_public_key, t)
+            } else {
+                aggregate_public_key
+            }
+        } else {
+            aggregate_public_key
+        };
         let c = compute::challenge(&tweaked_public_key, &R, msg);
         let mut r_sign = Scalar::one();
         let mut cx_sign = Scalar::one();
-        if tweak != &Scalar::zero() {
+        if tweak.is_some() {
             if !R.has_even_y() {
                 r_sign = -Scalar::one();
             }
             if !tweaked_public_key.has_even_y() {
-                cx_sign = -Scalar::one();
+                //cx_sign = -Scalar::one();
             }
         }
 
@@ -388,7 +412,7 @@ impl traits::Aggregator for Aggregator {
         if sig.verify(&key, msg) {
             Ok(sig)
         } else {
-            Err(self.check_signature_shares(msg, nonces, sig_shares, key_ids, &Scalar::zero()))
+            Err(self.check_signature_shares(msg, nonces, sig_shares, key_ids, None))
         }
     }
 
@@ -407,7 +431,7 @@ impl traits::Aggregator for Aggregator {
         if proof.verify(&key.x(), msg) {
             Ok(proof)
         } else {
-            Err(self.check_signature_shares(msg, nonces, sig_shares, key_ids, &tweak))
+            Err(self.check_signature_shares(msg, nonces, sig_shares, key_ids, Some(tweak)))
         }
     }
 
@@ -427,7 +451,7 @@ impl traits::Aggregator for Aggregator {
         if proof.verify(&key.x(), msg) {
             Ok(proof)
         } else {
-            Err(self.check_signature_shares(msg, nonces, sig_shares, key_ids, &tweak))
+            Err(self.check_signature_shares(msg, nonces, sig_shares, key_ids, Some(tweak)))
         }
     }
 }

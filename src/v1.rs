@@ -233,19 +233,30 @@ impl Party {
             r = -r;
         }
 
+        let mut cx_sign = Scalar::one();
         let tweaked_public_key = if let Some(t) = tweak {
-            self.group_key + t * G
+            if t != Scalar::zero() {
+                let key = compute::tweaked_public_key_from_tweak(&self.group_key, t);
+                if compute::xor(key.has_even_y(), self.group_key.has_even_y()) {
+                    cx_sign = -cx_sign;
+                }
+
+                key
+            } else {
+                if !self.group_key.has_even_y() {
+                    cx_sign = -cx_sign;
+                }
+                self.group_key
+            }
         } else {
             self.group_key
         };
 
-        let mut cx = compute::challenge(&tweaked_public_key, aggregate_nonce, msg)
-            * &self.private_key
-            * compute::lambda(self.id, signers);
+        let c = compute::challenge(&tweaked_public_key, aggregate_nonce, msg);
+        println!("v1 sign_pre_twk challenge {}", &c);
+        let mut cx = c * &self.private_key * compute::lambda(self.id, signers);
 
-        if tweak.is_some() && !tweaked_public_key.has_even_y() {
-            cx = -cx;
-        }
+        cx = cx_sign * cx;
 
         let z = r + cx;
 
@@ -285,17 +296,23 @@ impl Aggregator {
         let signers: Vec<u32> = sig_shares.iter().map(|ss| ss.id).collect();
         let (_Rs, R) = compute::intermediate(msg, &signers, nonces);
         let mut z = Scalar::zero();
+        let mut cx_sign = Scalar::one();
         let aggregate_public_key = self.poly[0];
         let tweaked_public_key = if let Some(t) = tweak {
-            aggregate_public_key + t * G
+            if t != Scalar::zero() {
+                let key = compute::tweaked_public_key_from_tweak(&aggregate_public_key, t);
+                if !key.has_even_y() {
+                    cx_sign = -cx_sign;
+                }
+                key
+            } else {
+                aggregate_public_key
+            }
         } else {
             aggregate_public_key
         };
         let c = compute::challenge(&tweaked_public_key, &R, msg);
-        let mut cx_sign = Scalar::one();
-        if tweak.is_some() && !tweaked_public_key.has_even_y() {
-            cx_sign = -Scalar::one();
-        }
+        println!("v1 sign_with_twk: challenge {}", c);
 
         for sig_share in sig_shares {
             z += sig_share.z_i;
@@ -454,9 +471,19 @@ impl traits::Aggregator for Aggregator {
         merkle_root: Option<[u8; 32]>,
     ) -> Result<SchnorrProof, AggregatorError> {
         let tweak = compute::tweak(&self.poly[0], merkle_root);
+        println!(
+            "sign_taproot: agg_pubkey    {}",
+            &hex::encode(self.poly[0].compress().as_bytes())
+        );
+        println!("sign_taproot: agg_pubkey.x  {}", &self.poly[0].x());
         let (key, sig) = self.sign_with_tweak(msg, nonces, sig_shares, Some(tweak))?;
         let proof = SchnorrProof::new(&sig);
 
+        println!(
+            "sign_taproot: tweaked_key   {}",
+            &hex::encode(key.compress().as_bytes())
+        );
+        println!("sign_taproot: tweaked_key.x {}", &key.x());
         if proof.verify(&key.x(), msg) {
             Ok(proof)
         } else {
