@@ -30,7 +30,6 @@ impl SchnorrProof {
     /// Verify a BIP-340 schnorr proof
     #[allow(non_snake_case)]
     pub fn verify(&self, public_key: &field::Element, msg: &[u8]) -> bool {
-        println!("taproot verify: public_key  {}", &public_key);
         let Y = match Point::lift_x(public_key) {
             Ok(Y) => Y,
             Err(_) => return false,
@@ -40,7 +39,6 @@ impl SchnorrProof {
             Err(_) => return false,
         };
         let c = compute::challenge(&Y, &R, msg);
-        println!("taproot verify: challenge   {}", c);
         let Rp = self.s * G - c * Y;
 
         Rp.has_even_y() && Rp.x() == self.r
@@ -153,16 +151,10 @@ mod test {
     use crate::{compute, traits::Aggregator, traits::Signer, v1, v2};
     use rand_core::OsRng;
 
-    fn xor(a: bool, b: bool) -> bool {
-        (a && !b) || (b && !a)
-    }
-
     #[test]
     #[allow(non_snake_case)]
     fn key_tweaks() {
         let mut rng = OsRng;
-        let script = "OP_1".as_bytes();
-        let merkle_root = compute::merkle_root(script);
         let r = Scalar::random(&mut rng);
         let R = r * G;
         let rp = if R.has_even_y() { r } else { -r };
@@ -183,6 +175,7 @@ mod test {
         }
 
         println!("P.has_even_y {}", P.has_even_y());
+        let c = compute::challenge(&P, &R, msg.as_bytes());
         let s = r - c * d;
         assert!(R == s * G + c * P);
 
@@ -198,21 +191,20 @@ mod test {
             assert!(Pp == (-d) * G);
             let R = Point::lift_x(&proof.r).unwrap();
             let e = compute::challenge(&P, &R, msg.as_bytes());
-            //let e = c.clone();
             let Rp = proof.s * G - e * Pp;
-            //assert!(Rp.has_even_y());
-            //assert_eq!(Rp.x(), proof.r);
+            assert!(Rp.has_even_y());
+            assert_eq!(Rp.x(), proof.r);
         }
-        //assert!(proof.verify(&P.x(), msg.as_bytes()));
+        assert!(proof.verify(&P.x(), msg.as_bytes()));
 
-        let mut Q = Point::lift_x(&P.x()).unwrap();
+        let Q = Point::lift_x(&P.x()).unwrap();
         let c = compute::challenge(&Q, &R, msg.as_bytes());
         println!("Q.has_even_y {}", Q.has_even_y());
 
         assert!(Q != P);
         assert!(d * G != Q);
 
-        let mut e = -d;
+        let e = -d;
 
         assert!(e * G == Q);
 
@@ -244,7 +236,7 @@ mod test {
         let t = compute::tweak(&P, None);
         //let d = if !P.has_even_y() || !S.has_even_y() {
         //let d = if !S.has_even_y() {
-        let d = if !P.has_even_y() { (-d + t) } else { (d + t) };
+        let d = if !P.has_even_y() { -d + t } else { d + t };
         assert!((d * G).x() == S.x());
         assert!((d * G) == S);
 
@@ -272,7 +264,7 @@ mod test {
         let t = compute::tweak(&Q, None);
         //let e = if !Q.has_even_y() || !T.has_even_y() {
         //let e = if !T.has_even_y() {
-        let e = if !Q.has_even_y() { (-e + t) } else { (e + t) };
+        let e = if !Q.has_even_y() { -e + t } else { e + t };
         assert!((e * G).x() == T.x());
         assert!((e * G) == T);
 
@@ -407,7 +399,6 @@ mod test {
         let key_ids = S.iter().flat_map(|s| s.get_key_ids()).collect::<Vec<u32>>();
         let mut sig_agg = v2::Aggregator::new(Nk, T);
         sig_agg.init(&polys).expect("aggregator init failed");
-        let public_key = sig_agg.poly[0].clone();
         let tweaked_public_key = compute::tweaked_public_key(&sig_agg.poly[0], merkle_root);
         let (nonces, sig_shares) = test_helpers::sign(msg, &mut S, &mut rng, merkle_root);
         let proof = match sig_agg.sign_taproot(msg, &nonces, &sig_shares, &key_ids, merkle_root) {

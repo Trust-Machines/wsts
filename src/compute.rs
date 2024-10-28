@@ -174,8 +174,3 @@ pub fn merkle_root(data: &[u8]) -> [u8; 32] {
 
     hasher.finalize().into()
 }
-
-/// logical xor
-pub fn xor(a: bool, b: bool) -> bool {
-    (a && !b) || (b && !a)
-}

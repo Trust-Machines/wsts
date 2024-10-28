@@ -193,7 +193,7 @@ impl Party {
         let tweaked_public_key = if let Some(t) = tweak {
             if t != Scalar::zero() {
                 let key = compute::tweaked_public_key_from_tweak(&self.group_key, t);
-                if compute::xor(key.has_even_y(), self.group_key.has_even_y()) {
+                if key.has_even_y() ^ self.group_key.has_even_y() {
                     cx_sign = -cx_sign;
                 }
 
@@ -209,7 +209,6 @@ impl Party {
         };
         let (_, R) = compute::intermediate(msg, party_ids, nonces);
         let c = compute::challenge(&tweaked_public_key, &R, msg);
-        println!("v2 sign_with_tweak: challenge {}", c);
         let mut r = &self.nonce.d + &self.nonce.e * compute::binding(&self.id(), nonces, msg);
         if tweak.is_some() && !R.has_even_y() {
             r = -r;
@@ -321,7 +320,7 @@ impl Aggregator {
         };
         let c = compute::challenge(&tweaked_public_key, &R, msg);
         let mut r_sign = Scalar::one();
-        let mut cx_sign = Scalar::one();
+        let cx_sign = Scalar::one();
         if tweak.is_some() {
             if !R.has_even_y() {
                 r_sign = -Scalar::one();
