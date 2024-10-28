@@ -714,7 +714,7 @@ pub mod test {
     }
 
     pub fn run_sign<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
-        coordinators: &mut Vec<Coordinator>,
+        coordinators: &mut [Coordinator],
         signers: &mut Vec<Signer<SignerType>>,
         msg: &Vec<u8>,
         signature_type: SignatureType,
@@ -723,7 +723,7 @@ pub mod test {
         let message = coordinators
             .first_mut()
             .unwrap()
-            .start_signing_round(&msg, signature_type.clone())
+            .start_signing_round(msg, signature_type.clone())
             .unwrap();
         assert_eq!(
             coordinators.first_mut().unwrap().get_state(),
@@ -775,7 +775,7 @@ pub mod test {
                             &coordinator
                                 .get_aggregate_public_key()
                                 .expect("No aggregate public key set!"),
-                            &msg
+                            msg
                         ));
                         assert_eq!(coordinator.get_state(), State::Idle);
                     }
@@ -791,7 +791,7 @@ pub mod test {
                                 .get_aggregate_public_key()
                                 .expect("No aggregate public key set!")
                                 .x(),
-                            &msg
+                            msg
                         ));
                         assert_eq!(coordinator.get_state(), State::Idle);
                     }
@@ -809,7 +809,7 @@ pub mod test {
                             merkle_root,
                         );
 
-                        assert!(sig.verify(&tweaked_public_key.x(), &msg));
+                        assert!(sig.verify(&tweaked_public_key.x(), msg));
                         assert_eq!(coordinator.get_state(), State::Idle);
                     }
                 } else {
