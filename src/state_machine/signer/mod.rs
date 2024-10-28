@@ -339,11 +339,12 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         let mut missing_public_shares = HashSet::new();
         let mut missing_private_shares = HashSet::new();
         let mut bad_public_shares = HashSet::new();
+        let threshold: usize = self.threshold.try_into().unwrap();
         if let Some(dkg_end_begin) = &self.dkg_end_begin_msg {
             for signer_id in &dkg_end_begin.signer_ids {
                 if let Some(shares) = self.dkg_public_shares.get(signer_id) {
                     for (party_id, comm) in shares.comms.iter() {
-                        if comm.poly.len() != self.threshold.try_into().unwrap() || !comm.verify() {
+                        if comm.poly.len() != threshold || !comm.verify() {
                             bad_public_shares.insert(*signer_id);
                         } else {
                             self.commitments.insert(*party_id, comm.clone());
