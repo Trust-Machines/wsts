@@ -296,7 +296,16 @@ impl Signable for NonceRequest {
         hasher.update(self.sign_id.to_be_bytes());
         hasher.update(self.sign_iter_id.to_be_bytes());
         hasher.update(self.message.as_slice());
-        hasher.update(format!("{:?}", self.signature_type));
+        match self.signature_type {
+            SignatureType::Frost => hasher.update("SIGNATURE_TYPE_FROST".as_bytes()),
+            SignatureType::Schnorr => hasher.update("SIGNATURE_TYPE_SCHNORR".as_bytes()),
+            SignatureType::Taproot(merkle_root) => {
+                hasher.update("SIGNATURE_TYPE_TAPROOT".as_bytes());
+                if let Some(merkle_root) = merkle_root {
+                    hasher.update(&merkle_root);
+                }
+            }
+        }
     }
 }
 
@@ -413,7 +422,16 @@ impl Signable for SignatureShareRequest {
         }
 
         hasher.update(self.message.as_slice());
-        hasher.update(format!("{:?}", self.signature_type));
+        match self.signature_type {
+            SignatureType::Frost => hasher.update("SIGNATURE_TYPE_FROST".as_bytes()),
+            SignatureType::Schnorr => hasher.update("SIGNATURE_TYPE_SCHNORR".as_bytes()),
+            SignatureType::Taproot(merkle_root) => {
+                hasher.update("SIGNATURE_TYPE_TAPROOT".as_bytes());
+                if let Some(merkle_root) = merkle_root {
+                    hasher.update(&merkle_root);
+                }
+            }
+        }
     }
 }
 
