@@ -556,22 +556,24 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                     .iter()
                     .flat_map(|nr| nr.nonces.clone())
                     .collect::<Vec<PublicNonce>>();
-                let signature_shares = if let SignatureType::Taproot(m) =
-                    sign_request.signature_type
-                {
-                    self.signer.sign_taproot(
+                let signature_shares = match sign_request.signature_type {
+                    SignatureType::Taproot(m) => self.signer.sign_taproot(
                         &sign_request.message,
                         &signer_ids,
                         &key_ids,
                         &nonces,
                         m,
-                    )
-                } else if let SignatureType::Schnorr = sign_request.signature_type {
-                    self.signer
-                        .sign_schnorr(&sign_request.message, &signer_ids, &key_ids, &nonces)
-                } else {
-                    self.signer
-                        .sign(&sign_request.message, &signer_ids, &key_ids, &nonces)
+                    ),
+                    SignatureType::Schnorr => self.signer.sign_schnorr(
+                        &sign_request.message,
+                        &signer_ids,
+                        &key_ids,
+                        &nonces,
+                    ),
+                    SignatureType::Frost => {
+                        self.signer
+                            .sign(&sign_request.message, &signer_ids, &key_ids, &nonces)
+                    }
                 };
 
                 let response = SignatureShareResponse {
