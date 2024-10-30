@@ -329,10 +329,8 @@ impl Aggregator {
                 if !tweaked_public_key.has_even_y() ^ !aggregate_public_key.has_even_y() {
                     cx_sign = -Scalar::one();
                 }
-            } else {
-                if !aggregate_public_key.has_even_y() {
-                    cx_sign = -Scalar::one();
-                }
+            } else if !aggregate_public_key.has_even_y() {
+                cx_sign = -Scalar::one();
             }
         }
 
