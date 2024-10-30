@@ -320,13 +320,19 @@ impl Aggregator {
         };
         let c = compute::challenge(&tweaked_public_key, &R, msg);
         let mut r_sign = Scalar::one();
-        let cx_sign = Scalar::one();
-        if tweak.is_some() {
+        let mut cx_sign = Scalar::one();
+        if let Some(t) = tweak {
             if !R.has_even_y() {
                 r_sign = -Scalar::one();
             }
-            if !tweaked_public_key.has_even_y() {
-                //cx_sign = -Scalar::one();
+            if t != Scalar::zero() {
+                if !tweaked_public_key.has_even_y() ^ !aggregate_public_key.has_even_y() {
+                    cx_sign = -Scalar::one();
+                }
+            } else {
+                if !aggregate_public_key.has_even_y() {
+                    cx_sign = -Scalar::one();
+                }
             }
         }
 

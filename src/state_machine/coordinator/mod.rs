@@ -845,20 +845,18 @@ pub mod test {
             &msg,
             SignatureType::Schnorr,
         );
-        /*
-            run_sign::<Coordinator, SignerType>(
-                &mut coordinators,
-                &mut signers,
-                &msg,
-                SignatureType::Taproot(None),
-            );
-            run_sign::<Coordinator, SignerType>(
-                &mut coordinators,
-                &mut signers,
-                &msg,
-                SignatureType::Taproot(Some([128u8; 32])),
+        run_sign::<Coordinator, SignerType>(
+            &mut coordinators,
+            &mut signers,
+            &msg,
+            SignatureType::Taproot(None),
         );
-        */
+        run_sign::<Coordinator, SignerType>(
+            &mut coordinators,
+            &mut signers,
+            &msg,
+            SignatureType::Taproot(Some([128u8; 32])),
+        );
     }
 
     pub fn equal_after_save_load<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
