@@ -302,7 +302,7 @@ impl Signable for NonceRequest {
             SignatureType::Taproot(merkle_root) => {
                 hasher.update("SIGNATURE_TYPE_TAPROOT".as_bytes());
                 if let Some(merkle_root) = merkle_root {
-                    hasher.update(&merkle_root);
+                    hasher.update(merkle_root);
                 }
             }
         }
@@ -428,7 +428,7 @@ impl Signable for SignatureShareRequest {
             SignatureType::Taproot(merkle_root) => {
                 hasher.update("SIGNATURE_TYPE_TAPROOT".as_bytes());
                 if let Some(merkle_root) = merkle_root {
-                    hasher.update(&merkle_root);
+                    hasher.update(merkle_root);
                 }
             }
         }
