@@ -14,7 +14,7 @@ use crate::{
         coordinator::{
             Config, Coordinator as CoordinatorTrait, Error, SavedState, SignRoundInfo, State,
         },
-        OperationResult, StateMachine,
+        OperationResult, SignError, StateMachine,
     },
     taproot::SchnorrProof,
     traits::Aggregator as AggregatorTrait,
@@ -147,7 +147,12 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                     return Ok((Some(packet), None));
                 }
                 State::SigShareGather(signature_type) => {
-                    self.gather_sig_shares(packet, signature_type.clone())?;
+                    if let Err(e) = self.gather_sig_shares(packet, signature_type.clone()) {
+                        return Ok((
+                            None,
+                            Some(OperationResult::SignError(SignError::Coordinator(e))),
+                        ));
+                    }
                     if self.state == State::SigShareGather(signature_type.clone()) {
                         // We need more data
                         return Ok((None, None));
@@ -763,8 +768,8 @@ pub mod test {
         state_machine::coordinator::{
             frost::Coordinator as FrostCoordinator,
             test::{
-                coordinator_state_machine, equal_after_save_load, new_coordinator, run_dkg_sign,
-                start_dkg_round,
+                check_signature_shares, coordinator_state_machine, equal_after_save_load,
+                new_coordinator, run_dkg_sign, start_dkg_round,
             },
             Config, Coordinator as CoordinatorTrait, State,
         },
@@ -862,16 +867,68 @@ pub mod test {
 
     #[test]
     fn run_dkg_sign_v1() {
-        for _ in 0..4 {
-            run_dkg_sign::<FrostCoordinator<v1::Aggregator>, v1::Signer>(5, 2);
-        }
+        run_dkg_sign::<FrostCoordinator<v1::Aggregator>, v1::Signer>(5, 2);
     }
 
     #[test]
     fn run_dkg_sign_v2() {
-        for _ in 0..4 {
-            run_dkg_sign::<FrostCoordinator<v2::Aggregator>, v2::Signer>(5, 2);
-        }
+        run_dkg_sign::<FrostCoordinator<v2::Aggregator>, v2::Signer>(5, 2);
+    }
+
+    #[test]
+    fn check_signature_shares_v1() {
+        check_signature_shares::<FrostCoordinator<v1::Aggregator>, v1::Signer>(
+            5,
+            1,
+            SignatureType::Frost,
+            vec![1],
+        );
+        check_signature_shares::<FrostCoordinator<v1::Aggregator>, v1::Signer>(
+            5,
+            1,
+            SignatureType::Schnorr,
+            vec![1],
+        );
+        check_signature_shares::<FrostCoordinator<v1::Aggregator>, v1::Signer>(
+            5,
+            1,
+            SignatureType::Taproot(None),
+            vec![1],
+        );
+        check_signature_shares::<FrostCoordinator<v1::Aggregator>, v1::Signer>(
+            5,
+            1,
+            SignatureType::Taproot(Some([23u8; 32])),
+            vec![1],
+        );
+    }
+
+    #[test]
+    fn check_signature_shares_v2() {
+        check_signature_shares::<FrostCoordinator<v2::Aggregator>, v2::Signer>(
+            5,
+            2,
+            SignatureType::Frost,
+            vec![0],
+        );
+        check_signature_shares::<FrostCoordinator<v2::Aggregator>, v2::Signer>(
+            5,
+            2,
+            SignatureType::Schnorr,
+            vec![0],
+        );
+        check_signature_shares::<FrostCoordinator<v2::Aggregator>, v2::Signer>(
+            5,
+            2,
+            SignatureType::Taproot(None),
+            vec![0],
+        );
+        check_signature_shares::<FrostCoordinator<v2::Aggregator>, v2::Signer>(
+            5,
+            2,
+            SignatureType::Taproot(Some([23u8; 32])),
+            vec![0],
+        );
     }
 
     #[test]

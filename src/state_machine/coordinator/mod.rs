@@ -41,7 +41,7 @@ pub enum State {
     SigShareGather(SignatureType),
 }
 
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error, Clone, Debug)]
 #[allow(clippy::large_enum_variant)]
 /// The error type for the coordinator
 pub enum Error {
@@ -310,13 +310,15 @@ pub mod test {
     use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
     use crate::{
+        common::SignatureShare,
         compute,
         curve::{ecdsa, point::Point, scalar::Scalar},
-        net::{Message, Packet, SignatureType},
+        errors::AggregatorError,
+        net::{Message, Packet, SignatureShareResponse, SignatureType},
         state_machine::{
             coordinator::{Config, Coordinator as CoordinatorTrait, Error, State},
             signer::Signer,
-            OperationResult, PublicKeys, StateMachine,
+            OperationResult, PublicKeys, SignError, StateMachine,
         },
         traits::Signer as SignerTrait,
     };
@@ -857,6 +859,99 @@ pub mod test {
             &msg,
             SignatureType::Taproot(Some([128u8; 32])),
         );
+    }
+
+    pub fn check_signature_shares<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
+        num_signers: u32,
+        keys_per_signer: u32,
+        signature_type: SignatureType,
+        bad_parties: Vec<u32>,
+    ) {
+        let (mut coordinators, mut signers) =
+            run_dkg::<Coordinator, SignerType>(num_signers, keys_per_signer);
+
+        let msg = "It was many and many a year ago, in a kingdom by the sea"
+            .as_bytes()
+            .to_vec();
+        // Start a signing round
+        let message = coordinators
+            .first_mut()
+            .unwrap()
+            .start_signing_round(&msg, signature_type.clone())
+            .unwrap();
+        assert_eq!(
+            coordinators.first_mut().unwrap().get_state(),
+            State::NonceGather(signature_type.clone())
+        );
+
+        // Send the message to all signers and gather responses by sharing with all other signers and coordinator
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &[message]);
+        assert!(operation_results.is_empty());
+        assert_eq!(
+            coordinators.first_mut().unwrap().get_state(),
+            State::SigShareGather(signature_type.clone())
+        );
+
+        assert_eq!(outbound_messages.len(), 1);
+        match &outbound_messages[0].msg {
+            Message::SignatureShareRequest(_) => {}
+            _ => {
+                panic!("Expected SignatureShareRequest message");
+            }
+        }
+
+        // Send the SignatureShareRequest message to all signers and share their responses with the coordinator and signers
+        let (outbound_messages, operation_results) = feedback_mutated_messages(
+            &mut coordinators,
+            &mut signers,
+            &outbound_messages,
+            |signer, packets| {
+                if signer.signer_id == 0 {
+                    packets
+                        .iter()
+                        .map(|packet| {
+                            if let Message::SignatureShareResponse(response) = &packet.msg {
+                                // mutate one of the shares
+                                let sshares: Vec<SignatureShare> = response
+                                    .signature_shares
+                                    .iter()
+                                    .map(|share| SignatureShare {
+                                        id: share.id,
+                                        key_ids: share.key_ids.clone(),
+                                        z_i: share.z_i + Scalar::from(1),
+                                    })
+                                    .collect();
+                                Packet {
+                                    msg: Message::SignatureShareResponse(SignatureShareResponse {
+                                        dkg_id: response.dkg_id,
+                                        sign_id: response.sign_id,
+                                        sign_iter_id: response.sign_iter_id,
+                                        signer_id: response.signer_id,
+                                        signature_shares: sshares,
+                                    }),
+                                    sig: vec![],
+                                }
+                            } else {
+                                packet.clone()
+                            }
+                        })
+                        .collect()
+                } else {
+                    packets.clone()
+                }
+            },
+        );
+        assert!(outbound_messages.is_empty());
+        assert_eq!(operation_results.len(), 1);
+        match &operation_results[0] {
+            OperationResult::SignError(SignError::Coordinator(Error::Aggregator(AggregatorError::BadPartySigs(parties)))) => {
+		if parties != &bad_parties {
+		    panic!("Expected BadPartySigs from {:?}, got {:?}", &bad_parties, &operation_results[0]);
+		}
+	    }
+            _ => panic!("Expected OperationResult::SignError(SignError::Coordinator(Error::Aggregator(AggregatorError::BadPartySigs(parties))))"),
+        }
     }
 
     pub fn equal_after_save_load<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(

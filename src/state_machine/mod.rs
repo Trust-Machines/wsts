@@ -8,6 +8,7 @@ use crate::{
     curve::{ecdsa, point::Point},
     errors::AggregatorError,
     net::DkgFailure,
+    state_machine::coordinator::Error as CoordinatorError,
     taproot::SchnorrProof,
 };
 
@@ -48,6 +49,9 @@ pub enum SignError {
     /// Signature aggregator error
     #[error("Signature aggregator error")]
     Aggregator(#[from] AggregatorError),
+    /// Coordinator error
+    #[error("Coordinator error")]
+    Coordinator(#[from] CoordinatorError),
 }
 
 /// Result of a DKG or sign operation
