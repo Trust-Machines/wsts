@@ -328,39 +328,56 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                     } else if self.state == State::Idle {
                         // We are done with the DKG round! Return the operation result
                         if let SignatureType::Taproot(_) = signature_type {
-                            let schnorr_proof = self
-                                .schnorr_proof
-                                .as_ref()
-                                .ok_or(Error::MissingSchnorrProof)?;
-                            return Ok((
-                                None,
-                                Some(OperationResult::SignTaproot(SchnorrProof {
-                                    r: schnorr_proof.r,
-                                    s: schnorr_proof.s,
-                                })),
-                            ));
+                            if let Some(schnorr_proof) = &self.schnorr_proof {
+                                return Ok((
+                                    None,
+                                    Some(OperationResult::SignTaproot(SchnorrProof {
+                                        r: schnorr_proof.r,
+                                        s: schnorr_proof.s,
+                                    })),
+                                ));
+                            } else {
+                                return Ok((
+                                    None,
+                                    Some(OperationResult::SignError(SignError::Coordinator(
+                                        Error::MissingSchnorrProof,
+                                    ))),
+                                ));
+                            }
                         } else if let SignatureType::Schnorr = signature_type {
-                            let schnorr_proof = self
-                                .schnorr_proof
-                                .as_ref()
-                                .ok_or(Error::MissingSchnorrProof)?;
-                            return Ok((
-                                None,
-                                Some(OperationResult::SignSchnorr(SchnorrProof {
-                                    r: schnorr_proof.r,
-                                    s: schnorr_proof.s,
-                                })),
-                            ));
+                            if let Some(schnorr_proof) = &self.schnorr_proof {
+                                return Ok((
+                                    None,
+                                    Some(OperationResult::SignSchnorr(SchnorrProof {
+                                        r: schnorr_proof.r,
+                                        s: schnorr_proof.s,
+                                    })),
+                                ));
+                            } else {
+                                return Ok((
+                                    None,
+                                    Some(OperationResult::SignError(SignError::Coordinator(
+                                        Error::MissingSchnorrProof,
+                                    ))),
+                                ));
+                            }
                         } else {
-                            let signature =
-                                self.signature.as_ref().ok_or(Error::MissingSignature)?;
-                            return Ok((
-                                None,
-                                Some(OperationResult::Sign(Signature {
-                                    R: signature.R,
-                                    z: signature.z,
-                                })),
-                            ));
+                            if let Some(signature) = &self.signature {
+                                return Ok((
+                                    None,
+                                    Some(OperationResult::Sign(Signature {
+                                        R: signature.R,
+                                        z: signature.z,
+                                    })),
+                                ));
+                            } else {
+                                return Ok((
+                                    None,
+                                    Some(OperationResult::SignError(SignError::Coordinator(
+                                        Error::MissingSignature,
+                                    ))),
+                                ));
+                            }
                         }
                     }
                 }
