@@ -39,6 +39,7 @@ pub enum DkgError {
 
 /// Sign errors
 #[derive(Error, Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum SignError {
     /// Nonce timeout
     #[error("Nonce timeout, valid responses from {0:?}, signers {1:?} are malicious")]
