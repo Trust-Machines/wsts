@@ -755,8 +755,6 @@ pub mod test {
             .map(|c| Coordinator::load(&c.save()))
             .collect::<Vec<Coordinator>>();
 
-        //assert_eq!(coordinators, &new_coordinators);
-
         let new_signers = signers
             .iter()
             .map(|s| Signer::<SignerType>::load(&s.save()))
