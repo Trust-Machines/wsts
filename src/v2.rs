@@ -192,7 +192,7 @@ impl Party {
         nonces: &[PublicNonce],
         tweak: Option<Scalar>,
     ) -> SignatureShare {
-	// When using BIP-340 32-byte public keys, we have to invert the private key if the public key is odd.  But if we're also using BIP-341 tweaked keys, we have to do the same thing if the tweaked public key is odd.  In that case, only invert the public key if exactly one of the internal or tweaked public keys is odd
+        // When using BIP-340 32-byte public keys, we have to invert the private key if the public key is odd.  But if we're also using BIP-341 tweaked keys, we have to do the same thing if the tweaked public key is odd.  In that case, only invert the public key if exactly one of the internal or tweaked public keys is odd
         let mut cx_sign = Scalar::one();
         let tweaked_public_key = if let Some(t) = tweak {
             if t != Scalar::zero() {
@@ -288,7 +288,7 @@ impl Aggregator {
             z += sig_share.z_i;
         }
 
-	// The signature shares have already incorporated the private key adjustments, so we just have to add the tweak.  But the tweak itself needs to be adjusted if the tweaked public key is odd
+        // The signature shares have already incorporated the private key adjustments, so we just have to add the tweak.  But the tweak itself needs to be adjusted if the tweaked public key is odd
         if let Some(t) = tweak {
             z += cx_sign * c * t;
         }

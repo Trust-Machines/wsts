@@ -361,23 +361,21 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                                     ))),
                                 ));
                             }
+                        } else if let Some(signature) = &self.signature {
+                            return Ok((
+                                None,
+                                Some(OperationResult::Sign(Signature {
+                                    R: signature.R,
+                                    z: signature.z,
+                                })),
+                            ));
                         } else {
-                            if let Some(signature) = &self.signature {
-                                return Ok((
-                                    None,
-                                    Some(OperationResult::Sign(Signature {
-                                        R: signature.R,
-                                        z: signature.z,
-                                    })),
-                                ));
-                            } else {
-                                return Ok((
-                                    None,
-                                    Some(OperationResult::SignError(SignError::Coordinator(
-                                        Error::MissingSignature,
-                                    ))),
-                                ));
-                            }
+                            return Ok((
+                                None,
+                                Some(OperationResult::SignError(SignError::Coordinator(
+                                    Error::MissingSignature,
+                                ))),
+                            ));
                         }
                     }
                 }
