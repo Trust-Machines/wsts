@@ -859,6 +859,8 @@ pub mod test {
         );
     }
 
+    /// Run DKG then sign a message, but alter the signature shares for signer 0.  This should trigger the aggregator internal check_signature_shares function to run and determine which parties signatures were bad.
+    /// Because of the differences between how parties are represented in v1 and v2, we need to pass in a vector of the expected bad parties.
     pub fn check_signature_shares<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
         num_signers: u32,
         keys_per_signer: u32,
