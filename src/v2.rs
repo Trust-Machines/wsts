@@ -179,7 +179,10 @@ impl Party {
         self.sign_with_tweak(msg, party_ids, key_ids, nonces, None)
     }
 
-    /// Sign `msg` with this party's shares of the group private key, using the set of `party_ids`, `key_ids` and corresponding `nonces` with a tweaked public key
+    /// Sign `msg` with this party's shares of the group private key, using the set of `party_ids`, `key_ids` and corresponding `nonces` with a tweaked public key. The posible values for tweak are
+    /// None    - standard FROST signature
+    /// Some(0) - BIP-340 schnorr signature using 32-byte private key adjustments
+    /// Some(t) - BIP-340 schnorr signature with BIP-341 tweaked keys, using 32-byte private key adjustments
     #[allow(non_snake_case)]
     pub fn sign_with_tweak(
         &self,
@@ -189,6 +192,7 @@ impl Party {
         nonces: &[PublicNonce],
         tweak: Option<Scalar>,
     ) -> SignatureShare {
+	// When using BIP-340 32-byte public keys, we have to invert the private key if the public key is odd.  But if we're also using BIP-341 tweaked keys, we have to do the same thing if the tweaked public key is odd.  In that case, only invert the public key if exactly one of the internal or tweaked public keys is odd
         let mut cx_sign = Scalar::one();
         let tweaked_public_key = if let Some(t) = tweak {
             if t != Scalar::zero() {
@@ -243,7 +247,10 @@ pub struct Aggregator {
 }
 
 impl Aggregator {
-    /// Aggregate the party signatures using a tweak
+    /// Aggregate the party signatures using a tweak.  The posible values for tweak are
+    /// None    - standard FROST signature
+    /// Some(0) - BIP-340 schnorr signature using 32-byte private key adjustments
+    /// Some(t) - BIP-340 schnorr signature with BIP-341 tweaked keys, using 32-byte private key adjustments
     #[allow(non_snake_case)]
     pub fn sign_with_tweak(
         &mut self,
@@ -281,6 +288,7 @@ impl Aggregator {
             z += sig_share.z_i;
         }
 
+	// The signature shares have already incorporated the private key adjustments, so we just have to add the tweak.  But the tweak itself needs to be adjusted if the tweaked public key is odd
         if let Some(t) = tweak {
             z += cx_sign * c * t;
         }
@@ -290,7 +298,10 @@ impl Aggregator {
         Ok((tweaked_public_key, sig))
     }
 
-    /// Check the party signatures after a failed group signature
+    /// Check the party signatures after a failed group signature. The posible values for tweak are
+    /// None    - standard FROST signature
+    /// Some(0) - BIP-340 schnorr signature using 32-byte private key adjustments
+    /// Some(t) - BIP-340 schnorr signature with BIP-341 tweaked keys, using 32-byte private key adjustments
     #[allow(non_snake_case)]
     pub fn check_signature_shares(
         &mut self,
