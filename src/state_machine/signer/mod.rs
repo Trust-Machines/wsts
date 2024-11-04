@@ -1,3 +1,4 @@
+use aes_gcm::Error as AesGcmError;
 use hashbrown::{HashMap, HashSet};
 use rand_core::{CryptoRng, OsRng, RngCore};
 use std::collections::BTreeMap;
@@ -58,6 +59,15 @@ pub enum Error {
     /// A bad state change was made
     #[error("Bad State Change: {0}")]
     BadStateChange(String),
+    /// An AES-GCM error occurred
+    #[error("AES-GCM: {0}")]
+    AesGcm(AesGcmError),
+}
+
+impl From<AesGcmError> for Error {
+    fn from(err: AesGcmError) -> Self {
+        Error::AesGcm(err)
+    }
 }
 
 /// The saved state required to reconstruct a signer
@@ -684,11 +694,12 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                     debug!("encrypting dkg private share for key_id {}", dst_key_id);
                     let compressed =
                         Compressed::from(self.public_keys.key_ids[dst_key_id].to_bytes());
+                    // this should not fail as long as the public key above was valid
                     let dst_public_key = Point::try_from(&compressed).unwrap();
                     let shared_secret =
                         make_shared_secret(&self.network_private_key, &dst_public_key);
                     let encrypted_share =
-                        encrypt(&shared_secret, &private_share.to_bytes(), &mut rng).unwrap();
+                        encrypt(&shared_secret, &private_share.to_bytes(), &mut rng)?;
 
                     encrypted_shares.insert(*dst_key_id, encrypted_share);
                 }
@@ -748,6 +759,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         // make a HashSet of our key_ids so we can quickly query them
         let key_ids: HashSet<u32> = self.signer.get_key_ids().into_iter().collect();
         let compressed = Compressed::from(self.public_keys.signers[&src_signer_id].to_bytes());
+        // this should not fail as long as the public key above was valid
         let public_key = Point::try_from(&compressed).unwrap();
         let shared_key = self.network_private_key * public_key;
         let shared_secret = make_shared_secret(&self.network_private_key, &public_key);
