@@ -370,7 +370,7 @@ impl Signable for NonceResponse {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
 /// Signature type
 pub enum SignatureType {
     /// FROST signature
