@@ -131,6 +131,12 @@ impl Party {
         let mut not_enough_shares = Vec::new();
         for key_id in &self.key_ids {
             if shares[key_id].len() != comms.len() {
+                warn!(
+                    "key_id {} has {} private shares not {}",
+                    key_id,
+                    shares[key_id].len(),
+                    comms.len()
+                );
                 not_enough_shares.push(*key_id);
             }
         }
