@@ -425,7 +425,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                                 }
                             }
                         } else {
-                            todo!();
+                            warn!("Got unexpected dkg_error {:?}", dkg_error);
                         }
                     }
                     DkgEnd {
