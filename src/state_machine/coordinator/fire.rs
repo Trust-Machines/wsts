@@ -816,7 +816,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                         nonce_info.nonce_recv_key_ids.insert(*key_id);
                     } else {
                         //TODO: should we mark this signer as malicious?
-                        debug!("Key id {} not in signer key ids {:?}", key_id, key_ids);
+                        warn!("Key id {} not in signer key ids {:?}", key_id, key_ids);
                     }
                 }
             }
