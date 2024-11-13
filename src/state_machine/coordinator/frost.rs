@@ -83,7 +83,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                         self.current_sign_iter_id = nonce_request.sign_iter_id;
                         let packet = self.start_signing_round(
                             nonce_request.message.as_slice(),
-                            nonce_request.signature_type.clone(),
+                            nonce_request.signature_type,
                         )?;
                         return Ok((Some(packet), None));
                     }
@@ -136,7 +136,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                     return Ok((Some(packet), None));
                 }
                 State::NonceGather(signature_type) => {
-                    self.gather_nonces(packet, signature_type.clone())?;
+                    self.gather_nonces(packet, signature_type)?;
                     if self.state == State::NonceGather(signature_type) {
                         // We need more data
                         return Ok((None, None));
@@ -147,13 +147,13 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                     return Ok((Some(packet), None));
                 }
                 State::SigShareGather(signature_type) => {
-                    if let Err(e) = self.gather_sig_shares(packet, signature_type.clone()) {
+                    if let Err(e) = self.gather_sig_shares(packet, signature_type) {
                         return Ok((
                             None,
                             Some(OperationResult::SignError(SignError::Coordinator(e))),
                         ));
                     }
-                    if self.state == State::SigShareGather(signature_type.clone()) {
+                    if self.state == State::SigShareGather(signature_type) {
                         // We need more data
                         return Ok((None, None));
                     } else if self.state == State::Idle {
@@ -359,7 +359,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             sign_id: self.current_sign_id,
             sign_iter_id: self.current_sign_iter_id,
             message: self.message.clone(),
-            signature_type: signature_type.clone(),
+            signature_type: signature_type,
         };
         let nonce_request_msg = Packet {
             sig: nonce_request
@@ -429,7 +429,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             sign_iter_id: self.current_sign_iter_id,
             nonce_responses,
             message: self.message.clone(),
-            signature_type: signature_type.clone(),
+            signature_type: signature_type,
         };
         let sig_share_request_msg = Packet {
             sig: sig_share_request
@@ -575,15 +575,15 @@ impl<Aggregator: AggregatorTrait> StateMachine<State, Error> for Coordinator<Agg
                 prev_state == &State::Idle || prev_state == &State::DkgEndGather
             }
             State::NonceGather(signature_type) => {
-                prev_state == &State::NonceRequest(signature_type.clone())
-                    || prev_state == &State::NonceGather(signature_type.clone())
+                prev_state == &State::NonceRequest(*signature_type)
+                    || prev_state == &State::NonceGather(*signature_type)
             }
             State::SigShareRequest(signature_type) => {
-                prev_state == &State::NonceGather(signature_type.clone())
+                prev_state == &State::NonceGather(*signature_type)
             }
             State::SigShareGather(signature_type) => {
-                prev_state == &State::SigShareRequest(signature_type.clone())
-                    || prev_state == &State::SigShareGather(signature_type.clone())
+                prev_state == &State::SigShareRequest(*signature_type)
+                    || prev_state == &State::SigShareGather(*signature_type)
             }
         };
         if accepted {
@@ -745,7 +745,7 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
         self.message = message.to_vec();
         self.current_sign_id = self.current_sign_id.wrapping_add(1);
         info!("Starting signing round {}", self.current_sign_id);
-        self.move_to(State::NonceRequest(signature_type.clone()))?;
+        self.move_to(State::NonceRequest(signature_type))?;
         self.request_nonces(signature_type)
     }
 

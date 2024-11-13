@@ -725,11 +725,11 @@ pub mod test {
         let message = coordinators
             .first_mut()
             .unwrap()
-            .start_signing_round(msg, signature_type.clone())
+            .start_signing_round(msg, signature_type)
             .unwrap();
         assert_eq!(
             coordinators.first_mut().unwrap().get_state(),
-            State::NonceGather(signature_type.clone())
+            State::NonceGather(signature_type)
         );
 
         // Send the message to all signers and gather responses by sharing with all other signers and coordinator
@@ -738,7 +738,7 @@ pub mod test {
         assert!(operation_results.is_empty());
         assert_eq!(
             coordinators.first_mut().unwrap().get_state(),
-            State::SigShareGather(signature_type.clone())
+            State::SigShareGather(signature_type)
         );
 
         assert_eq!(outbound_messages.len(), 1);
@@ -877,11 +877,11 @@ pub mod test {
         let message = coordinators
             .first_mut()
             .unwrap()
-            .start_signing_round(&msg, signature_type.clone())
+            .start_signing_round(&msg, signature_type)
             .unwrap();
         assert_eq!(
             coordinators.first_mut().unwrap().get_state(),
-            State::NonceGather(signature_type.clone())
+            State::NonceGather(signature_type)
         );
 
         // Send the message to all signers and gather responses by sharing with all other signers and coordinator
@@ -890,7 +890,7 @@ pub mod test {
         assert!(operation_results.is_empty());
         assert_eq!(
             coordinators.first_mut().unwrap().get_state(),
-            State::SigShareGather(signature_type.clone())
+            State::SigShareGather(signature_type)
         );
 
         assert_eq!(outbound_messages.len(), 1);
