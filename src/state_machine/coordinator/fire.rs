@@ -524,12 +524,6 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 "DKG round {} DkgPrivateShares from signer {}",
                 dkg_private_shares.dkg_id, dkg_private_shares.signer_id
             );
-            for share in &dkg_private_shares.shares {
-                info!("src_party_id {}", share.0);
-                for (dst_key_id, enc_share) in &share.1 {
-                    info!("dst_key_id {} {} bytes", dst_key_id, enc_share.len());
-                }
-            }
         }
 
         if self.dkg_wait_signer_ids.is_empty() {
