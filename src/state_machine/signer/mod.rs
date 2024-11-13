@@ -305,6 +305,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
 
     /// process the passed incoming message, and return any outgoing messages needed in response
     pub fn process(&mut self, message: &Message) -> Result<Vec<Message>, Error> {
+	debug!("Signer {} got {:?}", self.signer_id, message);
         let out_msgs = match message {
             Message::DkgBegin(dkg_begin) => self.dkg_begin(dkg_begin),
             Message::DkgPrivateBegin(dkg_private_begin) => {
@@ -321,6 +322,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             Message::NonceRequest(nonce_request) => self.nonce_request(nonce_request),
             _ => Ok(vec![]), // TODO
         };
+	debug!("Signer {} response {:?}", self.signer_id, out_msgs);
 
         match out_msgs {
             Ok(mut out) => {
