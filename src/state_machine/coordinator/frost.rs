@@ -359,7 +359,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             sign_id: self.current_sign_id,
             sign_iter_id: self.current_sign_iter_id,
             message: self.message.clone(),
-            signature_type: signature_type,
+            signature_type,
         };
         let nonce_request_msg = Packet {
             sig: nonce_request
@@ -429,7 +429,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             sign_iter_id: self.current_sign_iter_id,
             nonce_responses,
             message: self.message.clone(),
-            signature_type: signature_type,
+            signature_type,
         };
         let sig_share_request_msg = Packet {
             sig: sig_share_request
