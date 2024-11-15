@@ -1,8 +1,8 @@
 use crate::{
-    common::{MerkleRoot, PolyCommitment, Signature, SignatureShare},
+    common::{PolyCommitment, Signature, SignatureShare},
     curve::{point::Point, scalar::Scalar},
     errors::AggregatorError,
-    net::{DkgEnd, DkgPrivateShares, DkgPublicShares, NonceResponse, Packet},
+    net::{DkgEnd, DkgPrivateShares, DkgPublicShares, NonceResponse, Packet, SignatureType},
     state_machine::{DkgFailure, OperationResult},
     taproot::SchnorrProof,
 };
@@ -32,16 +32,16 @@ pub enum State {
     /// The coordinator is gathering DKG End messages
     DkgEndGather,
     /// The coordinator is requesting nonces
-    NonceRequest(bool, Option<MerkleRoot>),
+    NonceRequest(SignatureType),
     /// The coordinator is gathering nonces
-    NonceGather(bool, Option<MerkleRoot>),
+    NonceGather(SignatureType),
     /// The coordinator is requesting signature shares
-    SigShareRequest(bool, Option<MerkleRoot>),
+    SigShareRequest(SignatureType),
     /// The coordinator is gathering signature shares
-    SigShareGather(bool, Option<MerkleRoot>),
+    SigShareGather(SignatureType),
 }
 
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error, Clone, Debug)]
 #[allow(clippy::large_enum_variant)]
 /// The error type for the coordinator
 pub enum Error {
@@ -286,8 +286,7 @@ pub trait Coordinator: Clone + Debug + PartialEq {
     fn start_signing_round(
         &mut self,
         message: &[u8],
-        is_taproot: bool,
-        merkle_root: Option<MerkleRoot>,
+        signature_type: SignatureType,
     ) -> Result<Packet, Error>;
 
     /// Reset internal state
@@ -300,7 +299,7 @@ pub mod frost;
 /// The coordinator for the FIRE algorithm
 pub mod fire;
 
-#[cfg(test)]
+#[allow(missing_docs)]
 pub mod test {
     use hashbrown::{HashMap, HashSet};
     use rand_core::OsRng;
@@ -311,12 +310,15 @@ pub mod test {
     use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
     use crate::{
+        common::SignatureShare,
+        compute,
         curve::{ecdsa, point::Point, scalar::Scalar},
-        net::{Message, Packet},
+        errors::AggregatorError,
+        net::{Message, Packet, SignatureShareResponse, SignatureType},
         state_machine::{
             coordinator::{Config, Coordinator as CoordinatorTrait, Error, State},
             signer::Signer,
-            OperationResult, PublicKeys, StateMachine,
+            OperationResult, PublicKeys, SignError, StateMachine,
         },
         traits::Signer as SignerTrait,
     };
@@ -585,10 +587,10 @@ pub mod test {
         (messages, results)
     }
 
-    pub fn run_dkg_sign<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
+    pub fn run_dkg<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
         num_signers: u32,
         keys_per_signer: u32,
-    ) {
+    ) -> (Vec<Coordinator>, Vec<Signer<SignerType>>) {
         let (mut coordinators, mut signers) =
             setup::<Coordinator, SignerType>(num_signers, keys_per_signer);
 
@@ -710,29 +712,33 @@ pub mod test {
 
         signers = new_signers;
 
+        (coordinators, signers)
+    }
+
+    pub fn run_sign<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
+        coordinators: &mut [Coordinator],
+        signers: &mut Vec<Signer<SignerType>>,
+        msg: &[u8],
+        signature_type: SignatureType,
+    ) -> OperationResult {
         // Start a signing round
-        let msg = "It was many and many a year ago, in a kingdom by the sea"
-            .as_bytes()
-            .to_vec();
-        let is_taproot = false;
-        let merkle_root = None;
         let message = coordinators
             .first_mut()
             .unwrap()
-            .start_signing_round(&msg, is_taproot, merkle_root)
+            .start_signing_round(msg, signature_type)
             .unwrap();
         assert_eq!(
             coordinators.first_mut().unwrap().get_state(),
-            State::NonceGather(is_taproot, merkle_root)
+            State::NonceGather(signature_type)
         );
 
         // Send the message to all signers and gather responses by sharing with all other signers and coordinator
         let (outbound_messages, operation_results) =
-            feedback_messages(&mut coordinators, &mut signers, &[message]);
+            feedback_messages(coordinators, signers, &[message]);
         assert!(operation_results.is_empty());
         assert_eq!(
             coordinators.first_mut().unwrap().get_state(),
-            State::SigShareGather(is_taproot, merkle_root)
+            State::SigShareGather(signature_type)
         );
 
         assert_eq!(outbound_messages.len(), 1);
@@ -744,42 +750,207 @@ pub mod test {
         }
 
         // persist the coordinators before continuing
-        let new_coordinators = coordinators
+        let _new_coordinators = coordinators
             .iter()
             .map(|c| Coordinator::load(&c.save()))
             .collect::<Vec<Coordinator>>();
-
-        assert_eq!(coordinators, new_coordinators);
-
-        coordinators = new_coordinators;
 
         let new_signers = signers
             .iter()
             .map(|s| Signer::<SignerType>::load(&s.save()))
             .collect::<Vec<Signer<SignerType>>>();
 
-        assert_eq!(signers, new_signers);
-
-        signers = new_signers;
+        assert_eq!(signers, &new_signers);
 
         // Send the SignatureShareRequest message to all signers and share their responses with the coordinator and signers
         let (outbound_messages, operation_results) =
-            feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
+            feedback_messages(coordinators, signers, &outbound_messages);
         assert!(outbound_messages.is_empty());
         assert_eq!(operation_results.len(), 1);
         match &operation_results[0] {
             OperationResult::Sign(sig) => {
-                for coordinator in coordinators.iter() {
-                    assert!(sig.verify(
-                        &coordinator
-                            .get_aggregate_public_key()
-                            .expect("No aggregate public key set!"),
-                        &msg
-                    ));
-                    assert_eq!(coordinator.get_state(), State::Idle);
+                if let SignatureType::Frost = signature_type {
+                    for coordinator in coordinators.iter() {
+                        assert!(sig.verify(
+                            &coordinator
+                                .get_aggregate_public_key()
+                                .expect("No aggregate public key set!"),
+                            msg
+                        ));
+                        assert_eq!(coordinator.get_state(), State::Idle);
+                    }
+                } else {
+                    panic!("Expected OperationResult::Sign");
                 }
             }
-            _ => panic!("Expected Signature Operation result"),
+            OperationResult::SignSchnorr(sig) => {
+                if let SignatureType::Schnorr = signature_type {
+                    for coordinator in coordinators.iter() {
+                        assert!(sig.verify(
+                            &coordinator
+                                .get_aggregate_public_key()
+                                .expect("No aggregate public key set!")
+                                .x(),
+                            msg
+                        ));
+                        assert_eq!(coordinator.get_state(), State::Idle);
+                    }
+                } else {
+                    panic!("Expected OperationResult::SignSchnorr");
+                }
+            }
+            OperationResult::SignTaproot(sig) => {
+                if let SignatureType::Taproot(merkle_root) = signature_type {
+                    for coordinator in coordinators.iter() {
+                        let tweaked_public_key = compute::tweaked_public_key(
+                            &coordinator
+                                .get_aggregate_public_key()
+                                .expect("No aggregate public key set!"),
+                            merkle_root,
+                        );
+
+                        assert!(sig.verify(&tweaked_public_key.x(), msg));
+                        assert_eq!(coordinator.get_state(), State::Idle);
+                    }
+                } else {
+                    panic!("Expected OperationResult::SignTaproot");
+                }
+            }
+            _ => panic!("Expected OperationResult"),
+        }
+
+        operation_results[0].clone()
+    }
+
+    pub fn run_dkg_sign<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
+        num_signers: u32,
+        keys_per_signer: u32,
+    ) {
+        let (mut coordinators, mut signers) =
+            run_dkg::<Coordinator, SignerType>(num_signers, keys_per_signer);
+
+        let msg = "It was many and many a year ago, in a kingdom by the sea"
+            .as_bytes()
+            .to_vec();
+
+        run_sign::<Coordinator, SignerType>(
+            &mut coordinators,
+            &mut signers,
+            &msg,
+            SignatureType::Frost,
+        );
+        run_sign::<Coordinator, SignerType>(
+            &mut coordinators,
+            &mut signers,
+            &msg,
+            SignatureType::Schnorr,
+        );
+        run_sign::<Coordinator, SignerType>(
+            &mut coordinators,
+            &mut signers,
+            &msg,
+            SignatureType::Taproot(None),
+        );
+        run_sign::<Coordinator, SignerType>(
+            &mut coordinators,
+            &mut signers,
+            &msg,
+            SignatureType::Taproot(Some([128u8; 32])),
+        );
+    }
+
+    /// Run DKG then sign a message, but alter the signature shares for signer 0.  This should trigger the aggregator internal check_signature_shares function to run and determine which parties signatures were bad.
+    /// Because of the differences between how parties are represented in v1 and v2, we need to pass in a vector of the expected bad parties.
+    pub fn check_signature_shares<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
+        num_signers: u32,
+        keys_per_signer: u32,
+        signature_type: SignatureType,
+        bad_parties: Vec<u32>,
+    ) {
+        let (mut coordinators, mut signers) =
+            run_dkg::<Coordinator, SignerType>(num_signers, keys_per_signer);
+
+        let msg = "It was many and many a year ago, in a kingdom by the sea"
+            .as_bytes()
+            .to_vec();
+        // Start a signing round
+        let message = coordinators
+            .first_mut()
+            .unwrap()
+            .start_signing_round(&msg, signature_type)
+            .unwrap();
+        assert_eq!(
+            coordinators.first_mut().unwrap().get_state(),
+            State::NonceGather(signature_type)
+        );
+
+        // Send the message to all signers and gather responses by sharing with all other signers and coordinator
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &[message]);
+        assert!(operation_results.is_empty());
+        assert_eq!(
+            coordinators.first_mut().unwrap().get_state(),
+            State::SigShareGather(signature_type)
+        );
+
+        assert_eq!(outbound_messages.len(), 1);
+        match &outbound_messages[0].msg {
+            Message::SignatureShareRequest(_) => {}
+            _ => {
+                panic!("Expected SignatureShareRequest message");
+            }
+        }
+
+        // Send the SignatureShareRequest message to all signers and share their responses with the coordinator and signers
+        let (outbound_messages, operation_results) = feedback_mutated_messages(
+            &mut coordinators,
+            &mut signers,
+            &outbound_messages,
+            |signer, packets| {
+                if signer.signer_id == 0 {
+                    packets
+                        .iter()
+                        .map(|packet| {
+                            if let Message::SignatureShareResponse(response) = &packet.msg {
+                                // mutate one of the shares
+                                let sshares: Vec<SignatureShare> = response
+                                    .signature_shares
+                                    .iter()
+                                    .map(|share| SignatureShare {
+                                        id: share.id,
+                                        key_ids: share.key_ids.clone(),
+                                        z_i: share.z_i + Scalar::from(1),
+                                    })
+                                    .collect();
+                                Packet {
+                                    msg: Message::SignatureShareResponse(SignatureShareResponse {
+                                        dkg_id: response.dkg_id,
+                                        sign_id: response.sign_id,
+                                        sign_iter_id: response.sign_iter_id,
+                                        signer_id: response.signer_id,
+                                        signature_shares: sshares,
+                                    }),
+                                    sig: vec![],
+                                }
+                            } else {
+                                packet.clone()
+                            }
+                        })
+                        .collect()
+                } else {
+                    packets.clone()
+                }
+            },
+        );
+        assert!(outbound_messages.is_empty());
+        assert_eq!(operation_results.len(), 1);
+        match &operation_results[0] {
+            OperationResult::SignError(SignError::Coordinator(Error::Aggregator(AggregatorError::BadPartySigs(parties)))) => {
+		if parties != &bad_parties {
+		    panic!("Expected BadPartySigs from {:?}, got {:?}", &bad_parties, &operation_results[0]);
+		}
+	    }
+            _ => panic!("Expected OperationResult::SignError(SignError::Coordinator(Error::Aggregator(AggregatorError::BadPartySigs(parties))))"),
         }
     }
 

@@ -1,3 +1,4 @@
+use aes_gcm::Error as AesGcmError;
 use hashbrown::{HashMap, HashSet};
 use rand_core::{CryptoRng, OsRng, RngCore};
 use std::collections::BTreeMap;
@@ -13,7 +14,7 @@ use crate::{
     net::{
         BadPrivateShare, DkgBegin, DkgEnd, DkgEndBegin, DkgFailure, DkgPrivateBegin,
         DkgPrivateShares, DkgPublicShares, DkgStatus, Message, NonceRequest, NonceResponse, Packet,
-        Signable, SignatureShareRequest, SignatureShareResponse,
+        Signable, SignatureShareRequest, SignatureShareResponse, SignatureType,
     },
     state_machine::{PublicKeys, StateMachine},
     traits::{Signer as SignerTrait, SignerState as SignerSavedState},
@@ -58,6 +59,15 @@ pub enum Error {
     /// A bad state change was made
     #[error("Bad State Change: {0}")]
     BadStateChange(String),
+    /// An AES-GCM error occurred
+    #[error("AES-GCM: {0}")]
+    AesGcm(AesGcmError),
+}
+
+impl From<AesGcmError> for Error {
+    fn from(err: AesGcmError) -> Self {
+        Error::AesGcm(err)
+    }
 }
 
 /// The saved state required to reconstruct a signer
@@ -339,11 +349,12 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         let mut missing_public_shares = HashSet::new();
         let mut missing_private_shares = HashSet::new();
         let mut bad_public_shares = HashSet::new();
+        let threshold: usize = self.threshold.try_into().unwrap();
         if let Some(dkg_end_begin) = &self.dkg_end_begin_msg {
             for signer_id in &dkg_end_begin.signer_ids {
                 if let Some(shares) = self.dkg_public_shares.get(signer_id) {
                     for (party_id, comm) in shares.comms.iter() {
-                        if comm.poly.len() != self.threshold.try_into().unwrap() || !comm.verify() {
+                        if comm.poly.len() != threshold || !comm.verify() {
                             bad_public_shares.insert(*signer_id);
                         } else {
                             self.commitments.insert(*party_id, comm.clone());
@@ -414,7 +425,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                                 }
                             }
                         } else {
-                            todo!();
+                            warn!("Got unexpected dkg_error {:?}", dkg_error);
                         }
                     }
                     DkgEnd {
@@ -555,17 +566,24 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                     .iter()
                     .flat_map(|nr| nr.nonces.clone())
                     .collect::<Vec<PublicNonce>>();
-                let signature_shares = if sign_request.is_taproot {
-                    self.signer.sign_taproot(
+                let signature_shares = match sign_request.signature_type {
+                    SignatureType::Taproot(m) => self.signer.sign_taproot(
                         &sign_request.message,
                         &signer_ids,
                         &key_ids,
                         &nonces,
-                        sign_request.merkle_root,
-                    )
-                } else {
-                    self.signer
-                        .sign(&sign_request.message, &signer_ids, &key_ids, &nonces)
+                        m,
+                    ),
+                    SignatureType::Schnorr => self.signer.sign_schnorr(
+                        &sign_request.message,
+                        &signer_ids,
+                        &key_ids,
+                        &nonces,
+                    ),
+                    SignatureType::Frost => {
+                        self.signer
+                            .sign(&sign_request.message, &signer_ids, &key_ids, &nonces)
+                    }
                 };
 
                 let response = SignatureShareResponse {
@@ -676,11 +694,12 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                     debug!("encrypting dkg private share for key_id {}", dst_key_id);
                     let compressed =
                         Compressed::from(self.public_keys.key_ids[dst_key_id].to_bytes());
+                    // this should not fail as long as the public key above was valid
                     let dst_public_key = Point::try_from(&compressed).unwrap();
                     let shared_secret =
                         make_shared_secret(&self.network_private_key, &dst_public_key);
                     let encrypted_share =
-                        encrypt(&shared_secret, &private_share.to_bytes(), &mut rng).unwrap();
+                        encrypt(&shared_secret, &private_share.to_bytes(), &mut rng)?;
 
                     encrypted_shares.insert(*dst_key_id, encrypted_share);
                 }
@@ -740,6 +759,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         // make a HashSet of our key_ids so we can quickly query them
         let key_ids: HashSet<u32> = self.signer.get_key_ids().into_iter().collect();
         let compressed = Compressed::from(self.public_keys.signers[&src_signer_id].to_bytes());
+        // this should not fail as long as the public key above was valid
         let public_key = Point::try_from(&compressed).unwrap();
         let shared_key = self.network_private_key * public_key;
         let shared_secret = make_shared_secret(&self.network_private_key, &public_key);

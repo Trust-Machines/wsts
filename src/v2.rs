@@ -131,6 +131,12 @@ impl Party {
         let mut not_enough_shares = Vec::new();
         for key_id in &self.key_ids {
             if shares[key_id].len() != comms.len() {
+                warn!(
+                    "key_id {} has {} private shares not {}",
+                    key_id,
+                    shares[key_id].len(),
+                    comms.len()
+                );
                 not_enough_shares.push(*key_id);
             }
         }
@@ -176,10 +182,13 @@ impl Party {
         key_ids: &[u32],
         nonces: &[PublicNonce],
     ) -> SignatureShare {
-        self.sign_with_tweak(msg, party_ids, key_ids, nonces, &Scalar::from(0))
+        self.sign_with_tweak(msg, party_ids, key_ids, nonces, None)
     }
 
-    /// Sign `msg` with this party's shares of the group private key, using the set of `party_ids`, `key_ids` and corresponding `nonces` with a tweaked public key
+    /// Sign `msg` with this party's shares of the group private key, using the set of `party_ids`, `key_ids` and corresponding `nonces` with a tweaked public key. The posible values for tweak are
+    /// None    - standard FROST signature
+    /// Some(0) - BIP-340 schnorr signature using 32-byte private key adjustments
+    /// Some(t) - BIP-340 schnorr signature with BIP-341 tweaked keys, using 32-byte private key adjustments
     #[allow(non_snake_case)]
     pub fn sign_with_tweak(
         &self,
@@ -187,13 +196,34 @@ impl Party {
         party_ids: &[u32],
         key_ids: &[u32],
         nonces: &[PublicNonce],
-        tweak: &Scalar,
+        tweak: Option<Scalar>,
     ) -> SignatureShare {
-        let tweaked_public_key = self.group_key + tweak * G;
+        // When using BIP-340 32-byte public keys, we have to invert the private key if the
+        // public key is odd.  But if we're also using BIP-341 tweaked keys, we have to do
+        // the same thing if the tweaked public key is odd.  In that case, only invert the
+        // public key if exactly one of the internal or tweaked public keys is odd
+        let mut cx_sign = Scalar::one();
+        let tweaked_public_key = if let Some(t) = tweak {
+            if t != Scalar::zero() {
+                let key = compute::tweaked_public_key_from_tweak(&self.group_key, t);
+                if key.has_even_y() ^ self.group_key.has_even_y() {
+                    cx_sign = -cx_sign;
+                }
+
+                key
+            } else {
+                if !self.group_key.has_even_y() {
+                    cx_sign = -cx_sign;
+                }
+                self.group_key
+            }
+        } else {
+            self.group_key
+        };
         let (_, R) = compute::intermediate(msg, party_ids, nonces);
         let c = compute::challenge(&tweaked_public_key, &R, msg);
         let mut r = &self.nonce.d + &self.nonce.e * compute::binding(&self.id(), nonces, msg);
-        if tweak != &Scalar::zero() && !R.has_even_y() {
+        if tweak.is_some() && !R.has_even_y() {
             r = -r;
         }
 
@@ -202,9 +232,7 @@ impl Party {
             cx += c * &self.private_keys[key_id] * compute::lambda(*key_id, key_ids);
         }
 
-        if tweak != &Scalar::zero() && !tweaked_public_key.has_even_y() {
-            cx = -cx;
-        }
+        cx = cx_sign * cx;
 
         let z = r + cx;
 
@@ -228,7 +256,10 @@ pub struct Aggregator {
 }
 
 impl Aggregator {
-    /// Aggregate the party signatures using a tweak
+    /// Aggregate the party signatures using a tweak.  The posible values for tweak are
+    /// None    - standard FROST signature
+    /// Some(0) - BIP-340 schnorr signature using 32-byte private key adjustments
+    /// Some(t) - BIP-340 schnorr signature with BIP-341 tweaked keys, using 32-byte private key adjustments
     #[allow(non_snake_case)]
     pub fn sign_with_tweak(
         &mut self,
@@ -236,7 +267,7 @@ impl Aggregator {
         nonces: &[PublicNonce],
         sig_shares: &[SignatureShare],
         _key_ids: &[u32],
-        tweak: &Scalar,
+        tweak: Option<Scalar>,
     ) -> Result<(Point, Signature), AggregatorError> {
         if nonces.len() != sig_shares.len() {
             return Err(AggregatorError::BadNonceLen(nonces.len(), sig_shares.len()));
@@ -245,27 +276,41 @@ impl Aggregator {
         let party_ids: Vec<u32> = sig_shares.iter().map(|ss| ss.id).collect();
         let (_Rs, R) = compute::intermediate(msg, &party_ids, nonces);
         let mut z = Scalar::zero();
-        let aggregate_public_key = self.poly[0];
-        let tweaked_public_key = aggregate_public_key + tweak * G;
-        let c = compute::challenge(&tweaked_public_key, &R, msg);
         let mut cx_sign = Scalar::one();
-        if tweak != &Scalar::zero() && !tweaked_public_key.has_even_y() {
-            cx_sign = -Scalar::one();
-        }
-
+        let aggregate_public_key = self.poly[0];
+        let tweaked_public_key = if let Some(t) = tweak {
+            if t != Scalar::zero() {
+                let key = compute::tweaked_public_key_from_tweak(&aggregate_public_key, t);
+                if !key.has_even_y() {
+                    cx_sign = -cx_sign;
+                }
+                key
+            } else {
+                aggregate_public_key
+            }
+        } else {
+            aggregate_public_key
+        };
+        let c = compute::challenge(&tweaked_public_key, &R, msg);
         // optimistically try to create the aggregate signature without checking for bad keys or sig shares
         for sig_share in sig_shares {
             z += sig_share.z_i;
         }
 
-        z += cx_sign * c * tweak;
+        // The signature shares have already incorporated the private key adjustments, so we just have to add the tweak.  But the tweak itself needs to be adjusted if the tweaked public key is odd
+        if let Some(t) = tweak {
+            z += cx_sign * c * t;
+        }
 
         let sig = Signature { R, z };
 
         Ok((tweaked_public_key, sig))
     }
 
-    /// Check the party signatures after a failed group signature
+    /// Check the party signatures after a failed group signature. The posible values for tweak are
+    /// None    - standard FROST signature
+    /// Some(0) - BIP-340 schnorr signature using 32-byte private key adjustments
+    /// Some(t) - BIP-340 schnorr signature with BIP-341 tweaked keys, using 32-byte private key adjustments
     #[allow(non_snake_case)]
     pub fn check_signature_shares(
         &mut self,
@@ -273,7 +318,7 @@ impl Aggregator {
         nonces: &[PublicNonce],
         sig_shares: &[SignatureShare],
         key_ids: &[u32],
-        tweak: &Scalar,
+        tweak: Option<Scalar>,
     ) -> AggregatorError {
         if nonces.len() != sig_shares.len() {
             return AggregatorError::BadNonceLen(nonces.len(), sig_shares.len());
@@ -284,15 +329,27 @@ impl Aggregator {
         let mut bad_party_keys = Vec::new();
         let mut bad_party_sigs = Vec::new();
         let aggregate_public_key = self.poly[0];
-        let tweaked_public_key = aggregate_public_key + tweak * G;
+        let tweaked_public_key = if let Some(t) = tweak {
+            if t != Scalar::zero() {
+                compute::tweaked_public_key_from_tweak(&aggregate_public_key, t)
+            } else {
+                aggregate_public_key
+            }
+        } else {
+            aggregate_public_key
+        };
         let c = compute::challenge(&tweaked_public_key, &R, msg);
         let mut r_sign = Scalar::one();
         let mut cx_sign = Scalar::one();
-        if tweak != &Scalar::zero() {
+        if let Some(t) = tweak {
             if !R.has_even_y() {
                 r_sign = -Scalar::one();
             }
-            if !tweaked_public_key.has_even_y() {
+            if t != Scalar::zero() {
+                if !tweaked_public_key.has_even_y() ^ !aggregate_public_key.has_even_y() {
+                    cx_sign = -Scalar::one();
+                }
+            } else if !aggregate_public_key.has_even_y() {
                 cx_sign = -Scalar::one();
             }
         }
@@ -340,7 +397,7 @@ impl traits::Aggregator for Aggregator {
 
     /// Initialize the Aggregator polynomial
     fn init(&mut self, comms: &HashMap<u32, PolyCommitment>) -> Result<(), AggregatorError> {
-        let threshold = self.threshold.try_into().unwrap();
+        let threshold: usize = self.threshold.try_into().unwrap();
         let mut bad_poly_commitments = Vec::new();
         for (_id, comm) in comms {
             if comm.poly.len() != threshold || !comm.verify() {
@@ -373,12 +430,31 @@ impl traits::Aggregator for Aggregator {
         sig_shares: &[SignatureShare],
         key_ids: &[u32],
     ) -> Result<Signature, AggregatorError> {
-        let (key, sig) = self.sign_with_tweak(msg, nonces, sig_shares, key_ids, &Scalar::zero())?;
+        let (key, sig) = self.sign_with_tweak(msg, nonces, sig_shares, key_ids, None)?;
 
         if sig.verify(&key, msg) {
             Ok(sig)
         } else {
-            Err(self.check_signature_shares(msg, nonces, sig_shares, key_ids, &Scalar::zero()))
+            Err(self.check_signature_shares(msg, nonces, sig_shares, key_ids, None))
+        }
+    }
+
+    /// Check and aggregate the party signatures
+    fn sign_schnorr(
+        &mut self,
+        msg: &[u8],
+        nonces: &[PublicNonce],
+        sig_shares: &[SignatureShare],
+        key_ids: &[u32],
+    ) -> Result<SchnorrProof, AggregatorError> {
+        let tweak = Scalar::from(0);
+        let (key, sig) = self.sign_with_tweak(msg, nonces, sig_shares, key_ids, Some(tweak))?;
+        let proof = SchnorrProof::new(&sig);
+
+        if proof.verify(&key.x(), msg) {
+            Ok(proof)
+        } else {
+            Err(self.check_signature_shares(msg, nonces, sig_shares, key_ids, Some(tweak)))
         }
     }
 
@@ -392,13 +468,13 @@ impl traits::Aggregator for Aggregator {
         merkle_root: Option<[u8; 32]>,
     ) -> Result<SchnorrProof, AggregatorError> {
         let tweak = compute::tweak(&self.poly[0], merkle_root);
-        let (key, sig) = self.sign_with_tweak(msg, nonces, sig_shares, key_ids, &tweak)?;
+        let (key, sig) = self.sign_with_tweak(msg, nonces, sig_shares, key_ids, Some(tweak))?;
         let proof = SchnorrProof::new(&sig);
 
         if proof.verify(&key.x(), msg) {
             Ok(proof)
         } else {
-            Err(self.check_signature_shares(msg, nonces, sig_shares, key_ids, &tweak))
+            Err(self.check_signature_shares(msg, nonces, sig_shares, key_ids, Some(tweak)))
         }
     }
 }
@@ -544,6 +620,16 @@ impl traits::Signer for Party {
         vec![self.sign(msg, signer_ids, key_ids, nonces)]
     }
 
+    fn sign_schnorr(
+        &self,
+        msg: &[u8],
+        signer_ids: &[u32],
+        key_ids: &[u32],
+        nonces: &[PublicNonce],
+    ) -> Vec<SignatureShare> {
+        vec![self.sign_with_tweak(msg, signer_ids, key_ids, nonces, Some(Scalar::from(0)))]
+    }
+
     fn sign_taproot(
         &self,
         msg: &[u8],
@@ -553,7 +639,7 @@ impl traits::Signer for Party {
         merkle_root: Option<[u8; 32]>,
     ) -> Vec<SignatureShare> {
         let tweak = compute::tweak(&self.group_key, merkle_root);
-        vec![self.sign_with_tweak(msg, signer_ids, key_ids, nonces, &tweak)]
+        vec![self.sign_with_tweak(msg, signer_ids, key_ids, nonces, Some(tweak))]
     }
 }
 

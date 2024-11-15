@@ -8,6 +8,7 @@ use crate::{
     curve::{ecdsa, point::Point},
     errors::AggregatorError,
     net::DkgFailure,
+    state_machine::coordinator::Error as CoordinatorError,
     taproot::SchnorrProof,
 };
 
@@ -38,6 +39,7 @@ pub enum DkgError {
 
 /// Sign errors
 #[derive(Error, Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum SignError {
     /// Nonce timeout
     #[error("Nonce timeout, valid responses from {0:?}, signers {1:?} are malicious")]
@@ -48,14 +50,20 @@ pub enum SignError {
     /// Signature aggregator error
     #[error("Signature aggregator error")]
     Aggregator(#[from] AggregatorError),
+    /// Coordinator error
+    #[error("Coordinator error")]
+    Coordinator(#[from] CoordinatorError),
 }
 
 /// Result of a DKG or sign operation
+#[derive(Debug, Clone)]
 pub enum OperationResult {
     /// DKG succeeded with the wrapped public key
     Dkg(Point),
     /// Sign succeeded with the wrapped Signature
     Sign(Signature),
+    /// Sign schnorr succeeded with the wrapped SchnorrProof
+    SignSchnorr(SchnorrProof),
     /// Sign taproot succeeded with the wrapped SchnorrProof
     SignTaproot(SchnorrProof),
     /// DKG error

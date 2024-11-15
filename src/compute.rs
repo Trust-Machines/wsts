@@ -158,7 +158,16 @@ pub fn tweak(public_key: &Point, merkle_root: Option<[u8; 32]>) -> Scalar {
 
 /// Create a BIP341 compliant taproot tweak from a public key and merkle root
 pub fn tweaked_public_key(public_key: &Point, merkle_root: Option<[u8; 32]>) -> Point {
-    public_key + tweak(public_key, merkle_root) * G
+    tweaked_public_key_from_tweak(public_key, tweak(public_key, merkle_root))
+}
+
+/// Create a BIP341 compliant taproot tweak from a public key and a pre-calculated tweak
+///
+/// We should never trigger the unwrap here, because Point::lift_x only returns an error
+/// when the x-coordinate is not on the secp256k1 curve, but we know that public_key.x()
+/// is on the curve because it is a Point.
+pub fn tweaked_public_key_from_tweak(public_key: &Point, tweak: Scalar) -> Point {
+    Point::lift_x(&public_key.x()).unwrap() + tweak * G
 }
 
 /// Create a taproot style merkle root from the serialized script data

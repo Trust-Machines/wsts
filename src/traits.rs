@@ -107,6 +107,15 @@ pub trait Signer: Clone + Debug + PartialEq {
         nonces: &[PublicNonce],
     ) -> Vec<SignatureShare>;
 
+    /// Sign `msg` using all this signer's keys
+    fn sign_schnorr(
+        &self,
+        msg: &[u8],
+        signer_ids: &[u32],
+        key_ids: &[u32],
+        nonces: &[PublicNonce],
+    ) -> Vec<SignatureShare>;
+
     /// Sign `msg` using all this signer's keys and a tweaked public key
     fn sign_taproot(
         &self,
@@ -126,7 +135,7 @@ pub trait Aggregator: Clone + Debug + PartialEq {
     /// Initialize an Aggregator with the passed polynomial commitments
     fn init(&mut self, poly_comms: &HashMap<u32, PolyCommitment>) -> Result<(), AggregatorError>;
 
-    /// Check and aggregate the signature shares into a `Signature`
+    /// Check and aggregate the signature shares into a FROST `Signature`
     fn sign(
         &mut self,
         msg: &[u8],
@@ -135,7 +144,19 @@ pub trait Aggregator: Clone + Debug + PartialEq {
         key_ids: &[u32],
     ) -> Result<Signature, AggregatorError>;
 
-    /// Check and aggregate the signature shares into a `SchnorrProof`
+    /// Check and aggregate the signature shares into a BIP-340 `SchnorrProof`.
+    /// https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki
+    fn sign_schnorr(
+        &mut self,
+        msg: &[u8],
+        nonces: &[PublicNonce],
+        sig_shares: &[SignatureShare],
+        key_ids: &[u32],
+    ) -> Result<SchnorrProof, AggregatorError>;
+
+    /// Check and aggregate the signature shares into a BIP-340 `SchnorrProof` with BIP-341 key tweaks
+    /// https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki
+    /// https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki
     fn sign_taproot(
         &mut self,
         msg: &[u8],
