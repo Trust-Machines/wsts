@@ -42,9 +42,6 @@ impl From<TryFromIntError> for DkgError {
 #[derive(Error, Debug, Clone, Serialize, Deserialize, PartialEq)]
 /// Errors which can happen during signature aggregation
 pub enum AggregatorError {
-    #[error("bad poly commitment length (expected {0} got {1})")]
-    /// The number of polynomial commitments was wrong (no longer used)
-    BadPolyCommitmentLen(usize, usize),
     #[error("bad poly commitments {0:?}")]
     /// The polynomial commitments which failed verification or were the wrong size
     BadPolyCommitments(Vec<Scalar>),
