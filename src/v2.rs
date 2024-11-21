@@ -144,11 +144,21 @@ impl Party {
 
         let mut bad_shares = Vec::new();
         for key_id in &self.key_ids {
-            for (sender, s) in &private_shares[key_id] {
-                let comm = &public_shares[sender];
-                if s * G != compute::poly(&compute::id(*key_id), &comm.poly)? {
-                    bad_shares.push(*sender);
+            if let Some(shares) = private_shares.get(key_id) {
+                for (sender, s) in shares {
+                    if let Some(comm) = public_shares.get(sender) {
+                        if s * G != compute::poly(&compute::id(*key_id), &comm.poly)? {
+                            bad_shares.push(*sender);
+                        }
+                    } else {
+                        warn!("unable to check private share from {}: no corresponding public share, even though we checked for it above", sender);
+                    }
                 }
+            } else {
+                warn!(
+                    "no private shares for key_id {}, even though we checked for it above",
+                    key_id
+                );
             }
         }
         if !bad_shares.is_empty() {
@@ -157,10 +167,16 @@ impl Party {
 
         for key_id in &self.key_ids {
             self.private_keys.insert(*key_id, Scalar::zero());
-
-            for (_sender, s) in &private_shares[key_id] {
-                self.private_keys
-                    .insert(*key_id, self.private_keys[key_id] + s);
+            if let Some(shares) = private_shares.get(key_id) {
+                for (_sender, s) in shares {
+                    self.private_keys
+                        .insert(*key_id, self.private_keys[key_id] + s);
+                }
+            } else {
+                warn!(
+                    "no private shares for key_id {}, even though we checked for it above",
+                    key_id
+                );
             }
         }
 

@@ -170,9 +170,12 @@ impl Party {
         if Point::multimult_trait(&mut check_shares)? != Point::zero() {
             let mut bad_shares = Vec::new();
             for (i, s) in private_shares.iter() {
-                let comm = &public_shares[i];
-                if s * G != compute::poly(&self.id(), &comm.poly)? {
-                    bad_shares.push(*i);
+                if let Some(comm) = public_shares.get(i) {
+                    if s * G != compute::poly(&self.id(), &comm.poly)? {
+                        bad_shares.push(*i);
+                    }
+                } else {
+                    warn!("unable to check private share from {}: no corresponding public share, even though we checked for it above", i);
                 }
             }
             return Err(DkgError::BadPrivateShares(bad_shares));
