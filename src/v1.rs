@@ -136,7 +136,7 @@ impl Party {
         self.private_key = Scalar::zero();
         self.group_key = Point::zero();
 
-        let threshold: usize = self.threshold.try_into().unwrap();
+        let threshold: usize = self.threshold.try_into()?;
         let mut bad_ids = Vec::new(); //: Vec<u32> = polys
         for (i, comm) in public_shares.iter() {
             if comm.poly.len() != threshold || !comm.verify() {
