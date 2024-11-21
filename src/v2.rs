@@ -395,7 +395,7 @@ impl traits::Aggregator for Aggregator {
 
     /// Initialize the Aggregator polynomial
     fn init(&mut self, comms: &HashMap<u32, PolyCommitment>) -> Result<(), AggregatorError> {
-        let threshold: usize = self.threshold.try_into().unwrap();
+        let threshold: usize = self.threshold.try_into()?;
         let mut bad_poly_commitments = Vec::new();
         for (_id, comm) in comms {
             if comm.poly.len() != threshold || !comm.verify() {
@@ -406,7 +406,7 @@ impl traits::Aggregator for Aggregator {
             return Err(AggregatorError::BadPolyCommitments(bad_poly_commitments));
         }
 
-        let mut poly = Vec::with_capacity(self.threshold.try_into().unwrap());
+        let mut poly = Vec::with_capacity(threshold);
 
         for i in 0..poly.capacity() {
             poly.push(Point::zero());

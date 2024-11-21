@@ -35,7 +35,7 @@ impl From<PointError> for DkgError {
 
 impl From<TryFromIntError> for DkgError {
     fn from(_e: TryFromIntError) -> Self {
-        DkgError::TryFromInt
+        Self::TryFromInt
     }
 }
 
@@ -60,4 +60,13 @@ pub enum AggregatorError {
     #[error("bad group sig")]
     /// The aggregate group signature failed to verify
     BadGroupSig,
+    #[error("integer conversion error")]
+    /// An error during integer conversion operations
+    TryFromInt,
+}
+
+impl From<TryFromIntError> for AggregatorError {
+    fn from(_e: TryFromIntError) -> Self {
+        Self::TryFromInt
+    }
 }
