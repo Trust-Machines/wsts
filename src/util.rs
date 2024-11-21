@@ -27,10 +27,21 @@ pub fn make_shared_secret(private_key: &Scalar, public_key: &Point) -> [u8; 32] 
 
 /// Create a shared secret from the passed Diffie-Hellman shared key
 pub fn make_shared_secret_from_key(shared_key: &Point) -> [u8; 32] {
-    let mut hasher = Sha256::new();
+    ansi_x963_derive_key(
+        shared_key.compress().as_bytes(),
+        "DH_SHARED_SECRET_KEY/".as_bytes(),
+    )
+}
 
-    hasher.update("DH_SHARED_SECRET_KEY/".as_bytes());
-    hasher.update(shared_key.compress().as_bytes());
+/// Derive a shared key using the ANSI-x963 standard
+/// https://www.secg.org/sec1-v2.pdf (section 3.6.1)
+pub fn ansi_x963_derive_key(shared_key: &[u8], shared_info: &[u8]) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    let counter = 1u32;
+
+    hasher.update(shared_key);
+    hasher.update(counter.to_be_bytes());
+    hasher.update(shared_info);
 
     let hash = hasher.finalize();
     let mut bytes = [0u8; 32];
