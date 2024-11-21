@@ -363,8 +363,15 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                 } else {
                     missing_public_shares.insert(*signer_id);
                 }
-                if let Some(_shares) = self.dkg_private_shares.get(signer_id) {
-                    // TODO: consider move private shares checks here
+                if let Some(shares) = self.dkg_private_shares.get(signer_id) {
+                    // signer_id sent shares, but make sure that it sent shares for every one of this signer's key_ids
+                    for dst_key_id in self.signer.get_key_ids() {
+                        for (_src_key_id, shares) in &shares.shares {
+                            if shares.get(&dst_key_id).is_none() {
+                                missing_private_shares.insert(*signer_id);
+                            }
+                        }
+                    }
                 } else {
                     missing_private_shares.insert(*signer_id);
                 }
