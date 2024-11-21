@@ -209,7 +209,7 @@ pub mod test_helpers {
     }
 
     /// Remove the provided key ids from the list of private shares and execute compute secrets
-    fn compute_secrets_not_enough_shares<RNG: RngCore + CryptoRng, Signer: super::Signer>(
+    fn compute_secrets_missing_private_shares<RNG: RngCore + CryptoRng, Signer: super::Signer>(
         signers: &mut [Signer],
         rng: &mut RNG,
         missing_key_ids: &[u32],
@@ -251,8 +251,8 @@ pub mod test_helpers {
     }
 
     #[allow(non_snake_case)]
-    /// Run compute secrets test to trigger NotEnoughShares code path
-    pub fn run_compute_secrets_not_enough_shares<Signer: super::Signer>() {
+    /// Run compute secrets test to trigger MissingPrivateShares code path
+    pub fn run_compute_secrets_missing_private_shares<Signer: super::Signer>() {
         let Nk: u32 = 10;
         let Np: u32 = 4;
         let T: u32 = 7;
@@ -265,11 +265,11 @@ pub mod test_helpers {
             .map(|(id, ids)| Signer::new(id.try_into().unwrap(), ids, Nk, Np, T, &mut rng))
             .collect();
 
-        match compute_secrets_not_enough_shares(&mut signers, &mut rng, &missing_key_ids) {
+        match compute_secrets_missing_private_shares(&mut signers, &mut rng, &missing_key_ids) {
             Ok(polys) => panic!("Got a result with missing public shares: {polys:?}"),
             Err(secret_errors) => {
                 for (_, error) in secret_errors {
-                    assert!(matches!(error, DkgError::NotEnoughShares(_)));
+                    assert!(matches!(error, DkgError::MissingPrivateShares(_)));
                 }
             }
         }

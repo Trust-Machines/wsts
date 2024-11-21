@@ -130,28 +130,15 @@ impl Party {
     /// Compute this party's share of the group secret key
     pub fn compute_secret(
         &mut self,
-        shares: HashMap<u32, Scalar>,
-        polys: &HashMap<u32, PolyCommitment>,
+        private_shares: HashMap<u32, Scalar>,
+        public_shares: &HashMap<u32, PolyCommitment>,
     ) -> Result<(), DkgError> {
-        if shares.len() != polys.len() {
-            return Err(DkgError::NotEnoughShares(vec![self.id]));
-        }
-        let mut missing_shares = Vec::new();
-        for i in polys.keys() {
-            if shares.get(i).is_none() {
-                missing_shares.push(*i);
-            }
-        }
-        if !missing_shares.is_empty() {
-            return Err(DkgError::MissingPublicShares(missing_shares));
-        }
-
         self.private_key = Scalar::zero();
         self.group_key = Point::zero();
 
         let threshold: usize = self.threshold.try_into().unwrap();
         let mut bad_ids = Vec::new(); //: Vec<u32> = polys
-        for (i, comm) in polys.iter() {
+        for (i, comm) in public_shares.iter() {
             if comm.poly.len() != threshold || !comm.verify() {
                 bad_ids.push(*i);
             } else {
@@ -162,17 +149,28 @@ impl Party {
             return Err(DkgError::BadPublicShares(bad_ids));
         }
 
+        let mut missing_shares = Vec::new();
+        for i in public_shares.keys() {
+            if private_shares.get(i).is_none() {
+                missing_shares.push((self.id, *i));
+            }
+        }
+        if !missing_shares.is_empty() {
+            return Err(DkgError::MissingPrivateShares(missing_shares));
+        }
+
         // let's optimize for the case where all shares are good, and test them as a batch
 
         // building a vector of scalars and points from public poly evaluations and expected values takes too much memory
         // instead make an object which implements p256k1 MultiMult trait, using the existing powers of x and shares
-        let mut check_shares = CheckPrivateShares::new(self.id(), &shares, polys.clone());
+        let mut check_shares =
+            CheckPrivateShares::new(self.id(), &private_shares, public_shares.clone());
 
         // if the batch verify fails then check them one by one and find the bad ones
         if Point::multimult_trait(&mut check_shares)? != Point::zero() {
             let mut bad_shares = Vec::new();
-            for (i, s) in shares.iter() {
-                let comm = &polys[i];
+            for (i, s) in private_shares.iter() {
+                let comm = &public_shares[i];
                 if s * G != compute::poly(&self.id(), &comm.poly)? {
                     bad_shares.push(*i);
                 }
@@ -180,7 +178,7 @@ impl Party {
             return Err(DkgError::BadPrivateShares(bad_shares));
         }
 
-        for (_i, s) in shares.iter() {
+        for (_i, s) in private_shares.iter() {
             self.private_key += s;
         }
         self.public_key = self.private_key * G;
@@ -788,7 +786,7 @@ pub mod test_helpers {
 #[cfg(test)]
 mod tests {
     use crate::traits;
-    use crate::traits::test_helpers::run_compute_secrets_not_enough_shares;
+    use crate::traits::test_helpers::run_compute_secrets_missing_private_shares;
     use crate::traits::{Aggregator, Signer};
     use crate::v1;
 
@@ -916,7 +914,7 @@ mod tests {
     #[test]
     /// Run a distributed key generation round with not enough shares
     pub fn run_compute_secrets_missing_shares() {
-        run_compute_secrets_not_enough_shares::<v1::Signer>()
+        run_compute_secrets_missing_private_shares::<v1::Signer>()
     }
 
     #[allow(non_snake_case)]
