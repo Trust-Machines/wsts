@@ -168,6 +168,9 @@ pub struct DkgPrivateBegin {
     pub signer_ids: Vec<u32>,
     /// Key IDs who responded in time for this DKG round
     pub key_ids: Vec<u32>,
+    /// Include DkgPublicShares to avoid p2p related message delivery
+    /// order issues when signers communicate directly with each other
+    pub dkg_public_shares: HashMap<u32, DkgPublicShares>,
 }
 
 impl Signable for DkgPrivateBegin {
@@ -179,6 +182,9 @@ impl Signable for DkgPrivateBegin {
         }
         for signer_id in &self.signer_ids {
             hasher.update(signer_id.to_be_bytes());
+            if let Some(shares) = self.dkg_public_shares.get(signer_id) {
+                shares.hash(hasher);
+            }
         }
     }
 }
@@ -228,6 +234,9 @@ pub struct DkgEndBegin {
     pub signer_ids: Vec<u32>,
     /// Key IDs who responded in time for this DKG round
     pub key_ids: Vec<u32>,
+    /// Include DkgPrivateShares to avoid p2p related message delivery
+    /// order issues when signers communicate directly with each other
+    pub dkg_private_shares: HashMap<u32, DkgPrivateShares>,
 }
 
 impl Signable for DkgEndBegin {
@@ -239,6 +248,9 @@ impl Signable for DkgEndBegin {
         }
         for signer_id in &self.signer_ids {
             hasher.update(signer_id.to_be_bytes());
+            if let Some(shares) = self.dkg_private_shares.get(signer_id) {
+                shares.hash(hasher);
+            }
         }
     }
 }
@@ -660,6 +672,7 @@ mod test {
             dkg_id: 0,
             key_ids: Default::default(),
             signer_ids: Default::default(),
+            dkg_public_shares: Default::default(),
         };
         let msg = Message::DkgBegin(dkg_begin.clone());
         let coordinator_packet_dkg_begin = Packet {
