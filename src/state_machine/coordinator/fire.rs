@@ -227,7 +227,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                         // that we start the next round at the correct id. (Do this rather
                         // than overwriting afterwards to ensure logging is accurate)
                         self.current_dkg_id = dkg_begin.dkg_id.wrapping_sub(1);
-                        let packet = self.start_dkg_round()?;
+                        let packet = self.start_dkg_round(dkg_begin.keep_constant)?;
                         return Ok((Some(packet), None));
                     } else if let Message::NonceRequest(nonce_request) = &packet.msg {
                         if self.current_sign_id >= nonce_request.sign_id {
@@ -248,8 +248,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                     return Ok((None, None));
                 }
                 State::DkgPublicDistribute => {
-                    let packet = self.start_public_shares()?;
-                    return Ok((Some(packet), None));
+                    return Err(Error::BadStateChange("should never be in ephemeral DkgPublicDistribute during process_message loop".to_string()));
                 }
                 State::DkgPublicGather => {
                     self.gather_public_shares(packet)?;
@@ -384,7 +383,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
     }
 
     /// Ask signers to send DKG public shares
-    pub fn start_public_shares(&mut self) -> Result<Packet, Error> {
+    pub fn start_public_shares(&mut self, keep_constant: bool) -> Result<Packet, Error> {
         self.dkg_public_shares.clear();
         self.party_polynomials.clear();
         self.dkg_wait_signer_ids = (0..self.config.num_signers).collect();
@@ -394,6 +393,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         );
         let dkg_begin = DkgBegin {
             dkg_id: self.current_dkg_id,
+            keep_constant,
         };
         let dkg_begin_packet = Packet {
             sig: dkg_begin
@@ -1221,11 +1221,11 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
     }
 
     /// Start a DKG round
-    fn start_dkg_round(&mut self) -> Result<Packet, Error> {
+    fn start_dkg_round(&mut self, keep_constant: bool) -> Result<Packet, Error> {
         self.current_dkg_id = self.current_dkg_id.wrapping_add(1);
         info!("Starting DKG round {}", self.current_dkg_id);
         self.move_to(State::DkgPublicDistribute)?;
-        self.start_public_shares()
+        self.start_public_shares(keep_constant)
     }
 
     /// Start a signing round
@@ -1345,7 +1345,7 @@ pub mod test {
 
         coordinator.state = State::DkgPublicDistribute; // Must be in this state before calling start public shares
 
-        let result = coordinator.start_public_shares().unwrap();
+        let result = coordinator.start_public_shares(false).unwrap();
 
         assert!(matches!(result.msg, Message::DkgBegin(_)));
         assert_eq!(coordinator.get_state(), State::DkgPublicGather);
@@ -1463,7 +1463,11 @@ pub mod test {
             setup::<FireCoordinator<Aggregator>, SignerType>(num_signers, keys_per_signer);
 
         // We have started a dkg round
-        let message = coordinators.first_mut().unwrap().start_dkg_round().unwrap();
+        let message = coordinators
+            .first_mut()
+            .unwrap()
+            .start_dkg_round(false)
+            .unwrap();
         assert!(coordinators.first().unwrap().aggregate_public_key.is_none());
         assert_eq!(coordinators.first().unwrap().state, State::DkgPublicGather);
 
@@ -1514,6 +1518,88 @@ pub mod test {
     }
 
     #[test]
+    fn all_signers_dkg_keep_constant_v1() {
+        all_signers_dkg_keep_constant::<v1::Aggregator, v1::Signer>(5, 2);
+    }
+
+    #[test]
+    fn all_signers_dkg_keep_constant_v2() {
+        all_signers_dkg_keep_constant::<v2::Aggregator, v2::Signer>(5, 2);
+    }
+
+    fn all_signers_dkg_keep_constant<Aggregator: AggregatorTrait, SignerType: SignerTrait>(
+        num_signers: u32,
+        keys_per_signer: u32,
+    ) {
+        let (mut coordinators, mut signers) =
+            setup::<FireCoordinator<Aggregator>, SignerType>(num_signers, keys_per_signer);
+
+        let key0 = all_signers_rerun_dkg(&mut coordinators, &mut signers, false);
+        let key1 = all_signers_rerun_dkg(&mut coordinators, &mut signers, false);
+        let key2 = all_signers_rerun_dkg(&mut coordinators, &mut signers, true);
+
+        assert!(key0 != key1);
+        assert_eq!(key1, key2);
+    }
+
+    fn all_signers_rerun_dkg<Aggregator: AggregatorTrait, SignerType: SignerTrait>(
+        coordinators: &mut Vec<FireCoordinator<Aggregator>>,
+        signers: &mut Vec<Signer<SignerType>>,
+        keep_constant: bool,
+    ) -> Point {
+        // We have started a dkg round
+        let message = coordinators
+            .first_mut()
+            .unwrap()
+            .start_dkg_round(keep_constant)
+            .unwrap();
+        assert_eq!(coordinators.first().unwrap().state, State::DkgPublicGather);
+
+        // Send the DKG Begin message to all signers and gather responses by sharing with all other signers and coordinators
+        let (outbound_messages, operation_results) =
+            feedback_messages(coordinators, signers, &[message]);
+        assert!(operation_results.is_empty());
+
+        // Successfully got an Aggregate Public Key...
+        assert_eq!(outbound_messages.len(), 1);
+        match &outbound_messages[0].msg {
+            Message::DkgPrivateBegin(_) => {}
+            _ => {
+                panic!("Expected DkgPrivateBegin message");
+            }
+        }
+        // Send the DKG Private Begin message to all signers and share their responses with the coordinators and signers
+        let (outbound_messages, operation_results) =
+            feedback_messages(coordinators, signers, &outbound_messages);
+        assert_eq!(operation_results.len(), 0);
+        assert_eq!(outbound_messages.len(), 1);
+        match &outbound_messages[0].msg {
+            Message::DkgEndBegin(_) => {}
+            _ => {
+                panic!("Expected DkgEndBegin message");
+            }
+        }
+
+        // Send the DkgEndBegin message to all signers and share their responses with the coordinators and signers
+        let (outbound_messages, operation_results) =
+            feedback_messages(coordinators, signers, &outbound_messages);
+        assert_eq!(outbound_messages.len(), 0);
+        assert_eq!(operation_results.len(), 1);
+        match operation_results[0] {
+            OperationResult::Dkg(point) => {
+                assert_ne!(point, Point::default());
+                for coordinator in coordinators.iter() {
+                    assert_eq!(coordinator.get_aggregate_public_key(), Some(point));
+                    assert_eq!(coordinator.get_state(), State::Idle);
+                }
+            }
+            _ => panic!("Expected Dkg Operation result"),
+        }
+
+        coordinators[0].get_aggregate_public_key().unwrap()
+    }
+
+    #[test]
     fn missing_public_keys_dkg_v1() {
         missing_public_keys_dkg::<v1::Aggregator, v1::Signer>(10, 1);
     }
@@ -1541,7 +1627,11 @@ pub mod test {
             );
 
         // Start a DKG round where we will not allow all signers to recv DkgBegin, so they will not respond with DkgPublicShares
-        let message = coordinators.first_mut().unwrap().start_dkg_round().unwrap();
+        let message = coordinators
+            .first_mut()
+            .unwrap()
+            .start_dkg_round(false)
+            .unwrap();
         assert!(coordinators.first().unwrap().aggregate_public_key.is_none());
         assert_eq!(coordinators.first().unwrap().state, State::DkgPublicGather);
 
@@ -1622,7 +1712,11 @@ pub mod test {
             );
 
         // Start a DKG round where we will not allow all signers to recv DkgBegin, so they will not respond with DkgPublicShares
-        let message = coordinators.first_mut().unwrap().start_dkg_round().unwrap();
+        let message = coordinators
+            .first_mut()
+            .unwrap()
+            .start_dkg_round(false)
+            .unwrap();
         assert!(coordinators.first().unwrap().aggregate_public_key.is_none());
         assert_eq!(coordinators.first().unwrap().state, State::DkgPublicGather);
 
@@ -1775,7 +1869,11 @@ pub mod test {
         );
 
         // Start a DKG round where we will not allow all signers to recv DkgBegin, so they will not respond with DkgPublicShares
-        let message = coordinators.first_mut().unwrap().start_dkg_round().unwrap();
+        let message = coordinators
+            .first_mut()
+            .unwrap()
+            .start_dkg_round(false)
+            .unwrap();
         assert!(coordinators.first().unwrap().aggregate_public_key.is_none());
         assert_eq!(coordinators.first().unwrap().state, State::DkgPublicGather);
 
@@ -1911,7 +2009,11 @@ pub mod test {
             setup::<FireCoordinator<Aggregator>, SignerType>(num_signers, keys_per_signer);
 
         // We have started a dkg round
-        let message = coordinators.first_mut().unwrap().start_dkg_round().unwrap();
+        let message = coordinators
+            .first_mut()
+            .unwrap()
+            .start_dkg_round(false)
+            .unwrap();
         assert!(coordinators.first().unwrap().aggregate_public_key.is_none());
         assert_eq!(coordinators.first().unwrap().state, State::DkgPublicGather);
 
@@ -2033,7 +2135,11 @@ pub mod test {
             setup::<FireCoordinator<Aggregator>, SignerType>(num_signers, keys_per_signer);
 
         // We have started a dkg round
-        let message = coordinators.first_mut().unwrap().start_dkg_round().unwrap();
+        let message = coordinators
+            .first_mut()
+            .unwrap()
+            .start_dkg_round(false)
+            .unwrap();
         assert!(coordinators.first().unwrap().aggregate_public_key.is_none());
         assert_eq!(coordinators.first().unwrap().state, State::DkgPublicGather);
 
@@ -2395,7 +2501,11 @@ pub mod test {
         let config = coordinators.first().unwrap().get_config();
 
         // We have started a dkg round
-        let message = coordinators.first_mut().unwrap().start_dkg_round().unwrap();
+        let message = coordinators
+            .first_mut()
+            .unwrap()
+            .start_dkg_round(false)
+            .unwrap();
         assert!(coordinators.first().unwrap().aggregate_public_key.is_none());
         assert_eq!(coordinators.first().unwrap().state, State::DkgPublicGather);
 
@@ -2746,7 +2856,10 @@ pub mod test {
             let (packets, results) = coordinator
                 .process_inbound_messages(&[Packet {
                     sig: vec![],
-                    msg: Message::DkgBegin(DkgBegin { dkg_id: old_id }),
+                    msg: Message::DkgBegin(DkgBegin {
+                        dkg_id: old_id,
+                        keep_constant: false,
+                    }),
                 }])
                 .unwrap();
             assert!(packets.is_empty());
@@ -2758,7 +2871,10 @@ pub mod test {
             let (packets, results) = coordinator
                 .process_inbound_messages(&[Packet {
                     sig: vec![],
-                    msg: Message::DkgBegin(DkgBegin { dkg_id: id }),
+                    msg: Message::DkgBegin(DkgBegin {
+                        dkg_id: id,
+                        keep_constant: false,
+                    }),
                 }])
                 .unwrap();
             assert!(packets.is_empty());

@@ -125,12 +125,16 @@ impl Signable for Message {
 pub struct DkgBegin {
     /// DKG round ID
     pub dkg_id: u64,
+    /// Keep the constant factor so DKG will produce the same key
+    pub keep_constant: bool,
 }
 
 impl Signable for DkgBegin {
     fn hash(&self, hasher: &mut Sha256) {
+        let keep_constant = if self.keep_constant { [1u8] } else { [0u8] };
         hasher.update("DKG_BEGIN".as_bytes());
         hasher.update(self.dkg_id.to_be_bytes());
+        hasher.update(keep_constant);
     }
 }
 
@@ -645,7 +649,10 @@ mod test {
     #[test]
     fn dkg_begin_verify_msg() {
         let test_config = TestConfig::default();
-        let dkg_begin = DkgBegin { dkg_id: 0 };
+        let dkg_begin = DkgBegin {
+            dkg_id: 0,
+            keep_constant: false,
+        };
         let dkg_private_begin = DkgPrivateBegin {
             dkg_id: 0,
             key_ids: Default::default(),

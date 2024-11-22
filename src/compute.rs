@@ -178,3 +178,30 @@ pub fn merkle_root(data: &[u8]) -> [u8; 32] {
 
     hasher.finalize().into()
 }
+
+#[cfg(test)]
+pub mod test {
+    use rand_core::OsRng;
+
+    use crate::{
+        common::Polynomial,
+        compute,
+        curve::{point::G, scalar::Scalar},
+    };
+
+    #[test]
+    #[allow(non_snake_case)]
+    fn poly() {
+        let mut rng = OsRng;
+        let n = 16u32;
+
+        let private_poly = Polynomial::<Scalar, Scalar>::random(n - 1, &mut rng);
+        let public_poly = &private_poly * G;
+
+        let x = Scalar::from(8);
+        let a = private_poly.eval(x);
+        let b = compute::poly(&x, &public_poly.params);
+
+        assert_eq!(a * G, b.unwrap());
+    }
+}

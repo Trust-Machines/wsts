@@ -280,7 +280,7 @@ pub trait Coordinator: Clone + Debug + PartialEq {
     fn get_state(&self) -> State;
 
     /// Trigger a DKG round
-    fn start_dkg_round(&mut self) -> Result<Packet, Error>;
+    fn start_dkg_round(&mut self, keep_constant: bool) -> Result<Packet, Error>;
 
     /// Trigger a signing round
     fn start_signing_round(
@@ -417,7 +417,7 @@ pub mod test {
         let mut rng = OsRng;
         let config = Config::new(10, 40, 28, Scalar::random(&mut rng));
         let mut coordinator = Coordinator::new(config);
-        let result = coordinator.start_dkg_round();
+        let result = coordinator.start_dkg_round(false);
 
         assert!(result.is_ok());
         if let Message::DkgBegin(dkg_begin) = result.unwrap().msg {
@@ -595,7 +595,11 @@ pub mod test {
             setup::<Coordinator, SignerType>(num_signers, keys_per_signer);
 
         // We have started a dkg round
-        let message = coordinators.first_mut().unwrap().start_dkg_round().unwrap();
+        let message = coordinators
+            .first_mut()
+            .unwrap()
+            .start_dkg_round(false)
+            .unwrap();
         assert!(coordinators
             .first_mut()
             .unwrap()

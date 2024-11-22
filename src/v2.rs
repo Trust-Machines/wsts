@@ -1,11 +1,10 @@
 use hashbrown::HashMap;
 use num_traits::{One, Zero};
-use polynomial::Polynomial;
 use rand_core::{CryptoRng, RngCore};
 use tracing::warn;
 
 use crate::{
-    common::{Nonce, PolyCommitment, PublicNonce, Signature, SignatureShare},
+    common::{Nonce, PolyCommitment, Polynomial, PublicNonce, Signature, SignatureShare},
     compute,
     curve::{
         point::{Point, G},
@@ -29,7 +28,7 @@ pub struct Party {
     num_keys: u32,
     num_parties: u32,
     threshold: u32,
-    f: Option<Polynomial<Scalar>>,
+    f: Option<Polynomial<Scalar, Scalar>>,
     private_keys: HashMap<u32, Scalar>,
     group_key: Point,
     nonce: Nonce,
@@ -72,10 +71,8 @@ impl Party {
     ) -> Option<PolyCommitment> {
         if let Some(poly) = &self.f {
             Some(PolyCommitment {
-                id: ID::new(&self.id(), &poly.data()[0], rng),
-                poly: (0..poly.data().len())
-                    .map(|i| &poly.data()[i] * G)
-                    .collect(),
+                id: ID::new(&self.id(), &poly[0], rng),
+                poly: (poly * G).params,
             })
         } else {
             warn!("get_poly_commitment called with no polynomial");
@@ -554,8 +551,22 @@ impl traits::Signer for Party {
         }
     }
 
-    fn reset_polys<RNG: RngCore + CryptoRng>(&mut self, rng: &mut RNG) {
-        self.f = Some(VSS::random_poly(self.threshold - 1, rng));
+    fn reset_polys<RNG: RngCore + CryptoRng>(&mut self, keep_constant: bool, rng: &mut RNG) {
+        let constant = if let Some(poly) = &self.f {
+            if keep_constant {
+                Some(poly[0])
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        if let Some(c) = constant {
+            self.f = Some(VSS::random_poly_with_constant(self.threshold - 1, c, rng));
+        } else {
+            self.f = Some(VSS::random_poly(self.threshold - 1, rng));
+        }
     }
 
     fn clear_polys(&mut self) {
@@ -817,5 +828,10 @@ mod tests {
         let lt = |t| t - 1;
         traits::test_helpers::bad_polynomial_length::<v2::Signer, v2::Aggregator, _>(gt);
         traits::test_helpers::bad_polynomial_length::<v2::Signer, v2::Aggregator, _>(lt);
+    }
+
+    #[test]
+    fn reset_polys() {
+        traits::test_helpers::reset_polys::<v2::Signer>();
     }
 }
