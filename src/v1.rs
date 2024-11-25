@@ -181,9 +181,7 @@ impl Party {
             return Err(DkgError::BadPrivateShares(bad_shares));
         }
 
-        for (_i, s) in private_shares.iter() {
-            self.private_key += s;
-        }
+        self.private_key = private_shares.values().fold(Scalar::zero(), |a, s| a + s);
         self.public_key = self.private_key * G;
 
         Ok(())

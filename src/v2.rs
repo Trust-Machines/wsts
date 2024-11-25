@@ -168,10 +168,8 @@ impl Party {
         for key_id in &self.key_ids {
             self.private_keys.insert(*key_id, Scalar::zero());
             if let Some(shares) = private_shares.get(key_id) {
-                for (_sender, s) in shares {
-                    self.private_keys
-                        .insert(*key_id, self.private_keys[key_id] + s);
-                }
+                let secret = shares.values().fold(Scalar::zero(), |acc, s| acc + s);
+                self.private_keys.insert(*key_id, secret);
             } else {
                 warn!(
                     "no private shares for key_id {}, even though we checked for it above",
