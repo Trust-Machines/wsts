@@ -168,7 +168,7 @@ impl Party {
         for key_id in &self.key_ids {
             self.private_keys.insert(*key_id, Scalar::zero());
             if let Some(shares) = private_shares.get(key_id) {
-                let secret = shares.values().fold(Scalar::zero(), |acc, s| acc + s);
+                let secret = shares.values().sum();
                 self.private_keys.insert(*key_id, secret);
             } else {
                 warn!(

@@ -11,7 +11,7 @@ use crate::{
     taproot::SchnorrProof,
 };
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 /// The saved state required to reconstruct a party
 pub struct PartyState {
     /// The party's private polynomial
@@ -22,7 +22,7 @@ pub struct PartyState {
     pub nonce: Nonce,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 /// The saved state required to reconstruct a signer
 pub struct SignerState {
     /// The signer ID
