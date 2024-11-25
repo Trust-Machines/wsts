@@ -860,7 +860,7 @@ mod tests {
         assert_eq!(signer.get_poly_commitments(&mut rng).len(), key_ids.len());
         assert_eq!(signer.get_shares().len(), key_ids.len());
         for (_id, shares) in signer.get_shares() {
-            assert_eq!(shares.len(), n.try_into().unwrap());
+            assert_eq!(shares.len(), usize::try_from(n).unwrap());
         }
 
         signer.clear_polys();

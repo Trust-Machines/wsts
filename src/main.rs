@@ -1,4 +1,4 @@
-use rand_core::OsRng;
+use rand_core::{RngCore, CryptoRng, OsRng};
 use std::{env, time};
 
 use wsts::{common::test_helpers::gen_signer_ids, traits::Aggregator, v1, v2};
@@ -22,7 +22,7 @@ fn main() {
         4
     };
 
-    let mut rng = OsRng;
+    let mut rng = create_rng();
     let msg = "It was many and many a year ago".as_bytes();
 
     println!("With N={N} T={T} K={K}:");
@@ -98,4 +98,8 @@ fn main() {
         );
         println!("v2 group sign time {}ms", group_sign_time.as_millis());
     }
+}
+
+fn create_rng() -> impl RngCore + CryptoRng {
+    OsRng
 }

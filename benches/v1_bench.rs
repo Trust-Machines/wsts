@@ -4,7 +4,7 @@ use wsts::v1;
 use wsts::v1::test_helpers::{dkg, sign};
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use rand_core::OsRng;
+use rand_core::{RngCore, CryptoRng, OsRng};
 
 const N: u32 = 20;
 const T: u32 = 13;

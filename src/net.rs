@@ -602,46 +602,54 @@ impl Packet {
 }
 
 #[cfg(test)]
-
 mod test {
-    use crate::{schnorr::ID, state_machine::PublicKeys};
-    use hashbrown::HashMap;
-    use p256k1::{ecdsa, scalar::Scalar};
-    use rand_core::OsRng;
-
     use super::*;
+    use crate::schnorr::ID;
+    use rand_core::{CryptoRng, RngCore, OsRng};
 
-    /// Test config for verifying messages
+    #[derive(Clone, Debug)]
     pub struct TestConfig {
-        coordinator_private_key: Scalar,
-        coordinator_public_key: ecdsa::PublicKey,
-        signer_private_key: Scalar,
-        public_keys: PublicKeys,
+        pub coordinator_private_key: Scalar,
+        pub coordinator_public_key: ecdsa::PublicKey,
+        pub signer_private_key: Scalar,
+        pub signer_public_key: ecdsa::PublicKey,
+        pub public_keys: PublicKeys,
+    }
+
+    impl TestConfig {
+        pub fn new<RNG: RngCore + CryptoRng>(rng: &mut RNG) -> Self {
+            let coordinator_private_key = Scalar::random(rng);
+            let coordinator_public_key = ecdsa::PublicKey::new(&coordinator_private_key).unwrap();
+            let signer_private_key = Scalar::random(rng);
+            let signer_public_key = ecdsa::PublicKey::new(&signer_private_key).unwrap();
+            
+            let mut signer_ids_map = HashMap::new();
+            let mut key_ids_map = HashMap::new();
+            signer_ids_map.insert(0, signer_public_key);
+            key_ids_map.insert(1, signer_public_key);
+            
+            let public_keys = PublicKeys {
+                signers: signer_ids_map,
+                key_ids: key_ids_map,
+            };
+
+            Self {
+                coordinator_private_key,
+                coordinator_public_key,
+                signer_private_key,
+                signer_public_key,
+                public_keys,
+            }
+        }
     }
 
     impl Default for TestConfig {
         fn default() -> Self {
             let mut rng = OsRng;
-            let signer_private_key = Scalar::random(&mut rng);
-            let signer_public_key = ecdsa::PublicKey::new(&signer_private_key).unwrap();
-            let mut signer_ids_map = HashMap::new();
-            let mut key_ids_map = HashMap::new();
-            signer_ids_map.insert(0, signer_public_key);
-            key_ids_map.insert(1, signer_public_key);
-            let public_keys = PublicKeys {
-                signers: signer_ids_map,
-                key_ids: key_ids_map,
-            };
-            let coordinator_private_key = Scalar::random(&mut rng);
-            let coordinator_public_key = ecdsa::PublicKey::new(&coordinator_private_key).unwrap();
-            Self {
-                coordinator_private_key,
-                coordinator_public_key,
-                signer_private_key,
-                public_keys,
-            }
+            Self::new(&mut rng)
         }
     }
+    
     #[test]
     fn dkg_begin_verify_msg() {
         let test_config = TestConfig::default();
