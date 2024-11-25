@@ -608,6 +608,7 @@ mod test {
     use rand_core::{CryptoRng, RngCore, OsRng};
 
     #[derive(Clone, Debug)]
+    #[allow(dead_code)]
     pub struct TestConfig {
         pub coordinator_private_key: Scalar,
         pub coordinator_public_key: ecdsa::PublicKey,
