@@ -1,3 +1,4 @@
+use core::num::TryFromIntError;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -9,21 +10,21 @@ pub enum DkgError {
     #[error("missing public shares from {0:?}")]
     /// The public shares which were missing
     MissingPublicShares(Vec<u32>),
-    #[error("missing private shares from {0:?}")]
+    #[error("missing private shares for/from {0:?}")]
     /// The private shares which were missing
-    MissingPrivateShares(Vec<u32>),
+    MissingPrivateShares(Vec<(u32, u32)>),
     #[error("bad public shares {0:?}")]
     /// The public shares that failed to verify or were the wrong size
     BadPublicShares(Vec<u32>),
-    #[error("not enough shares {0:?}")]
-    /// Not enough shares to complete DKG
-    NotEnoughShares(Vec<u32>),
     #[error("bad private shares {0:?}")]
     /// The private shares which failed to verify
     BadPrivateShares(Vec<u32>),
     #[error("point error {0:?}")]
     /// An error during point operations
     Point(PointError),
+    #[error("integer conversion error")]
+    /// An error during integer conversion operations
+    TryFromInt,
 }
 
 impl From<PointError> for DkgError {
@@ -32,12 +33,15 @@ impl From<PointError> for DkgError {
     }
 }
 
+impl From<TryFromIntError> for DkgError {
+    fn from(_e: TryFromIntError) -> Self {
+        Self::TryFromInt
+    }
+}
+
 #[derive(Error, Debug, Clone, Serialize, Deserialize, PartialEq)]
 /// Errors which can happen during signature aggregation
 pub enum AggregatorError {
-    #[error("bad poly commitment length (expected {0} got {1})")]
-    /// The number of polynomial commitments was wrong (no longer used)
-    BadPolyCommitmentLen(usize, usize),
     #[error("bad poly commitments {0:?}")]
     /// The polynomial commitments which failed verification or were the wrong size
     BadPolyCommitments(Vec<Scalar>),
@@ -53,4 +57,13 @@ pub enum AggregatorError {
     #[error("bad group sig")]
     /// The aggregate group signature failed to verify
     BadGroupSig,
+    #[error("integer conversion error")]
+    /// An error during integer conversion operations
+    TryFromInt,
+}
+
+impl From<TryFromIntError> for AggregatorError {
+    fn from(_e: TryFromIntError) -> Self {
+        Self::TryFromInt
+    }
 }

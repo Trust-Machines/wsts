@@ -96,28 +96,23 @@ impl Party {
         shares
     }
 
-    /// Compute this party's share of the group secret key
+    /// Compute this party's share of the group secret key, but first check that the data is valid
+    /// and consistent.  This raises an issue though: what if we have private_shares and
+    /// public_shares from different parties?
+    /// To resolve the ambiguity, assume that the public_shares represent the correct group of
+    /// parties.  
     pub fn compute_secret(
         &mut self,
-        shares: &HashMap<u32, HashMap<u32, Scalar>>,
-        comms: &HashMap<u32, PolyCommitment>,
+        private_shares: &HashMap<u32, HashMap<u32, Scalar>>,
+        public_shares: &HashMap<u32, PolyCommitment>,
     ) -> Result<(), DkgError> {
-        let mut missing_shares = Vec::new();
-        for key_id in &self.key_ids {
-            if shares.get(key_id).is_none() {
-                missing_shares.push(*key_id);
-            }
-        }
-        if !missing_shares.is_empty() {
-            return Err(DkgError::MissingPublicShares(missing_shares));
-        }
-
         self.private_keys.clear();
         self.group_key = Point::zero();
 
-        let threshold: usize = self.threshold.try_into().unwrap();
+        let threshold: usize = self.threshold.try_into()?;
+
         let mut bad_ids = Vec::new();
-        for (i, comm) in comms.iter() {
+        for (i, comm) in public_shares.iter() {
             if comm.poly.len() != threshold || !comm.verify() {
                 bad_ids.push(*i);
             } else {
@@ -128,29 +123,42 @@ impl Party {
             return Err(DkgError::BadPublicShares(bad_ids));
         }
 
-        let mut not_enough_shares = Vec::new();
-        for key_id in &self.key_ids {
-            if shares[key_id].len() != comms.len() {
-                warn!(
-                    "key_id {} has {} private shares not {}",
-                    key_id,
-                    shares[key_id].len(),
-                    comms.len()
-                );
-                not_enough_shares.push(*key_id);
+        let mut missing_shares = Vec::new();
+        for dst_key_id in &self.key_ids {
+            for src_key_id in public_shares.keys() {
+                match private_shares.get(dst_key_id) {
+                    Some(shares) => {
+                        if shares.get(src_key_id).is_none() {
+                            missing_shares.push((*dst_key_id, *src_key_id));
+                        }
+                    }
+                    None => {
+                        missing_shares.push((*dst_key_id, *src_key_id));
+                    }
+                }
             }
         }
-        if !not_enough_shares.is_empty() {
-            return Err(DkgError::NotEnoughShares(not_enough_shares));
+        if !missing_shares.is_empty() {
+            return Err(DkgError::MissingPrivateShares(missing_shares));
         }
 
         let mut bad_shares = Vec::new();
         for key_id in &self.key_ids {
-            for (sender, s) in &shares[key_id] {
-                let comm = &comms[sender];
-                if s * G != compute::poly(&compute::id(*key_id), &comm.poly)? {
-                    bad_shares.push(*sender);
+            if let Some(shares) = private_shares.get(key_id) {
+                for (sender, s) in shares {
+                    if let Some(comm) = public_shares.get(sender) {
+                        if s * G != compute::poly(&compute::id(*key_id), &comm.poly)? {
+                            bad_shares.push(*sender);
+                        }
+                    } else {
+                        warn!("unable to check private share from {}: no corresponding public share, even though we checked for it above", sender);
+                    }
                 }
+            } else {
+                warn!(
+                    "no private shares for key_id {}, even though we checked for it above",
+                    key_id
+                );
             }
         }
         if !bad_shares.is_empty() {
@@ -159,10 +167,14 @@ impl Party {
 
         for key_id in &self.key_ids {
             self.private_keys.insert(*key_id, Scalar::zero());
-
-            for (_sender, s) in &shares[key_id] {
-                self.private_keys
-                    .insert(*key_id, self.private_keys[key_id] + s);
+            if let Some(shares) = private_shares.get(key_id) {
+                let secret = shares.values().sum();
+                self.private_keys.insert(*key_id, secret);
+            } else {
+                warn!(
+                    "no private shares for key_id {}, even though we checked for it above",
+                    key_id
+                );
             }
         }
 
@@ -397,7 +409,7 @@ impl traits::Aggregator for Aggregator {
 
     /// Initialize the Aggregator polynomial
     fn init(&mut self, comms: &HashMap<u32, PolyCommitment>) -> Result<(), AggregatorError> {
-        let threshold: usize = self.threshold.try_into().unwrap();
+        let threshold: usize = self.threshold.try_into()?;
         let mut bad_poly_commitments = Vec::new();
         for (_id, comm) in comms {
             if comm.poly.len() != threshold || !comm.verify() {
@@ -408,7 +420,7 @@ impl traits::Aggregator for Aggregator {
             return Err(AggregatorError::BadPolyCommitments(bad_poly_commitments));
         }
 
-        let mut poly = Vec::with_capacity(self.threshold.try_into().unwrap());
+        let mut poly = Vec::with_capacity(threshold);
 
         for i in 0..poly.capacity() {
             poly.push(Point::zero());
@@ -722,7 +734,9 @@ pub mod test_helpers {
 #[cfg(test)]
 mod tests {
     use crate::{
-        traits::{self, test_helpers::run_compute_secrets_not_enough_shares, Aggregator, Signer},
+        traits::{
+            self, test_helpers::run_compute_secrets_missing_private_shares, Aggregator, Signer,
+        },
         v2,
     };
 
@@ -807,7 +821,7 @@ mod tests {
     #[test]
     /// Run a distributed key generation round with not enough shares
     pub fn run_compute_secrets_missing_shares() {
-        run_compute_secrets_not_enough_shares::<v2::Signer>()
+        run_compute_secrets_missing_private_shares::<v2::Signer>()
     }
 
     #[test]
