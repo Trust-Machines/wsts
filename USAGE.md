@@ -18,7 +18,6 @@ You can use the following RNG implementations:
   
   ```rust
   use rand_chacha::ChaCha20Rng;
-  use rand_core::SeedableRng;
 
   let mut rng = ChaCha20Rng::from_entropy();
   ```
@@ -30,7 +29,7 @@ You can use the following RNG implementations:
 ### Example Usage
 
 ```rust
-use rand_core::{RngCore, CryptoRng, OsRng};
+use rand_core::OsRng;
 use wsts::v1::Signer;
 
 // Initialize your RNG
