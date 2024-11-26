@@ -1,7 +1,6 @@
-use rand_core::{RngCore, CryptoRng, OsRng};
 use std::{env, time};
 
-use wsts::{common::test_helpers::gen_signer_ids, traits::Aggregator, v1, v2};
+use wsts::{common::test_helpers::gen_signer_ids, traits::Aggregator, v1, v2, util::create_rng};
 
 #[allow(non_snake_case)]
 fn main() {
@@ -98,8 +97,4 @@ fn main() {
         );
         println!("v2 group sign time {}ms", group_sign_time.as_millis());
     }
-}
-
-fn create_rng() -> impl RngCore + CryptoRng {
-    OsRng
 }

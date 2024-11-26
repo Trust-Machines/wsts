@@ -148,13 +148,13 @@ pub mod test_helpers {
 mod test {
     use super::{test_helpers, Point, Scalar, SchnorrProof, G};
 
-    use crate::{compute, traits::Aggregator, traits::Signer, v1, v2};
-    use rand_core::OsRng;
+    use crate::{compute, traits::Aggregator, traits::Signer, v1, v2, util::create_rng};
+    
 
     #[test]
     #[allow(non_snake_case)]
     fn key_tweaks() {
-        let mut rng = OsRng;
+        let mut rng = create_rng();
         let r = Scalar::random(&mut rng);
         let R = r * G;
         let rp = if R.has_even_y() { r } else { -r };
@@ -296,7 +296,7 @@ mod test {
 
     #[allow(non_snake_case)]
     fn taproot_sign_verify_v1(merkle_root: Option<[u8; 32]>) {
-        let mut rng = OsRng;
+        let mut rng = create_rng();
 
         // First create and verify a frost signature
         let msg = "It was many and many a year ago".as_bytes();
@@ -368,7 +368,7 @@ mod test {
 
     #[allow(non_snake_case)]
     fn taproot_sign_verify_v2(merkle_root: Option<[u8; 32]>) {
-        let mut rng = OsRng;
+        let mut rng = create_rng();
 
         // First create and verify a frost signature
         let msg = "It was many and many a year ago".as_bytes();

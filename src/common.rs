@@ -321,17 +321,13 @@ pub mod test_helpers {
 
 #[cfg(test)]
 pub mod test {
-    use rand_core::OsRng;
-
-    use crate::{
-        common::TupleProof,
-        curve::{point::Point, scalar::Scalar},
-    };
+    use super::*;
+    use crate::util::create_rng;
 
     #[test]
     #[allow(non_snake_case)]
     fn tuple_proof() {
-        let mut rng = OsRng;
+        let mut rng = create_rng();
         let a = Scalar::random(&mut rng);
         let b = Scalar::random(&mut rng);
         let c = Scalar::random(&mut rng);

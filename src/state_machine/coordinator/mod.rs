@@ -302,7 +302,6 @@ pub mod fire;
 #[allow(missing_docs)]
 pub mod test {
     use hashbrown::{HashMap, HashSet};
-    use rand_core::OsRng;
     use std::{
         sync::atomic::{AtomicBool, Ordering},
         time::Duration,
@@ -321,12 +320,13 @@ pub mod test {
             OperationResult, PublicKeys, SignError, StateMachine,
         },
         traits::Signer as SignerTrait,
+        util::create_rng,
     };
 
     static mut LOG_INIT: AtomicBool = AtomicBool::new(false);
 
     pub fn new_coordinator<Coordinator: CoordinatorTrait>() {
-        let mut rng = OsRng;
+        let mut rng = create_rng();
         let config = Config::new(10, 40, 28, Scalar::random(&mut rng));
         let coordinator = Coordinator::new(config.clone());
 
@@ -341,7 +341,7 @@ pub mod test {
     }
 
     pub fn coordinator_state_machine<Coordinator: CoordinatorTrait + StateMachine<State, Error>>() {
-        let mut rng = OsRng;
+        let mut rng = create_rng();
         let config = Config::new(3, 3, 3, Scalar::random(&mut rng));
         let mut coordinator = Coordinator::new(config);
         assert!(coordinator.can_move_to(&State::DkgPublicDistribute).is_ok());
@@ -414,7 +414,7 @@ pub mod test {
     }
 
     pub fn start_dkg_round<Coordinator: CoordinatorTrait>() {
-        let mut rng = OsRng;
+        let mut rng = create_rng();
         let config = Config::new(10, 40, 28, Scalar::random(&mut rng));
         let mut coordinator = Coordinator::new(config);
         let result = coordinator.start_dkg_round();
@@ -463,7 +463,7 @@ pub mod test {
             }
         }
 
-        let mut rng = OsRng;
+        let mut rng = create_rng();
         let num_keys = num_signers * keys_per_signer;
         let threshold = (num_keys * 7) / 10;
         let dkg_threshold = (num_keys * 9) / 10;

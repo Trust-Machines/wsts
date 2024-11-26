@@ -1,6 +1,6 @@
 use aes_gcm::Error as AesGcmError;
 use hashbrown::{HashMap, HashSet};
-use rand_core::{CryptoRng, OsRng, RngCore};
+use rand_core::{CryptoRng, RngCore};
 use std::collections::BTreeMap;
 use tracing::{debug, info, trace, warn};
 
@@ -18,7 +18,7 @@ use crate::{
     },
     state_machine::{PublicKeys, StateMachine},
     traits::{Signer as SignerTrait, SignerState as SignerSavedState},
-    util::{decrypt, encrypt, make_shared_secret},
+    util::{decrypt, encrypt, make_shared_secret, create_rng},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -180,7 +180,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         public_keys: PublicKeys,
     ) -> Self {
         assert!(threshold <= total_keys);
-        let mut rng = OsRng;
+        let mut rng = create_rng();
         let signer = SignerType::new(
             signer_id,
             &key_ids,
@@ -513,7 +513,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
     }
 
     fn nonce_request(&mut self, nonce_request: &NonceRequest) -> Result<Vec<Message>, Error> {
-        let mut rng = OsRng;
+        let mut rng = create_rng();
         let mut msgs = vec![];
         let signer_id = self.signer_id;
         let key_ids = self.signer.get_key_ids();
@@ -610,7 +610,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
     }
 
     fn dkg_begin(&mut self, dkg_begin: &DkgBegin) -> Result<Vec<Message>, Error> {
-        let mut rng = OsRng;
+        let mut rng = create_rng();
 
         self.reset(dkg_begin.dkg_id, &mut rng);
         self.move_to(State::DkgPublicDistribute)?;
@@ -621,7 +621,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
     }
 
     fn dkg_public_begin(&mut self) -> Result<Vec<Message>, Error> {
-        let mut rng = OsRng;
+        let mut rng = create_rng();
         let mut msgs = vec![];
         let comms = self.signer.get_poly_commitments(&mut rng);
 
@@ -654,7 +654,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         &mut self,
         dkg_private_begin: &DkgPrivateBegin,
     ) -> Result<Vec<Message>, Error> {
-        let mut rng = OsRng;
+        let mut rng = create_rng();
         let mut msgs = vec![];
         let mut private_shares = DkgPrivateShares {
             dkg_id: self.dkg_id,
@@ -804,7 +804,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
 
     #[allow(non_snake_case)]
     fn make_bad_private_share(&self, signer_id: u32) -> BadPrivateShare {
-        let mut rng = OsRng;
+        let mut rng = create_rng();
         let a = self.network_private_key;
         let A = a * G;
         let B = Point::try_from(&Compressed::from(
@@ -856,8 +856,6 @@ impl<SignerType: SignerTrait> StateMachine<State, Error> for Signer<SignerType> 
 
 #[cfg(test)]
 pub mod test {
-    use rand_core::OsRng;
-
     use crate::{
         common::PolyCommitment,
         curve::{ecdsa, scalar::Scalar},
@@ -869,6 +867,7 @@ pub mod test {
         },
         traits::Signer as SignerTrait,
         v1, v2,
+        util::create_rng,
     };
 
     #[test]
@@ -882,7 +881,7 @@ pub mod test {
     }
 
     fn dkg_public_share<SignerType: SignerTrait>() {
-        let mut rnd = OsRng;
+        let mut rng = create_rng();
         let mut signer =
             Signer::<SignerType>::new(1, 1, 1, 1, vec![1], Default::default(), Default::default());
         let public_share = DkgPublicShares {
@@ -891,7 +890,7 @@ pub mod test {
             comms: vec![(
                 0,
                 PolyCommitment {
-                    id: ID::new(&Scalar::new(), &Scalar::new(), &mut rnd),
+                    id: ID::new(&Scalar::new(), &Scalar::new(), &mut rng),
                     poly: vec![],
                 },
             )],
@@ -911,7 +910,7 @@ pub mod test {
     }
 
     fn public_shares_done<SignerType: SignerTrait>() {
-        let mut rnd = OsRng;
+        let mut rng = create_rng();
         let mut signer =
             Signer::<SignerType>::new(1, 1, 1, 1, vec![1], Default::default(), Default::default());
         // publich_shares_done starts out as false
@@ -922,7 +921,7 @@ pub mod test {
         signer.commitments.insert(
             1,
             PolyCommitment {
-                id: ID::new(&Scalar::new(), &Scalar::new(), &mut rnd),
+                id: ID::new(&Scalar::new(), &Scalar::new(), &mut rng),
                 poly: vec![],
             },
         );
@@ -942,8 +941,8 @@ pub mod test {
     }
 
     fn can_dkg_end<SignerType: SignerTrait>() {
-        let mut rnd = OsRng;
-        let private_key = Scalar::random(&mut rnd);
+        let mut rng = create_rng();
+        let private_key = Scalar::random(&mut rng);
         let public_key = ecdsa::PublicKey::new(&private_key).unwrap();
         let mut public_keys: PublicKeys = Default::default();
 

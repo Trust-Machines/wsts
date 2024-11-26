@@ -12,7 +12,7 @@ const K: u32 = 4;
 
 #[allow(non_snake_case)]
 pub fn bench_dkg(c: &mut Criterion) {
-    let mut rng = OsRng::default();
+    let mut rng = create_rng();
     let signer_ids = gen_signer_ids(N, K);
     let mut signers: Vec<v1::Signer> = signer_ids
         .iter()
@@ -26,7 +26,7 @@ pub fn bench_dkg(c: &mut Criterion) {
 
 #[allow(non_snake_case)]
 pub fn bench_party_sign(c: &mut Criterion) {
-    let mut rng = OsRng::default();
+    let mut rng = create_rng();
     let msg = "It was many and many a year ago".as_bytes();
     let signer_ids = gen_signer_ids(N, K);
     let mut signers: Vec<v1::Signer> = signer_ids
@@ -50,7 +50,7 @@ pub fn bench_party_sign(c: &mut Criterion) {
 
 #[allow(non_snake_case)]
 pub fn bench_aggregator_sign(c: &mut Criterion) {
-    let mut rng = OsRng::default();
+    let mut rng = create_rng();
     let msg = "It was many and many a year ago".as_bytes();
     let signer_ids = gen_signer_ids(N, K);
     let mut signers: Vec<v1::Signer> = signer_ids

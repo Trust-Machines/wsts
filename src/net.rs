@@ -605,7 +605,8 @@ impl Packet {
 mod test {
     use super::*;
     use crate::schnorr::ID;
-    use rand_core::{CryptoRng, RngCore, OsRng};
+    use rand_core::{CryptoRng, RngCore};
+    use crate::util::create_rng;
 
     #[derive(Clone, Debug)]
     #[allow(dead_code)]
@@ -646,7 +647,7 @@ mod test {
 
     impl Default for TestConfig {
         fn default() -> Self {
-            let mut rng = OsRng;
+            let mut rng = create_rng();
             Self::new(&mut rng)
         }
     }
@@ -709,7 +710,7 @@ mod test {
 
     #[test]
     fn dkg_public_shares_verify_msg() {
-        let mut rng = OsRng;
+        let mut rng = create_rng();
         let test_config = TestConfig::default();
         let public_shares = DkgPublicShares {
             dkg_id: 0,

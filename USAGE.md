@@ -34,11 +34,11 @@ You can use the following RNG implementations:
 ### Example Usage
 
 ```rust
-use rand_core::OsRng;
+use wsts::util::create_rng;
 use wsts::v1::Signer;
 
 // Initialize your RNG
-let mut rng = OsRng;
+let mut rng = create_rng();
 
 // Create a signer
 let signer = Signer::new(id, key_ids, N, T, &mut rng);
