@@ -724,13 +724,7 @@ mod tests {
         traits::{self, test_helpers::run_compute_secrets_not_enough_shares, Aggregator, Signer},
         v2,
     };
-
-    use rand_core::{CryptoRng, RngCore, OsRng};
-
-    fn create_rng() -> impl RngCore + CryptoRng {
-        OsRng
-    }
-    
+    use crate::util::create_rng;
 
     #[test]
     fn party_save_load() {
