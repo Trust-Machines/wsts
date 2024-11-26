@@ -559,14 +559,15 @@ pub mod test {
     ) -> (Vec<Packet>, Vec<OperationResult>) {
         let mut inbound_messages = vec![];
         let mut feedback_messages = vec![];
+        let mut rng = create_rng();
         for signer in signers.iter_mut() {
-            let outbound_messages = signer.process_inbound_messages(messages).unwrap();
+            let outbound_messages = signer.process_inbound_messages(messages, &mut rng).unwrap();
             let outbound_messages = signer_mutator(signer, outbound_messages);
             feedback_messages.extend_from_slice(outbound_messages.as_slice());
             inbound_messages.extend(outbound_messages);
         }
         for signer in signers.iter_mut() {
-            let outbound_messages = signer.process_inbound_messages(&feedback_messages).unwrap();
+            let outbound_messages = signer.process_inbound_messages(&feedback_messages, &mut rng).unwrap();
             inbound_messages.extend(outbound_messages);
         }
         for coordinator in coordinators.iter_mut() {

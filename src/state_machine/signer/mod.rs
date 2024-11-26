@@ -18,7 +18,7 @@ use crate::{
     },
     state_machine::{PublicKeys, StateMachine},
     traits::{Signer as SignerTrait, SignerState as SignerSavedState},
-    util::{decrypt, encrypt, make_shared_secret, create_rng},
+    util::{decrypt, encrypt, make_shared_secret},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -170,6 +170,7 @@ pub struct Signer<SignerType: SignerTrait> {
 
 impl<SignerType: SignerTrait> Signer<SignerType> {
     /// create a Signer
+    #[allow(clippy::too_many_arguments)]
     pub fn new<R: RngCore + CryptoRng>(
         threshold: u32,
         total_signers: u32,
@@ -287,10 +288,14 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
     }
 
     /// Process the slice of packets
-    pub fn process_inbound_messages(&mut self, messages: &[Packet]) -> Result<Vec<Packet>, Error> {
+    pub fn process_inbound_messages<R: RngCore + CryptoRng>(
+        &mut self,
+        messages: &[Packet],
+        rng: &mut R,
+    ) -> Result<Vec<Packet>, Error> {
         let mut responses = vec![];
         for message in messages {
-            let outbounds = self.process(&message.msg)?;
+            let outbounds = self.process(&message.msg, rng)?;
             for out in outbounds {
                 let msg = Packet {
                     sig: out
@@ -305,28 +310,32 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
     }
 
     /// process the passed incoming message, and return any outgoing messages needed in response
-    pub fn process(&mut self, message: &Message) -> Result<Vec<Message>, Error> {
+    pub fn process<R: RngCore + CryptoRng>(
+        &mut self,
+        message: &Message,
+        rng: &mut R,
+    ) -> Result<Vec<Message>, Error> {
         let out_msgs = match message {
-            Message::DkgBegin(dkg_begin) => self.dkg_begin(dkg_begin),
+            Message::DkgBegin(dkg_begin) => self.dkg_begin(dkg_begin, rng),
             Message::DkgPrivateBegin(dkg_private_begin) => {
-                self.dkg_private_begin(dkg_private_begin)
+                self.dkg_private_begin(dkg_private_begin, rng)
             }
             Message::DkgEndBegin(dkg_end_begin) => self.dkg_end_begin(dkg_end_begin),
             Message::DkgPublicShares(dkg_public_shares) => self.dkg_public_share(dkg_public_shares),
             Message::DkgPrivateShares(dkg_private_shares) => {
-                self.dkg_private_shares(dkg_private_shares)
-            }
+                self.dkg_private_shares(dkg_private_shares, rng)
+            }    
             Message::SignatureShareRequest(sign_share_request) => {
                 self.sign_share_request(sign_share_request)
             }
-            Message::NonceRequest(nonce_request) => self.nonce_request(nonce_request),
+            Message::NonceRequest(nonce_request) => self.nonce_request(nonce_request, rng),
             _ => Ok(vec![]), // TODO
         };
 
         match out_msgs {
             Ok(mut out) => {
                 if self.can_dkg_end() {
-                    let dkg_end_msgs = self.dkg_ended()?;
+                    let dkg_end_msgs = self.dkg_ended(rng)?;
                     out.push(dkg_end_msgs);
                     self.move_to(State::Idle)?;
                 }
@@ -337,7 +346,10 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
     }
 
     /// DKG is done so compute secrets
-    pub fn dkg_ended(&mut self) -> Result<Message, Error> {
+    pub fn dkg_ended<R: RngCore + CryptoRng>(
+        &mut self,
+        rng: &mut R,
+    ) -> Result<Message, Error> {
         if !self.can_dkg_end() {
             return Ok(Message::DkgEnd(DkgEnd {
                 dkg_id: self.dkg_id,
@@ -419,7 +431,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                                 {
                                     bad_private_shares.insert(
                                         *party_signer_id,
-                                        self.make_bad_private_share(*party_signer_id),
+                                        self.make_bad_private_share(*party_signer_id, rng),
                                     );
                                 } else {
                                     warn!("DkgError::BadPrivateShares from party_id {} but no (signer_id, shared_secret) cached", party_id);
@@ -513,12 +525,15 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         false
     }
 
-    fn nonce_request(&mut self, nonce_request: &NonceRequest) -> Result<Vec<Message>, Error> {
-        let mut rng = create_rng();
+    fn nonce_request<R: RngCore + CryptoRng>(
+        &mut self,
+        nonce_request: &NonceRequest,
+        rng: &mut R,
+    ) -> Result<Vec<Message>, Error> {
         let mut msgs = vec![];
         let signer_id = self.signer_id;
         let key_ids = self.signer.get_key_ids();
-        let nonces = self.signer.gen_nonces(&mut rng);
+        let nonces = self.signer.gen_nonces(rng);
 
         let response = NonceResponse {
             dkg_id: nonce_request.dkg_id,
@@ -610,21 +625,26 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         Ok(msgs)
     }
 
-    fn dkg_begin(&mut self, dkg_begin: &DkgBegin) -> Result<Vec<Message>, Error> {
-        let mut rng = create_rng();
-
-        self.reset(dkg_begin.dkg_id, &mut rng);
+    fn dkg_begin<R: RngCore + CryptoRng>(
+        &mut self,
+        dkg_begin: &DkgBegin,
+        rng: &mut R,
+    ) -> Result<Vec<Message>, Error> {
+        self.reset(dkg_begin.dkg_id, rng);
         self.move_to(State::DkgPublicDistribute)?;
 
         //let _party_state = self.signer.save();
 
-        self.dkg_public_begin()
+        self.dkg_public_begin(rng)
     }
 
-    fn dkg_public_begin(&mut self) -> Result<Vec<Message>, Error> {
-        let mut rng = create_rng();
+    fn dkg_public_begin<R: RngCore + CryptoRng>(
+        &mut self,
+        rng: &mut R,
+    ) -> Result<Vec<Message>, Error> {
+
         let mut msgs = vec![];
-        let comms = self.signer.get_poly_commitments(&mut rng);
+        let comms = self.signer.get_poly_commitments(rng);
 
         info!(
             "Signer {} sending DkgPublicShares for round {}",
@@ -651,11 +671,11 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         Ok(msgs)
     }
 
-    fn dkg_private_begin(
+    fn dkg_private_begin<R: RngCore + CryptoRng>(
         &mut self,
         dkg_private_begin: &DkgPrivateBegin,
+        rng: &mut R,
     ) -> Result<Vec<Message>, Error> {
-        let mut rng = create_rng();
         let mut msgs = vec![];
         let mut private_shares = DkgPrivateShares {
             dkg_id: self.dkg_id,
@@ -700,7 +720,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                     let shared_secret =
                         make_shared_secret(&self.network_private_key, &dst_public_key);
                     let encrypted_share =
-                        encrypt(&shared_secret, &private_share.to_bytes(), &mut rng)?;
+                        encrypt(&shared_secret, &private_share.to_bytes(), rng)?;
 
                     encrypted_shares.insert(*dst_key_id, encrypted_share);
                 }
@@ -748,9 +768,10 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
     }
 
     /// handle incoming DkgPrivateShares
-    pub fn dkg_private_shares(
+    pub fn dkg_private_shares<R: RngCore + CryptoRng>(
         &mut self,
         dkg_private_shares: &DkgPrivateShares,
+        rng: &mut R,
     ) -> Result<Vec<Message>, Error> {
         // go ahead and decrypt here, since we know the signer_id and hence the pubkey of the sender
         let src_signer_id = dkg_private_shares.signer_id;
@@ -778,14 +799,14 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                                 warn!("Failed to parse Scalar for dkg private share from src_id {} to dst_id {}: {:?}", src_id, dst_key_id, e);
                                 self.invalid_private_shares.insert(
                                     src_signer_id,
-                                    self.make_bad_private_share(src_signer_id),
+                                    self.make_bad_private_share(src_signer_id, rng),
                                 );
                             }
                         },
                         Err(e) => {
                             warn!("Failed to decrypt dkg private share from src_id {} to dst_id {}: {:?}", src_id, dst_key_id, e);
                             self.invalid_private_shares
-                                .insert(src_signer_id, self.make_bad_private_share(src_signer_id));
+                                .insert(src_signer_id, self.make_bad_private_share(src_signer_id, rng));
                         }
                     }
                 }
@@ -804,8 +825,12 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
     }
 
     #[allow(non_snake_case)]
-    fn make_bad_private_share(&self, signer_id: u32) -> BadPrivateShare {
-        let mut rng = create_rng();
+    fn make_bad_private_share<R: RngCore + CryptoRng>(
+        &self,
+        signer_id: u32,
+        rng: &mut R,
+    ) -> BadPrivateShare {
+
         let a = self.network_private_key;
         let A = a * G;
         let B = Point::try_from(&Compressed::from(
@@ -813,7 +838,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         ))
         .unwrap();
         let K = a * B;
-        let tuple_proof = TupleProof::new(&a, &A, &B, &K, &mut rng);
+        let tuple_proof = TupleProof::new(&a, &A, &B, &K, rng);
 
         BadPrivateShare {
             shared_key: K,
@@ -957,10 +982,10 @@ pub mod test {
         // meet the conditions for DKG_END
         let dkg_begin = Message::DkgBegin(DkgBegin { dkg_id: 1 });
         let dkg_public_shares = signer
-            .process(&dkg_begin)
+            .process(&dkg_begin, &mut rng)
             .expect("failed to process DkgBegin");
         let _ = signer
-            .process(&dkg_public_shares[0])
+            .process(&dkg_public_shares[0], &mut rng)
             .expect("failed to process DkgPublicShares");
         let dkg_private_begin = Message::DkgPrivateBegin(DkgPrivateBegin {
             dkg_id: 1,
@@ -968,10 +993,10 @@ pub mod test {
             key_ids: vec![1],
         });
         let dkg_private_shares = signer
-            .process(&dkg_private_begin)
+            .process(&dkg_private_begin, &mut rng)
             .expect("failed to process DkgBegin");
         let _ = signer
-            .process(&dkg_private_shares[0])
+            .process(&dkg_private_shares[0], &mut rng)
             .expect("failed to process DkgPrivateShares");
         let dkg_end_begin = DkgEndBegin {
             dkg_id: 1,
@@ -1006,7 +1031,7 @@ pub mod test {
         let mut signer =
             Signer::<SignerType>::new(1, 1, 1, 0, vec![1], Default::default(), Default::default(), &mut rng);
 
-        if let Ok(Message::DkgEnd(dkg_end)) = signer.dkg_ended() {
+        if let Ok(Message::DkgEnd(dkg_end)) = signer.dkg_ended(&mut rng) {
             match dkg_end.status {
                 DkgStatus::Failure(_) => {}
                 _ => panic!("Expected DkgStatus::Failure"),
