@@ -511,6 +511,7 @@ pub mod test {
                     signer_key_ids[&(signer_id as u32)].clone(),
                     *private_key,
                     public_keys.clone(),
+                    &mut rng,
                 )
             })
             .collect::<Vec<Signer<SignerType>>>();

@@ -170,7 +170,7 @@ pub struct Signer<SignerType: SignerTrait> {
 
 impl<SignerType: SignerTrait> Signer<SignerType> {
     /// create a Signer
-    pub fn new(
+    pub fn new<R: RngCore + CryptoRng>(
         threshold: u32,
         total_signers: u32,
         total_keys: u32,
@@ -178,16 +178,17 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         key_ids: Vec<u32>,
         network_private_key: Scalar,
         public_keys: PublicKeys,
+        rng: &mut R,
     ) -> Self {
         assert!(threshold <= total_keys);
-        let mut rng = create_rng();
+        
         let signer = SignerType::new(
             signer_id,
             &key_ids,
             total_signers,
             total_keys,
             threshold,
-            &mut rng,
+            rng,
         );
         debug!(
             "new Signer for signer_id {} with key_ids {:?}",
@@ -883,7 +884,7 @@ pub mod test {
     fn dkg_public_share<SignerType: SignerTrait>() {
         let mut rng = create_rng();
         let mut signer =
-            Signer::<SignerType>::new(1, 1, 1, 1, vec![1], Default::default(), Default::default());
+            Signer::<SignerType>::new(1, 1, 1, 1, vec![1], Default::default(), Default::default(), &mut rng);
         let public_share = DkgPublicShares {
             dkg_id: 0,
             signer_id: 0,
@@ -912,7 +913,7 @@ pub mod test {
     fn public_shares_done<SignerType: SignerTrait>() {
         let mut rng = create_rng();
         let mut signer =
-            Signer::<SignerType>::new(1, 1, 1, 1, vec![1], Default::default(), Default::default());
+            Signer::<SignerType>::new(1, 1, 1, 1, vec![1], Default::default(), Default::default(), &mut rng);
         // publich_shares_done starts out as false
         assert!(!signer.public_shares_done());
 
@@ -949,7 +950,7 @@ pub mod test {
         public_keys.signers.insert(0, public_key.clone());
         public_keys.key_ids.insert(1, public_key.clone());
 
-        let mut signer = Signer::<SignerType>::new(1, 1, 1, 0, vec![1], private_key, public_keys);
+        let mut signer = Signer::<SignerType>::new(1, 1, 1, 0, vec![1], private_key, public_keys, &mut rng);
         // can_dkg_end starts out as false
         assert!(!signer.can_dkg_end());
 
@@ -1001,8 +1002,9 @@ pub mod test {
         .with(fmt::layer())
         .with(EnvFilter::from_default_env())
         .init();*/
+        let mut rng = create_rng();
         let mut signer =
-            Signer::<SignerType>::new(1, 1, 1, 0, vec![1], Default::default(), Default::default());
+            Signer::<SignerType>::new(1, 1, 1, 0, vec![1], Default::default(), Default::default(), &mut rng);
 
         if let Ok(Message::DkgEnd(dkg_end)) = signer.dkg_ended() {
             match dkg_end.status {
