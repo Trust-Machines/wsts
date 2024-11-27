@@ -732,13 +732,13 @@ pub mod test_helpers {
 
 #[cfg(test)]
 mod tests {
+    use crate::util::create_rng;
     use crate::{
         traits::{
             self, test_helpers::run_compute_secrets_missing_private_shares, Aggregator, Signer,
         },
         v2,
     };
-    use crate::util::create_rng;
 
     #[test]
     fn party_save_load() {

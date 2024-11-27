@@ -567,7 +567,9 @@ pub mod test {
             inbound_messages.extend(outbound_messages);
         }
         for signer in signers.iter_mut() {
-            let outbound_messages = signer.process_inbound_messages(&feedback_messages, &mut rng).unwrap();
+            let outbound_messages = signer
+                .process_inbound_messages(&feedback_messages, &mut rng)
+                .unwrap();
             inbound_messages.extend(outbound_messages);
         }
         for coordinator in coordinators.iter_mut() {
