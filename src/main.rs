@@ -1,7 +1,6 @@
-use rand_core::OsRng;
 use std::{env, time};
 
-use wsts::{common::test_helpers::gen_signer_ids, traits::Aggregator, v1, v2};
+use wsts::{common::test_helpers::gen_signer_ids, traits::Aggregator, v1, v2, util::create_rng};
 
 #[allow(non_snake_case)]
 fn main() {
@@ -22,7 +21,7 @@ fn main() {
         4
     };
 
-    let mut rng = OsRng;
+    let mut rng = create_rng();
     let msg = "It was many and many a year ago".as_bytes();
 
     println!("With N={N} T={T} K={K}:");

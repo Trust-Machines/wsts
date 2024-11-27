@@ -18,6 +18,7 @@ use crate::{
     vss::VSS,
 };
 
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 /// A FROST party, which encapsulates a single polynomial, nonce, and key
 pub struct Party {
@@ -790,13 +791,13 @@ mod tests {
     use crate::traits::test_helpers::run_compute_secrets_missing_private_shares;
     use crate::traits::{Aggregator, Signer};
     use crate::v1;
+    use crate::util::create_rng;
 
     use num_traits::Zero;
-    use rand_core::OsRng;
 
     #[test]
     fn signer_new() {
-        let mut rng = OsRng;
+        let mut rng = create_rng();
         let id = 1;
         let key_ids = [1, 2, 3];
         let n: u32 = 10;
@@ -809,7 +810,7 @@ mod tests {
 
     #[test]
     fn signer_gen_nonces() {
-        let mut rng = OsRng;
+        let mut rng = create_rng();
         let id = 1;
         let key_ids = [1, 2, 3];
         let n: u32 = 10;
@@ -832,7 +833,7 @@ mod tests {
 
     #[test]
     fn signer_save_load() {
-        let mut rng = OsRng;
+        let mut rng = create_rng();
         let id = 1;
         let key_ids = [1, 2, 3];
         let n: u32 = 10;
@@ -848,7 +849,7 @@ mod tests {
 
     #[test]
     fn clear_polys() {
-        let mut rng = OsRng;
+        let mut rng = create_rng();
         let id = 1;
         let key_ids = [1, 2, 3];
         let n: u32 = 10;
@@ -874,7 +875,7 @@ mod tests {
     #[allow(non_snake_case)]
     #[test]
     fn aggregator_sign() {
-        let mut rng = OsRng;
+        let mut rng = create_rng();
         let msg = "It was many and many a year ago".as_bytes();
         let N: u32 = 10;
         let T: u32 = 7;

@@ -775,8 +775,9 @@ pub mod test {
         },
         traits::Aggregator as AggregatorTrait,
         v1, v2,
+        util::create_rng,
     };
-    use rand_core::OsRng;
+    
 
     #[test]
     fn new_coordinator_v1() {
@@ -829,7 +830,7 @@ pub mod test {
     }
 
     fn start_public_shares<Aggregator: AggregatorTrait>() {
-        let mut rng = OsRng;
+        let mut rng = create_rng();
         let config = Config::new(10, 40, 28, Scalar::random(&mut rng));
         let mut coordinator = FrostCoordinator::<Aggregator>::new(config);
 
@@ -853,7 +854,7 @@ pub mod test {
     }
 
     fn start_private_shares<Aggregator: AggregatorTrait>() {
-        let mut rng = OsRng;
+        let mut rng = create_rng();
         let config = Config::new(10, 40, 28, Scalar::random(&mut rng));
         let mut coordinator = FrostCoordinator::<Aggregator>::new(config);
 
@@ -947,7 +948,7 @@ pub mod test {
     }
 
     fn old_round_ids_are_ignored<Aggregator: AggregatorTrait>() {
-        let mut rng = OsRng;
+        let mut rng = create_rng();
         let config = Config::new(10, 40, 28, Scalar::random(&mut rng));
         let mut coordinator = FrostCoordinator::<Aggregator>::new(config);
         let id: u64 = 10;

@@ -1283,9 +1283,9 @@ pub mod test {
         },
         traits::{Aggregator as AggregatorTrait, Signer as SignerTrait},
         v1, v2,
+        util::create_rng,
     };
     use hashbrown::HashMap;
-    use rand_core::OsRng;
     use std::{thread, time::Duration};
 
     #[test]
@@ -1339,7 +1339,7 @@ pub mod test {
     }
 
     fn start_public_shares<Aggregator: AggregatorTrait>() {
-        let mut rng = OsRng;
+        let mut rng = create_rng();
         let config = Config::new(10, 40, 28, Scalar::random(&mut rng));
         let mut coordinator = FireCoordinator::<Aggregator>::new(config);
 
@@ -1363,7 +1363,7 @@ pub mod test {
     }
 
     fn start_private_shares<Aggregator: AggregatorTrait>() {
-        let mut rng = OsRng;
+        let mut rng = create_rng();
         let config = Config::new(10, 40, 28, Scalar::random(&mut rng));
         let mut coordinator = FireCoordinator::<Aggregator>::new(config);
 

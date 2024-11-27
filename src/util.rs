@@ -1,5 +1,5 @@
 use aes_gcm::{aead::Aead, Aes256Gcm, Error as AesGcmError, KeyInit, Nonce};
-use rand_core::{CryptoRng, RngCore};
+use rand_core::{CryptoRng, RngCore, OsRng};
 use sha2::{Digest, Sha256};
 
 use crate::curve::{point::Point, scalar::Scalar};
@@ -82,17 +82,20 @@ pub fn decrypt(key: &[u8; 32], data: &[u8]) -> Result<Vec<u8>, AesGcmError> {
     cipher.decrypt(nonce, cipher_vec.as_ref())
 }
 
+/// Creates a new random number generator.
+pub fn create_rng() -> impl RngCore + CryptoRng {
+    OsRng
+}
+
 #[cfg(test)]
 mod test {
-    use rand_core::OsRng;
-
     use super::*;
     use crate::curve::{point::Point, scalar::Scalar};
 
     #[test]
     #[allow(non_snake_case)]
     fn test_shared_secret() {
-        let mut rng = OsRng;
+        let mut rng = create_rng();
 
         let x = Scalar::random(&mut rng);
         let y = Scalar::random(&mut rng);
@@ -109,7 +112,7 @@ mod test {
     #[test]
     #[allow(non_snake_case)]
     fn test_encrypt_decrypt() {
-        let mut rng = OsRng;
+        let mut rng = create_rng();
         let msg = "It was many and many a year ago, in a kingdom by the sea...";
 
         let x = Scalar::random(&mut rng);

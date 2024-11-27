@@ -61,7 +61,6 @@ impl Party {
     /// Generate and store a private nonce for a signing round
     pub fn gen_nonce<RNG: RngCore + CryptoRng>(&mut self, rng: &mut RNG) -> PublicNonce {
         self.nonce = Nonce::random(rng);
-
         PublicNonce::from(&self.nonce)
     }
 
@@ -739,12 +738,11 @@ mod tests {
         },
         v2,
     };
-
-    use rand_core::OsRng;
+    use crate::util::create_rng;
 
     #[test]
     fn party_save_load() {
-        let mut rng = OsRng;
+        let mut rng = create_rng();
         let key_ids = [1, 2, 3];
         let n: u32 = 10;
         let t: u32 = 7;
@@ -759,7 +757,7 @@ mod tests {
 
     #[test]
     fn clear_polys() {
-        let mut rng = OsRng;
+        let mut rng = create_rng();
         let key_ids = [1, 2, 3];
         let n: u32 = 10;
         let t: u32 = 7;
@@ -767,7 +765,7 @@ mod tests {
         let mut signer = v2::Party::new(0, &key_ids, 1, n, t, &mut rng);
 
         assert_eq!(signer.get_poly_commitments(&mut rng).len(), 1);
-        assert_eq!(signer.get_shares().len(), n.try_into().unwrap());
+        assert_eq!(signer.get_shares().len(), usize::try_from(n).unwrap());
 
         signer.clear_polys();
 
@@ -777,7 +775,7 @@ mod tests {
 
     #[test]
     fn aggregator_sign() {
-        let mut rng = OsRng;
+        let mut rng = create_rng();
         let msg = "It was many and many a year ago".as_bytes();
         let n_k: u32 = 10;
         let t: u32 = 7;

@@ -170,9 +170,9 @@ pub trait Aggregator: Clone + Debug + PartialEq {
 /// Helper functions for tests
 pub mod test_helpers {
     use hashbrown::HashMap;
-    use rand_core::{CryptoRng, OsRng, RngCore};
+    use rand_core::{CryptoRng, RngCore};
 
-    use crate::{common::PolyCommitment, errors::DkgError};
+    use crate::{common::PolyCommitment, errors::DkgError, util::create_rng};
 
     /// Run DKG on the passed signers
     pub fn dkg<RNG: RngCore + CryptoRng, Signer: super::Signer>(
@@ -258,7 +258,7 @@ pub mod test_helpers {
         let T: u32 = 7;
         let signer_ids: Vec<Vec<u32>> = vec![vec![1, 2, 3], vec![4, 5], vec![6, 7, 8], vec![9, 10]];
         let missing_key_ids = vec![1, 7];
-        let mut rng = OsRng;
+        let mut rng = create_rng();
         let mut signers: Vec<Signer> = signer_ids
             .iter()
             .enumerate()
@@ -288,7 +288,7 @@ pub mod test_helpers {
         let Np: u32 = 4;
         let T: u32 = 7;
         let signer_ids: Vec<Vec<u32>> = vec![vec![1, 2, 3, 4], vec![5, 6, 7], vec![8, 9], vec![10]];
-        let mut rng = OsRng;
+        let mut rng = create_rng();
         let mut signers: Vec<Signer> = signer_ids
             .iter()
             .enumerate()
