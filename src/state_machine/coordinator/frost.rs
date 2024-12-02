@@ -205,8 +205,8 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         self.party_polynomials.clear();
         self.ids_to_await = (0..self.config.num_signers).collect();
         info!(
-            "DKG Round {}: Starting Public Share Distribution",
-            self.current_dkg_id,
+            dkg_id = %self.current_dkg_id,
+            "Starting Public Share Distribution"
         );
         let dkg_begin = DkgBegin {
             dkg_id: self.current_dkg_id,
@@ -226,8 +226,8 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
     pub fn start_private_shares(&mut self) -> Result<Packet, Error> {
         self.ids_to_await = (0..self.config.num_signers).collect();
         info!(
-            "DKG Round {}: Starting Private Share Distribution",
-            self.current_dkg_id
+            dkg_id = %self.current_dkg_id,
+            "Starting Private Share Distribution"
         );
         let dkg_begin = DkgPrivateBegin {
             dkg_id: self.current_dkg_id,
@@ -248,8 +248,8 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
     pub fn start_dkg_end(&mut self) -> Result<Packet, Error> {
         self.ids_to_await = (0..self.config.num_signers).collect();
         info!(
-            "DKG Round {}: Starting DKG End Distribution",
-            self.current_dkg_id
+            dkg_id = %self.current_dkg_id,
+            "Starting DKG End Distribution"
         );
         let dkg_begin = DkgEndBegin {
             dkg_id: self.current_dkg_id,
@@ -282,8 +282,9 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             }
 
             debug!(
-                "DKG round {} DkgPublicShares from signer {}",
-                dkg_public_shares.dkg_id, dkg_public_shares.signer_id
+                dkg_id = %dkg_public_shares.dkg_id,
+                signer_id = %dkg_public_shares.signer_id,
+                "DKG round DkgPublicShares received"
             );
         }
 
@@ -307,8 +308,9 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             self.dkg_private_shares
                 .insert(dkg_private_shares.signer_id, dkg_private_shares.clone());
             info!(
-                "DKG round {} DkgPrivateShares from signer {}",
-                dkg_private_shares.dkg_id, dkg_private_shares.signer_id
+                dkg_id = %dkg_private_shares.dkg_id,
+                signer_id = %dkg_private_shares.signer_id,
+                "DKG round DkgPrivateShares received"
             );
         }
 
@@ -320,8 +322,9 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
 
     fn gather_dkg_end(&mut self, packet: &Packet) -> Result<(), Error> {
         debug!(
-            "DKG Round {}: waiting for Dkg End from signers {:?}",
-            self.current_dkg_id, self.ids_to_await
+            dkg_id = %self.current_dkg_id,
+            waiting = ?self.ids_to_await,
+            "DKG Round: waiting for Dkg End from signers"
         );
         if let Message::DkgEnd(dkg_end) = &packet.msg {
             if dkg_end.dkg_id != self.current_dkg_id {
@@ -329,8 +332,10 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             }
             self.ids_to_await.remove(&dkg_end.signer_id);
             debug!(
-                "DKG_End round {} from signer {}. Waiting on {:?}",
-                dkg_end.dkg_id, dkg_end.signer_id, self.ids_to_await
+                dkg_id = %dkg_end.dkg_id,
+                signer_id = %dkg_end.signer_id,
+                waiting = ?self.ids_to_await,
+                "DKG_End round received"
             );
         }
 
@@ -341,7 +346,10 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 .iter()
                 .fold(Point::default(), |s, (_, comm)| s + comm.poly[0]);
 
-            info!("Aggregate public key: {}", key);
+            info!(
+                key = %key,
+                "Aggregate public key"
+            );
             self.aggregate_public_key = Some(key);
             self.move_to(State::Idle)?;
         }
@@ -351,8 +359,9 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
     fn request_nonces(&mut self, signature_type: SignatureType) -> Result<Packet, Error> {
         self.public_nonces.clear();
         info!(
-            "Sign Round {} Nonce round {} Requesting Nonces",
-            self.current_sign_id, self.current_sign_iter_id,
+            sign_id = %self.current_sign_id,
+            sign_iter_id = %self.current_sign_iter_id,
+            "Requesting Nonces"
         );
         let nonce_request = NonceRequest {
             dkg_id: self.current_dkg_id,
@@ -398,16 +407,19 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 .insert(nonce_response.signer_id, nonce_response.clone());
             self.ids_to_await.remove(&nonce_response.signer_id);
             debug!(
-                "Sign round {} nonce round {} NonceResponse from signer {}. Waiting on {:?}",
-                nonce_response.sign_id,
-                nonce_response.sign_iter_id,
-                nonce_response.signer_id,
-                self.ids_to_await
+                sign_id = %nonce_response.sign_id,
+                sign_iter_id = %nonce_response.sign_iter_id,
+                signer_id = %nonce_response.signer_id,
+                waiting = ?self.ids_to_await,
+                "NonceResponse received"
             );
         }
         if self.ids_to_await.is_empty() {
             let aggregate_nonce = self.compute_aggregate_nonce();
-            info!("Aggregate nonce: {}", aggregate_nonce);
+            info!(
+                aggregate_nonce = %aggregate_nonce,
+                "Aggregate nonce"
+            );
 
             self.move_to(State::SigShareRequest(signature_type))?;
         }
@@ -417,8 +429,8 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
     fn request_sig_shares(&mut self, signature_type: SignatureType) -> Result<Packet, Error> {
         self.signature_shares.clear();
         info!(
-            "Sign Round {} Requesting Signature Shares",
-            self.current_sign_id,
+            sign_id = %self.current_sign_id,
+            "Requesting Signature Shares"
         );
         let nonce_responses = (0..self.config.num_signers)
             .map(|i| self.public_nonces[&i].clone())
@@ -467,8 +479,10 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             );
             self.ids_to_await.remove(&sig_share_response.signer_id);
             debug!(
-                "Sign round {} SignatureShareResponse from signer {}. Waiting on {:?}",
-                sig_share_response.sign_id, sig_share_response.signer_id, self.ids_to_await
+                sign_id = %sig_share_response.sign_id,
+                signer_id = %sig_share_response.signer_id,
+                waiting = ?self.ids_to_await,
+                "SignatureShareResponse received"
             );
         }
         if self.ids_to_await.is_empty() {
@@ -494,10 +508,9 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 .collect::<Vec<SignatureShare>>();
 
             debug!(
-                "aggregator.sign({:?}, {:?}, {:?})",
-                self.message,
-                nonces.len(),
-                shares.len()
+                nonces_len = %nonces.len(),
+                shares_len = %shares.len(),
+                "aggregator.sign"
             );
 
             self.aggregator.init(&self.party_polynomials)?;
@@ -510,19 +523,31 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                     &key_ids,
                     merkle_root,
                 )?;
-                debug!("SchnorrProof ({}, {})", schnorr_proof.r, schnorr_proof.s);
+                debug!(
+                    r = %schnorr_proof.r,
+                    s = %schnorr_proof.s,
+                    "SchnorrProof"
+                );
                 self.schnorr_proof = Some(schnorr_proof);
             } else if let SignatureType::Schnorr = signature_type {
                 let schnorr_proof =
                     self.aggregator
                         .sign_schnorr(&self.message, &nonces, shares, &key_ids)?;
-                debug!("SchnorrProof ({}, {})", schnorr_proof.r, schnorr_proof.s);
+                debug!(
+                    r = %schnorr_proof.r,
+                    s = %schnorr_proof.s,
+                    "SchnorrProof"
+                );
                 self.schnorr_proof = Some(schnorr_proof);
             } else {
                 let signature = self
                     .aggregator
                     .sign(&self.message, &nonces, shares, &key_ids)?;
-                debug!("Signature ({}, {})", signature.R, signature.z);
+                debug!(
+                    R = %signature.R,
+                    z = %signature.z,
+                    "Signature"
+                );
                 self.signature = Some(signature);
             }
 
