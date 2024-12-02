@@ -465,8 +465,10 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         };
 
         info!(
-            "Signer {} sending DkgEnd round {} status {:?}",
-            self.signer_id, self.dkg_id, dkg_end.status,
+            %self.signer_id,
+            %self.dkg_id,
+            status = ?dkg_end.status,
+            "sending DkgEnd"
         );
 
         let dkg_end = Message::DkgEnd(dkg_end);
@@ -552,8 +554,11 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         let response = Message::NonceResponse(response);
 
         info!(
-            "Signer {} sending NonceResponse for DKG round {} sign round {} sign iteration {}",
-            signer_id, nonce_request.dkg_id, nonce_request.sign_id, nonce_request.sign_iter_id,
+            %signer_id,
+            %nonce_request.dkg_id,
+            %nonce_request.sign_id,
+            %nonce_request.sign_iter_id,
+            "sending NonceResponse"
         );
         msgs.push(response);
 
@@ -615,8 +620,11 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                 };
 
                 info!(
-                    "Signer {} sending SignatureShareResponse for DKG round {} sign round {} sign iteration {}",
-                    signer_id, sign_request.dkg_id, sign_request.sign_id, sign_request.sign_iter_id,
+                    %signer_id,
+                    %sign_request.dkg_id,
+                    %sign_request.sign_id,
+                    %sign_request.sign_iter_id,
+                    "sending SignatureShareResponse"
                 );
 
                 let response = Message::SignatureShareResponse(response);
@@ -650,9 +658,9 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         let comms = self.signer.get_poly_commitments(rng);
 
         info!(
-            "Signer {} sending DkgPublicShares for round {}",
-            self.signer.get_id(),
-            self.dkg_id,
+            %self.signer_id,
+            %self.dkg_id,
+            "sending DkgPublicShares"
         );
 
         let mut public_share = DkgPublicShares {
@@ -695,9 +703,9 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         self.move_to(State::DkgPrivateDistribute)?;
 
         info!(
-            "Signer {} sending DkgPrivateShares for round {}",
-            self.signer.get_id(),
-            self.dkg_id,
+            %self.signer_id,
+            %self.dkg_id,
+            "sending DkgPrivateShares"
         );
 
         trace!(
@@ -745,9 +753,9 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         self.dkg_end_begin_msg = Some(dkg_end_begin.clone());
 
         info!(
-            "Signer {} received DkgEndBegin for round {}",
-            self.signer.get_id(),
-            self.dkg_id,
+            %self.signer_id,
+            %self.dkg_id,
+            "received DkgEndBegin"
         );
 
         Ok(msgs)
