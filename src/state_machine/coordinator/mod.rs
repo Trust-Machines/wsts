@@ -303,7 +303,7 @@ pub mod fire;
 pub mod test {
     use hashbrown::{HashMap, HashSet};
     use std::{
-        sync::atomic::{AtomicBool, Ordering},
+        sync::Once,
         time::Duration,
     };
     use tracing_subscriber::{fmt, prelude::*, EnvFilter};
@@ -323,7 +323,7 @@ pub mod test {
         util::create_rng,
     };
 
-    static mut LOG_INIT: AtomicBool = AtomicBool::new(false);
+    static INIT: Once = Once::new();
 
     pub fn new_coordinator<Coordinator: CoordinatorTrait>() {
         let mut rng = create_rng();
@@ -452,16 +452,12 @@ pub mod test {
         nonce_timeout: Option<Duration>,
         sign_timeout: Option<Duration>,
     ) -> (Vec<Coordinator>, Vec<Signer<SignerType>>) {
-        unsafe {
-            if let Ok(false) =
-                LOG_INIT.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-            {
-                tracing_subscriber::registry()
-                    .with(fmt::layer())
-                    .with(EnvFilter::from_default_env())
-                    .init()
-            }
-        }
+        INIT.call_once(|| {
+            tracing_subscriber::registry()
+                .with(fmt::layer())
+                .with(EnvFilter::from_default_env())
+                .init();
+        });
 
         let mut rng = create_rng();
         let num_keys = num_signers * keys_per_signer;
