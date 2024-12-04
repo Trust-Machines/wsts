@@ -761,6 +761,7 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
 }
 
 #[cfg(test)]
+/// Test module for coordinator functionality
 pub mod test {
     use crate::{
         curve::scalar::Scalar,

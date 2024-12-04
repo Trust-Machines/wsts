@@ -1261,6 +1261,7 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
 }
 
 #[cfg(test)]
+/// Test module for coordinator functionality
 pub mod test {
     use crate::{
         curve::{point::Point, scalar::Scalar},
