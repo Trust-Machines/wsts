@@ -882,8 +882,8 @@ impl<SignerType: SignerTrait> StateMachine<State, Error> for Signer<SignerType> 
         }
     }
 }
-
 #[cfg(test)]
+/// Test module for signer functionality
 pub mod test {
     use crate::{
         common::PolyCommitment,

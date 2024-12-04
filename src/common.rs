@@ -320,6 +320,7 @@ pub mod test_helpers {
 }
 
 #[cfg(test)]
+/// Test module for common functionality
 pub mod test {
     use super::*;
     use crate::util::create_rng;
