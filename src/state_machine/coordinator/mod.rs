@@ -302,10 +302,7 @@ pub mod fire;
 #[allow(missing_docs)]
 pub mod test {
     use hashbrown::{HashMap, HashSet};
-    use std::{
-        sync::Once,
-        time::Duration,
-    };
+    use std::{sync::Once, time::Duration};
     use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
     use crate::{
