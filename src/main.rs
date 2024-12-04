@@ -1,6 +1,6 @@
 use std::{env, time};
 
-use wsts::{common::test_helpers::gen_signer_ids, traits::Aggregator, v1, v2, util::create_rng};
+use wsts::{common::test_helpers::gen_signer_ids, traits::Aggregator, util::create_rng, v1, v2};
 
 #[allow(non_snake_case)]
 fn main() {

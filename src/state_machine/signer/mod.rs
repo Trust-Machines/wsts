@@ -182,7 +182,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         rng: &mut R,
     ) -> Self {
         assert!(threshold <= total_keys);
-        
+
         let signer = SignerType::new(
             signer_id,
             &key_ids,
@@ -324,7 +324,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             Message::DkgPublicShares(dkg_public_shares) => self.dkg_public_share(dkg_public_shares),
             Message::DkgPrivateShares(dkg_private_shares) => {
                 self.dkg_private_shares(dkg_private_shares, rng)
-            }    
+            }
             Message::SignatureShareRequest(sign_share_request) => {
                 self.sign_share_request(sign_share_request)
             }
@@ -346,10 +346,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
     }
 
     /// DKG is done so compute secrets
-    pub fn dkg_ended<R: RngCore + CryptoRng>(
-        &mut self,
-        rng: &mut R,
-    ) -> Result<Message, Error> {
+    pub fn dkg_ended<R: RngCore + CryptoRng>(&mut self, rng: &mut R) -> Result<Message, Error> {
         if !self.can_dkg_end() {
             return Ok(Message::DkgEnd(DkgEnd {
                 dkg_id: self.dkg_id,
@@ -649,7 +646,6 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         &mut self,
         rng: &mut R,
     ) -> Result<Vec<Message>, Error> {
-
         let mut msgs = vec![];
         let comms = self.signer.get_poly_commitments(rng);
 
@@ -726,8 +722,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                     let dst_public_key = Point::try_from(&compressed).unwrap();
                     let shared_secret =
                         make_shared_secret(&self.network_private_key, &dst_public_key);
-                    let encrypted_share =
-                        encrypt(&shared_secret, &private_share.to_bytes(), rng)?;
+                    let encrypted_share = encrypt(&shared_secret, &private_share.to_bytes(), rng)?;
 
                     encrypted_shares.insert(*dst_key_id, encrypted_share);
                 }
@@ -812,8 +807,10 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                         },
                         Err(e) => {
                             warn!("Failed to decrypt dkg private share from src_id {} to dst_id {}: {:?}", src_id, dst_key_id, e);
-                            self.invalid_private_shares
-                                .insert(src_signer_id, self.make_bad_private_share(src_signer_id, rng));
+                            self.invalid_private_shares.insert(
+                                src_signer_id,
+                                self.make_bad_private_share(src_signer_id, rng),
+                            );
                         }
                     }
                 }
@@ -837,7 +834,6 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         signer_id: u32,
         rng: &mut R,
     ) -> BadPrivateShare {
-
         let a = self.network_private_key;
         let A = a * G;
         let B = Point::try_from(&Compressed::from(
@@ -899,8 +895,8 @@ pub mod test {
             PublicKeys,
         },
         traits::Signer as SignerTrait,
-        v1, v2,
         util::create_rng,
+        v1, v2,
     };
 
     #[test]
@@ -915,8 +911,16 @@ pub mod test {
 
     fn dkg_public_share<SignerType: SignerTrait>() {
         let mut rng = create_rng();
-        let mut signer =
-            Signer::<SignerType>::new(1, 1, 1, 1, vec![1], Default::default(), Default::default(), &mut rng);
+        let mut signer = Signer::<SignerType>::new(
+            1,
+            1,
+            1,
+            1,
+            vec![1],
+            Default::default(),
+            Default::default(),
+            &mut rng,
+        );
         let public_share = DkgPublicShares {
             dkg_id: 0,
             signer_id: 0,
@@ -944,8 +948,16 @@ pub mod test {
 
     fn public_shares_done<SignerType: SignerTrait>() {
         let mut rng = create_rng();
-        let mut signer =
-            Signer::<SignerType>::new(1, 1, 1, 1, vec![1], Default::default(), Default::default(), &mut rng);
+        let mut signer = Signer::<SignerType>::new(
+            1,
+            1,
+            1,
+            1,
+            vec![1],
+            Default::default(),
+            Default::default(),
+            &mut rng,
+        );
         // publich_shares_done starts out as false
         assert!(!signer.public_shares_done());
 
@@ -982,7 +994,8 @@ pub mod test {
         public_keys.signers.insert(0, public_key.clone());
         public_keys.key_ids.insert(1, public_key.clone());
 
-        let mut signer = Signer::<SignerType>::new(1, 1, 1, 0, vec![1], private_key, public_keys, &mut rng);
+        let mut signer =
+            Signer::<SignerType>::new(1, 1, 1, 0, vec![1], private_key, public_keys, &mut rng);
         // can_dkg_end starts out as false
         assert!(!signer.can_dkg_end());
 
@@ -1035,8 +1048,16 @@ pub mod test {
         .with(EnvFilter::from_default_env())
         .init();*/
         let mut rng = create_rng();
-        let mut signer =
-            Signer::<SignerType>::new(1, 1, 1, 0, vec![1], Default::default(), Default::default(), &mut rng);
+        let mut signer = Signer::<SignerType>::new(
+            1,
+            1,
+            1,
+            0,
+            vec![1],
+            Default::default(),
+            Default::default(),
+            &mut rng,
+        );
 
         if let Ok(Message::DkgEnd(dkg_end)) = signer.dkg_ended(&mut rng) {
             match dkg_end.status {

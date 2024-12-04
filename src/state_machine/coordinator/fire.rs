@@ -1282,8 +1282,8 @@ pub mod test {
             DkgError, OperationResult, SignError,
         },
         traits::{Aggregator as AggregatorTrait, Signer as SignerTrait},
-        v1, v2,
         util::create_rng,
+        v1, v2,
     };
     use hashbrown::HashMap;
     use std::{thread, time::Duration};

@@ -605,8 +605,8 @@ impl Packet {
 mod test {
     use super::*;
     use crate::schnorr::ID;
-    use rand_core::{CryptoRng, RngCore};
     use crate::util::create_rng;
+    use rand_core::{CryptoRng, RngCore};
 
     #[derive(Clone, Debug)]
     #[allow(dead_code)]
@@ -624,12 +624,12 @@ mod test {
             let coordinator_public_key = ecdsa::PublicKey::new(&coordinator_private_key).unwrap();
             let signer_private_key = Scalar::random(rng);
             let signer_public_key = ecdsa::PublicKey::new(&signer_private_key).unwrap();
-            
+
             let mut signer_ids_map = HashMap::new();
             let mut key_ids_map = HashMap::new();
             signer_ids_map.insert(0, signer_public_key);
             key_ids_map.insert(1, signer_public_key);
-            
+
             let public_keys = PublicKeys {
                 signers: signer_ids_map,
                 key_ids: key_ids_map,
@@ -651,7 +651,7 @@ mod test {
             Self::new(&mut rng)
         }
     }
-    
+
     #[test]
     fn dkg_begin_verify_msg() {
         let test_config = TestConfig::default();

@@ -1,5 +1,5 @@
 use aes_gcm::{aead::Aead, Aes256Gcm, Error as AesGcmError, KeyInit, Nonce};
-use rand_core::{CryptoRng, RngCore, OsRng};
+use rand_core::{CryptoRng, OsRng, RngCore};
 use sha2::{Digest, Sha256};
 
 use crate::curve::{point::Point, scalar::Scalar};

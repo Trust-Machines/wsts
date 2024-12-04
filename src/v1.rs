@@ -18,7 +18,6 @@ use crate::{
     vss::VSS,
 };
 
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 /// A FROST party, which encapsulates a single polynomial, nonce, and key
 pub struct Party {
@@ -790,8 +789,8 @@ mod tests {
     use crate::traits;
     use crate::traits::test_helpers::run_compute_secrets_missing_private_shares;
     use crate::traits::{Aggregator, Signer};
-    use crate::v1;
     use crate::util::create_rng;
+    use crate::v1;
 
     use num_traits::Zero;
 
