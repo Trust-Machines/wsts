@@ -524,7 +524,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             info!(
                 dkg_id = %dkg_private_shares.dkg_id,
                 signer_id = %dkg_private_shares.signer_id,
-                "DKG round DkgPrivateShares received"
+                "DkgPrivateShares received"
             );
         }
 
@@ -556,10 +556,11 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                     dkg_id = %dkg_end.dkg_id,
                     signer_id = %dkg_end.signer_id,
                     waiting = ?self.dkg_wait_signer_ids,
-                    "DKG_End round received"
+                    "DkgEnd received"
                 );
             } else {
                 warn!(
+                    dkg_id = %dkg_end.dkg_id,
                     signer_id = %dkg_end.signer_id,
                     "Got DkgEnd from signer who we weren't waiting on"
                 );
