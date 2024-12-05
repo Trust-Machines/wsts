@@ -347,7 +347,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 .fold(Point::default(), |s, (_, comm)| s + comm.poly[0]);
 
             info!(
-                key = %key,
+                %key,
                 "Aggregate public key"
             );
             self.aggregate_public_key = Some(key);
@@ -417,7 +417,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         if self.ids_to_await.is_empty() {
             let aggregate_nonce = self.compute_aggregate_nonce();
             info!(
-                aggregate_nonce = %aggregate_nonce,
+                %aggregate_nonce,
                 "Aggregate nonce"
             );
 

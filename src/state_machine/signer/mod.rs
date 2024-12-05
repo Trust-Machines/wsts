@@ -465,8 +465,8 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         };
 
         info!(
-            %self.signer_id,
-            %self.dkg_id,
+            signer_id = %self.signer_id,
+            dkg_id = %self.dkg_id,
             status = ?dkg_end.status,
             "sending DkgEnd"
         );
@@ -555,9 +555,9 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
 
         info!(
             %signer_id,
-            %nonce_request.dkg_id,
-            %nonce_request.sign_id,
-            %nonce_request.sign_iter_id,
+            dkg_id = %nonce_request.dkg_id,
+            sign_id = %nonce_request.sign_id,
+            sign_iter_id = %nonce_request.sign_iter_id,
             "sending NonceResponse"
         );
         msgs.push(response);
@@ -618,12 +618,11 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                     signer_id: *signer_id,
                     signature_shares,
                 };
-
                 info!(
                     %signer_id,
-                    %sign_request.dkg_id,
-                    %sign_request.sign_id,
-                    %sign_request.sign_iter_id,
+                    dkg_id = %sign_request.dkg_id,
+                    sign_id = %sign_request.sign_id,
+                    sign_iter_id = %sign_request.sign_iter_id,
                     "sending SignatureShareResponse"
                 );
 
@@ -658,8 +657,8 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         let comms = self.signer.get_poly_commitments(rng);
 
         info!(
-            %self.signer_id,
-            %self.dkg_id,
+            signer_id = %self.signer_id,
+            dkg_id = %self.dkg_id,
             "sending DkgPublicShares"
         );
 
@@ -703,8 +702,8 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         self.move_to(State::DkgPrivateDistribute)?;
 
         info!(
-            %self.signer_id,
-            %self.dkg_id,
+            signer_id = %self.signer_id,
+            dkg_id = %self.dkg_id,
             "sending DkgPrivateShares"
         );
 
@@ -753,8 +752,8 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         self.dkg_end_begin_msg = Some(dkg_end_begin.clone());
 
         info!(
-            %self.signer_id,
-            %self.dkg_id,
+            signer_id = %self.signer_id,
+            dkg_id = %self.dkg_id,
             "received DkgEndBegin"
         );
 

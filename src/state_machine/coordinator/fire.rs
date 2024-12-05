@@ -492,7 +492,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             debug!(
                 dkg_id = %dkg_public_shares.dkg_id,
                 signer_id = %dkg_public_shares.signer_id,
-                "DKG round DkgPublicShares received"
+                "DkgPublicShares received"
             );
         }
 
