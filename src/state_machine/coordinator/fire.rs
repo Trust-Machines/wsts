@@ -389,8 +389,8 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         self.party_polynomials.clear();
         self.dkg_wait_signer_ids = (0..self.config.num_signers).collect();
         info!(
-            "DKG Round {}: Starting Public Share Distribution",
-            self.current_dkg_id,
+            dkg_id = %self.current_dkg_id,
+            "Starting Public Share Distribution"
         );
         let dkg_begin = DkgBegin {
             dkg_id: self.current_dkg_id,
@@ -416,8 +416,8 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             .cloned()
             .collect::<HashSet<u32>>();
         info!(
-            "DKG Round {}: Starting Private Share Distribution",
-            self.current_dkg_id
+            dkg_id = %self.current_dkg_id,
+            "Starting Private Share Distribution"
         );
         let active_key_ids = self
             .dkg_public_shares
@@ -450,8 +450,8 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             .cloned()
             .collect::<HashSet<u32>>();
         info!(
-            "DKG Round {}: Starting DkgEnd Distribution",
-            self.current_dkg_id
+            dkg_id = %self.current_dkg_id,
+            "Starting DkgEnd Distribution"
         );
         let active_key_ids = self
             .dkg_private_shares
@@ -490,8 +490,9 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             self.dkg_public_shares
                 .insert(dkg_public_shares.signer_id, dkg_public_shares.clone());
             debug!(
-                "DKG round {} DkgPublicShares from signer {}",
-                dkg_public_shares.dkg_id, dkg_public_shares.signer_id
+                dkg_id = %dkg_public_shares.dkg_id,
+                signer_id = %dkg_public_shares.signer_id,
+                "DkgPublicShares received"
             );
         }
 
@@ -521,8 +522,9 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             self.dkg_private_shares
                 .insert(dkg_private_shares.signer_id, dkg_private_shares.clone());
             info!(
-                "DKG round {} DkgPrivateShares from signer {}",
-                dkg_private_shares.dkg_id, dkg_private_shares.signer_id
+                dkg_id = %dkg_private_shares.dkg_id,
+                signer_id = %dkg_private_shares.signer_id,
+                "DkgPrivateShares received"
             );
         }
 
@@ -551,13 +553,16 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 self.dkg_end_messages
                     .insert(dkg_end.signer_id, dkg_end.clone());
                 debug!(
-                    "DKG_End round {} from signer {}. Waiting on {:?}",
-                    dkg_end.dkg_id, dkg_end.signer_id, self.dkg_wait_signer_ids
+                    dkg_id = %dkg_end.dkg_id,
+                    signer_id = %dkg_end.signer_id,
+                    waiting = ?self.dkg_wait_signer_ids,
+                    "DkgEnd received"
                 );
             } else {
                 warn!(
-                    "Got DkgEnd from signer {} who we weren't waiting on",
-                    &dkg_end.signer_id
+                    dkg_id = %dkg_end.dkg_id,
+                    signer_id = %dkg_end.signer_id,
+                    "Got DkgEnd from signer who we weren't waiting on"
                 );
             }
         }
@@ -740,8 +745,9 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         self.message_nonces.clear();
         self.current_sign_iter_id = self.current_sign_iter_id.wrapping_add(1);
         info!(
-            "Sign round {} iteration {} Requesting Nonces",
-            self.current_sign_id, self.current_sign_iter_id,
+            sign_id = %self.current_sign_id,
+            sign_iter_id = %self.current_sign_iter_id,
+            "Requesting Nonces"
         );
         let nonce_request = NonceRequest {
             dkg_id: self.current_dkg_id,
@@ -789,8 +795,10 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 .contains(&nonce_response.signer_id)
             {
                 warn!(
-                    "Sign round {} iteration {} received malicious NonceResponse from signer {})",
-                    nonce_response.sign_id, nonce_response.sign_iter_id, nonce_response.signer_id,
+                    sign_id = %nonce_response.sign_id,
+                    sign_iter_id = %nonce_response.sign_iter_id,
+                    signer_id = %nonce_response.signer_id,
+                    "Received malicious NonceResponse"
                 );
                 //return Err(Error::MaliciousSigner(nonce_response.signer_id));
                 return Ok(());
@@ -819,12 +827,12 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 .insert(nonce_response.signer_id);
             // Because of entry call, it is safe to unwrap here
             info!(
-                "Sign round {} iteration {} received NonceResponse from signer {} ({}/{})",
-                nonce_response.sign_id,
-                nonce_response.sign_iter_id,
-                nonce_response.signer_id,
-                nonce_info.nonce_recv_key_ids.len(),
-                self.config.threshold,
+                sign_id = %nonce_response.sign_id,
+                sign_iter_id = %nonce_response.sign_iter_id,
+                signer_id = %nonce_response.signer_id,
+                recv_keys = %nonce_info.nonce_recv_key_ids.len(),
+                threshold = %self.config.threshold,
+                "Received NonceResponse"
             );
             if nonce_info.nonce_recv_key_ids.len() >= self.config.threshold as usize {
                 // We have a winning message!
@@ -841,8 +849,8 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
     fn request_sig_shares(&mut self, signature_type: SignatureType) -> Result<Packet, Error> {
         self.signature_shares.clear();
         info!(
-            "Sign Round {} Requesting Signature Shares",
-            self.current_sign_id,
+            sign_id = %self.current_sign_id,
+            "Requesting Signature Shares"
         );
         let nonce_responses = self
             .message_nonces
