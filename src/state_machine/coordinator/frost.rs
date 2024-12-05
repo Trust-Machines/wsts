@@ -324,7 +324,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
         debug!(
             dkg_id = %self.current_dkg_id,
             waiting = ?self.ids_to_await,
-            “Waiting for Dkg End from signers"
+            "Waiting for DkgEnd from signers"
         );
         if let Message::DkgEnd(dkg_end) = &packet.msg {
             if dkg_end.dkg_id != self.current_dkg_id {
