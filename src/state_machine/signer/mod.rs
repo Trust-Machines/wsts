@@ -117,6 +117,8 @@ pub struct SavedState {
     pub dkg_private_begin_msg: Option<DkgPrivateBegin>,
     /// the DKG end begin message received in this round
     pub dkg_end_begin_msg: Option<DkgEndBegin>,
+    /// Embed public and private shares into DkgBegin messages
+    pub embed_public_private_shares: bool,
 }
 
 /// A state machine for a signing round
@@ -166,6 +168,8 @@ pub struct Signer<SignerType: SignerTrait> {
     pub dkg_private_begin_msg: Option<DkgPrivateBegin>,
     /// the DKG end begin message received in this round
     pub dkg_end_begin_msg: Option<DkgEndBegin>,
+    /// Embed public and private shares into DkgBegin messages
+    pub embed_public_private_shares: bool,
 }
 
 impl<SignerType: SignerTrait> Signer<SignerType> {
@@ -179,6 +183,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         key_ids: Vec<u32>,
         network_private_key: Scalar,
         public_keys: PublicKeys,
+        embed_public_private_shares: bool,
         rng: &mut R,
     ) -> Self {
         assert!(threshold <= total_keys);
@@ -216,6 +221,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             dkg_private_shares: Default::default(),
             dkg_private_begin_msg: Default::default(),
             dkg_end_begin_msg: Default::default(),
+            embed_public_private_shares,
         }
     }
 
@@ -242,6 +248,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             dkg_private_shares: state.dkg_private_shares.clone(),
             dkg_private_begin_msg: state.dkg_private_begin_msg.clone(),
             dkg_end_begin_msg: state.dkg_end_begin_msg.clone(),
+            embed_public_private_shares: state.embed_public_private_shares,
         }
     }
 
@@ -268,6 +275,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             dkg_private_shares: self.dkg_private_shares.clone(),
             dkg_private_begin_msg: self.dkg_private_begin_msg.clone(),
             dkg_end_begin_msg: self.dkg_end_begin_msg.clone(),
+            embed_public_private_shares: self.embed_public_private_shares,
         }
     }
 
@@ -320,10 +328,20 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             Message::DkgPrivateBegin(dkg_private_begin) => {
                 self.dkg_private_begin(dkg_private_begin, rng)
             }
-            Message::DkgEndBegin(dkg_end_begin) => self.dkg_end_begin(dkg_end_begin),
-            Message::DkgPublicShares(dkg_public_shares) => self.dkg_public_share(dkg_public_shares),
+            Message::DkgEndBegin(dkg_end_begin) => self.dkg_end_begin(dkg_end_begin, rng),
+            Message::DkgPublicShares(dkg_public_shares) => {
+                if !self.embed_public_private_shares {
+                    self.dkg_public_share(dkg_public_shares)
+                } else {
+                    Ok(vec![])
+                }
+            }
             Message::DkgPrivateShares(dkg_private_shares) => {
-                self.dkg_private_shares(dkg_private_shares, rng)
+                if !self.embed_public_private_shares {
+                    self.dkg_private_shares(dkg_private_shares, rng)
+                } else {
+                    Ok(vec![])
+                }
             }
             Message::SignatureShareRequest(sign_share_request) => {
                 self.sign_share_request(sign_share_request)
@@ -698,6 +716,10 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             .cloned()
             .collect::<HashSet<u32>>();
 
+        for (_, shares) in &dkg_private_begin.dkg_public_shares {
+            let _ = self.dkg_public_share(shares)?;
+        }
+
         self.dkg_private_begin_msg = Some(dkg_private_begin.clone());
         self.move_to(State::DkgPrivateDistribute)?;
 
@@ -746,10 +768,18 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
     }
 
     /// handle incoming DkgEndBegin
-    pub fn dkg_end_begin(&mut self, dkg_end_begin: &DkgEndBegin) -> Result<Vec<Message>, Error> {
+    pub fn dkg_end_begin<R: RngCore + CryptoRng>(
+        &mut self,
+        dkg_end_begin: &DkgEndBegin,
+        rng: &mut R,
+    ) -> Result<Vec<Message>, Error> {
         let msgs = vec![];
 
         self.dkg_end_begin_msg = Some(dkg_end_begin.clone());
+
+        for (_, shares) in &dkg_end_begin.dkg_private_shares {
+            let _ = self.dkg_private_shares(shares, rng)?;
+        }
 
         info!(
             signer_id = %self.signer_id,
@@ -891,7 +921,9 @@ impl<SignerType: SignerTrait> StateMachine<State, Error> for Signer<SignerType> 
 }
 #[cfg(test)]
 /// Test module for signer functionality
-pub mod test {
+mod test {
+    use hashbrown::HashMap;
+
     use crate::{
         common::PolyCommitment,
         curve::{ecdsa, scalar::Scalar},
@@ -926,6 +958,7 @@ pub mod test {
             vec![1],
             Default::default(),
             Default::default(),
+            true,
             &mut rng,
         );
         let public_share = DkgPublicShares {
@@ -963,6 +996,7 @@ pub mod test {
             vec![1],
             Default::default(),
             Default::default(),
+            true,
             &mut rng,
         );
         // publich_shares_done starts out as false
@@ -1001,8 +1035,17 @@ pub mod test {
         public_keys.signers.insert(0, public_key.clone());
         public_keys.key_ids.insert(1, public_key.clone());
 
-        let mut signer =
-            Signer::<SignerType>::new(1, 1, 1, 0, vec![1], private_key, public_keys, &mut rng);
+        let mut signer = Signer::<SignerType>::new(
+            1,
+            1,
+            1,
+            0,
+            vec![1],
+            private_key,
+            public_keys,
+            true,
+            &mut rng,
+        );
         // can_dkg_end starts out as false
         assert!(!signer.can_dkg_end());
 
@@ -1014,10 +1057,17 @@ pub mod test {
         let _ = signer
             .process(&dkg_public_shares[0], &mut rng)
             .expect("failed to process DkgPublicShares");
+        let mut public_shares = HashMap::new();
+        if let Message::DkgPublicShares(shares) = &dkg_public_shares[0] {
+            public_shares.insert(0, shares.clone());
+        } else {
+            panic!("");
+        }
         let dkg_private_begin = Message::DkgPrivateBegin(DkgPrivateBegin {
             dkg_id: 1,
             signer_ids: vec![0],
             key_ids: vec![1],
+            dkg_public_shares: public_shares,
         });
         let dkg_private_shares = signer
             .process(&dkg_private_begin, &mut rng)
@@ -1025,13 +1075,20 @@ pub mod test {
         let _ = signer
             .process(&dkg_private_shares[0], &mut rng)
             .expect("failed to process DkgPrivateShares");
+        let mut private_shares = HashMap::new();
+        if let Message::DkgPrivateShares(shares) = &dkg_private_shares[0] {
+            private_shares.insert(0u32, shares.clone());
+        } else {
+            panic!("");
+        }
         let dkg_end_begin = DkgEndBegin {
             dkg_id: 1,
             signer_ids: vec![0],
             key_ids: vec![1],
+            dkg_private_shares: private_shares,
         };
         let _ = signer
-            .dkg_end_begin(&dkg_end_begin)
+            .dkg_end_begin(&dkg_end_begin, &mut rng)
             .expect("failed to process DkgPrivateShares");
 
         // can_dkg_end should be true
@@ -1054,6 +1111,7 @@ pub mod test {
         .with(fmt::layer())
         .with(EnvFilter::from_default_env())
         .init();*/
+
         let mut rng = create_rng();
         let mut signer = Signer::<SignerType>::new(
             1,
@@ -1063,6 +1121,7 @@ pub mod test {
             vec![1],
             Default::default(),
             Default::default(),
+            true,
             &mut rng,
         );
 
