@@ -19,6 +19,8 @@ aes-gcm = "0.10"
 bs58 = "0.5"
 hashbrown = { version = "0.14", features = ["serde"] }
 hex = "0.4.3"
+is_prime =  { git = "https://github.com/xoloki/is_prime.git" }
+num-bigint = "0.4"
 num-traits = "0.2"
 polynomial = { version = "0.2.5", features = ["serde"] }
 primitive-types = "0.12"

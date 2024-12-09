@@ -82,6 +82,34 @@ pub fn decrypt(key: &[u8; 32], data: &[u8]) -> Result<Vec<u8>, AesGcmError> {
     cipher.decrypt(nonce, cipher_vec.as_ref())
 }
 
+/// An El-Gamal encryption packet
+struct ElGamal {
+    c1: Scalar,
+    c2: Scalar,
+}
+
+/// encrypt using a scalar based El-Gamal
+pub fn encrypt_elgamal<RNG: RngCore + CryptoRng>(
+    generator: Scalar,
+    message: Scalar,
+    public_key: Scalar,
+    rng: &mut RNG,
+) -> Result<ElGamal, String> {
+    // ephemeral key
+    let k = Scalar::random(rng);
+
+    let c1 = generator ^ k;
+    let c2 = (message.invert()) * (public_key ^ k);
+
+    Ok(ElGamal { c1, c2 })
+}
+
+/// encrypt using a scalar based El-Gamal
+pub fn decrypt_elgamal(elgamal: &ElGamal, private_key: Scalar) -> Result<Scalar, String> {
+    let message = (elgamal.c1 ^ private_key) * (elgamal.c2.invert());
+    Ok(message)
+}
+
 /// Creates a new random number generator.
 pub fn create_rng() -> impl RngCore + CryptoRng {
     OsRng
@@ -94,7 +122,7 @@ mod test {
 
     #[test]
     #[allow(non_snake_case)]
-    fn test_shared_secret() {
+    fn shared_secret() {
         let mut rng = create_rng();
 
         let x = Scalar::random(&mut rng);
@@ -111,7 +139,7 @@ mod test {
 
     #[test]
     #[allow(non_snake_case)]
-    fn test_encrypt_decrypt() {
+    fn encrypt_decrypt() {
         let mut rng = create_rng();
         let msg = "It was many and many a year ago, in a kingdom by the sea...";
 
@@ -129,4 +157,21 @@ mod test {
 
         assert_eq!(msg.as_bytes(), &plain);
     }
+
+    #[test]
+    fn elgamal() {
+        let mut rng = create_rng();
+        let generator = Scalar::random(&mut rng);
+        let private_key = Scalar::random(&mut rng);
+        let public_key = generator ^ private_key;
+        let message = Scalar::random(&mut rng);
+
+        let elgamal = encrypt_elgamal(generator, message, public_key, &mut rng).unwrap();
+        let decrypted_message = decrypt_elgamal(&elgamal, private_key).unwrap();
+
+        assert_eq!(message, decrypted_message);
+    }
+
+    #[test]
+    fn pvss() {}
 }
