@@ -83,7 +83,7 @@ pub fn decrypt(key: &[u8; 32], data: &[u8]) -> Result<Vec<u8>, AesGcmError> {
 }
 
 /// An El-Gamal encryption packet
-struct ElGamal {
+pub struct ElGamal {
     c1: Scalar,
     c2: Scalar,
 }

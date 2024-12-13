@@ -2,7 +2,8 @@
 #![doc = include_str!("../README.md")]
 
 /// PVSS
-pub mod PVSS;
+#[allow(non_snake_case)]
+pub mod pvss;
 /// Types which are common to both v1 and v2
 #[allow(clippy::op_ref)]
 pub mod common;
