@@ -5,7 +5,10 @@ use rand_core::{CryptoRng, RngCore};
 use tracing::warn;
 
 use crate::{
-    common::{CheckPrivateShares, Nonce, PolyCommitment, PublicNonce, Signature, SignatureShare},
+    common::{
+        check_public_shares, CheckPrivateShares, Nonce, PolyCommitment, PublicNonce, Signature,
+        SignatureShare,
+    },
     compute,
     curve::{
         point::{Point, G},
@@ -139,7 +142,7 @@ impl Party {
         let threshold: usize = self.threshold.try_into()?;
         let mut bad_ids = Vec::new(); //: Vec<u32> = polys
         for (i, comm) in public_shares.iter() {
-            if comm.poly.len() != threshold || !comm.verify() {
+            if !check_public_shares(comm, threshold) {
                 bad_ids.push(*i);
             } else {
                 self.group_key += comm.poly[0];
@@ -420,7 +423,7 @@ impl traits::Aggregator for Aggregator {
         let threshold = self.threshold.try_into()?;
         let mut bad_poly_commitments = Vec::new();
         for (_id, comm) in comms {
-            if comm.poly.len() != threshold || !comm.verify() {
+            if !check_public_shares(comm, threshold) {
                 bad_poly_commitments.push(comm.id.id);
             }
         }
