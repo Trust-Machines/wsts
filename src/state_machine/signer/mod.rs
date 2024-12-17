@@ -1,6 +1,6 @@
 use hashbrown::{HashMap, HashSet};
 use rand_core::{CryptoRng, RngCore};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use tracing::{debug, info, trace, warn};
 
 use crate::{
@@ -571,7 +571,25 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             .map(|nr| nr.signer_id)
             .collect::<Vec<u32>>();
 
-        debug!("Got SignatureShareRequest for signer_ids {:?}", signer_ids);
+        let signer_id_set = sign_request
+            .nonce_responses
+            .iter()
+            .map(|nr| nr.signer_id)
+            .collect::<BTreeSet<u32>>();
+
+        if signer_ids.len() != signer_id_set.len()
+            || signer_id_set.is_empty()
+            || signer_id_set.len() > self.total_signers.try_into().unwrap()
+            || signer_id_set.last().unwrap() > &self.total_signers
+        {
+            warn!(
+                ?signer_ids,
+                "Got SignatureShareRequest with invalid NonceResponse"
+            );
+            return Err(Error::InvalidNonceResponse);
+        } else {
+            debug!(?signer_ids, "Got SignatureShareRequest");
+        }
 
         for signer_id in &signer_ids {
             if *signer_id == self.signer_id {
