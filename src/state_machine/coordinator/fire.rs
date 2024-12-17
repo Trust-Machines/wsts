@@ -1282,8 +1282,8 @@ pub mod test {
                 fire::Coordinator as FireCoordinator,
                 test::{
                     check_signature_shares, coordinator_state_machine, equal_after_save_load,
-                    feedback_messages, feedback_mutated_messages, new_coordinator, run_dkg_sign,
-                    setup, setup_with_timeouts, start_dkg_round,
+                    feedback_messages, feedback_mutated_messages, gen_nonces, new_coordinator,
+                    run_dkg_sign, setup, setup_with_timeouts, start_dkg_round,
                 },
                 Config, Coordinator as CoordinatorTrait, State,
             },
@@ -2811,5 +2811,15 @@ pub mod test {
             assert_eq!(coordinator.state, State::Idle);
             assert_eq!(coordinator.current_sign_id, id);
         }
+    }
+
+    #[test]
+    fn gen_nonces_v1() {
+        gen_nonces::<FireCoordinator<v1::Aggregator>, v1::Signer>(5, 1);
+    }
+
+    #[test]
+    fn gen_nonces_v2() {
+        gen_nonces::<FireCoordinator<v2::Aggregator>, v2::Signer>(5, 1);
     }
 }
