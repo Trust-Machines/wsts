@@ -326,7 +326,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                 self.dkg_private_shares(dkg_private_shares, rng)
             }
             Message::SignatureShareRequest(sign_share_request) => {
-                self.sign_share_request(sign_share_request)
+                self.sign_share_request(sign_share_request, rng)
             }
             Message::NonceRequest(nonce_request) => self.nonce_request(nonce_request, rng),
             _ => Ok(vec![]), // TODO
@@ -565,9 +565,10 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         Ok(msgs)
     }
 
-    fn sign_share_request(
+    fn sign_share_request<R: RngCore + CryptoRng>(
         &mut self,
         sign_request: &SignatureShareRequest,
+        rng: &mut R,
     ) -> Result<Vec<Message>, Error> {
         let mut msgs = vec![];
 
@@ -610,6 +611,8 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                             .sign(&sign_request.message, &signer_ids, &key_ids, &nonces)
                     }
                 };
+
+                self.signer.gen_nonces(rng);
 
                 let response = SignatureShareResponse {
                     dkg_id: sign_request.dkg_id,
