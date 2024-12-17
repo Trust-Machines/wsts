@@ -1029,15 +1029,15 @@ pub mod test {
             let share1 = if let Message::SignatureShareResponse(response) = message1 {
                 response.signature_shares[0].clone()
             } else {
-                panic!("");
+                panic!("Message should have been SignatureShareResponse");
             };
             let share2 = if let Message::SignatureShareResponse(response) = message2 {
                 response.signature_shares[0].clone()
             } else {
-                panic!("");
+                panic!("Message should have been SignatureShareResponse");
             };
 
-	    assert!(share1.z_i != share2.z_i);
+            assert!(share1.z_i != share2.z_i);
         }
     }
 }
