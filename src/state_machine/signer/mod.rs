@@ -586,6 +586,9 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                     }
                 };
 
+                let mut rng = OsRng;
+                self.signer.gen_nonces(&mut rng);
+
                 let response = SignatureShareResponse {
                     dkg_id: sign_request.dkg_id,
                     sign_id: sign_request.sign_id,
