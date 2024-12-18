@@ -1,8 +1,11 @@
-use aes_gcm::{aead::Aead, Aes256Gcm, Error as AesGcmError, KeyInit, Nonce};
+use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
 use rand_core::{CryptoRng, OsRng, RngCore};
 use sha2::{Digest, Sha256};
 
-use crate::curve::{point::Point, scalar::Scalar};
+use crate::{
+    curve::{point::Point, scalar::Scalar},
+    errors::EncryptionError,
+};
 
 /// Size of the AES-GCM nonce
 pub const AES_GCM_NONCE_SIZE: usize = 12;
@@ -55,7 +58,7 @@ pub fn encrypt<RNG: RngCore + CryptoRng>(
     key: &[u8; 32],
     data: &[u8],
     rng: &mut RNG,
-) -> Result<Vec<u8>, AesGcmError> {
+) -> Result<Vec<u8>, EncryptionError> {
     let mut nonce_bytes = [0u8; AES_GCM_NONCE_SIZE];
 
     rng.fill_bytes(&mut nonce_bytes);
@@ -73,13 +76,16 @@ pub fn encrypt<RNG: RngCore + CryptoRng>(
 }
 
 /// Decrypt the passed data using the key
-pub fn decrypt(key: &[u8; 32], data: &[u8]) -> Result<Vec<u8>, AesGcmError> {
+pub fn decrypt(key: &[u8; 32], data: &[u8]) -> Result<Vec<u8>, EncryptionError> {
+    if data.len() < AES_GCM_NONCE_SIZE {
+        return Err(EncryptionError::MissingNonce);
+    }
     let nonce_vec = data[..AES_GCM_NONCE_SIZE].to_vec();
     let cipher_vec = data[AES_GCM_NONCE_SIZE..].to_vec();
     let nonce = Nonce::from_slice(&nonce_vec);
     let cipher = Aes256Gcm::new(key.into());
 
-    cipher.decrypt(nonce, cipher_vec.as_ref())
+    Ok(cipher.decrypt(nonce, cipher_vec.as_ref())?)
 }
 
 /// Creates a new random number generator.
@@ -128,5 +134,26 @@ mod test {
         let plain = decrypt(&yx, &cipher).unwrap();
 
         assert_eq!(msg.as_bytes(), &plain);
+
+        let missing_nonce = &cipher[..AES_GCM_NONCE_SIZE - 1];
+        match decrypt(&yx, &missing_nonce) {
+            Err(EncryptionError::MissingNonce) => {}
+            Err(e) => panic!("expected MissingNonce got Err({e})"),
+            Ok(_) => panic!("expected MissingNonce got Ok()"),
+        }
+
+        let missing_data = &cipher[..AES_GCM_NONCE_SIZE];
+        match decrypt(&yx, &missing_data) {
+            Err(EncryptionError::AesGcm(_)) => (),
+            Err(e) => panic!("expected EncryptionError(AesGcm) got Err({e:?})"),
+            Ok(_) => panic!("expected EncryptionError(AesGcm) got Ok()"),
+        }
+
+        let small_data = &cipher[..AES_GCM_NONCE_SIZE + 1];
+        match decrypt(&yx, &small_data) {
+            Err(EncryptionError::AesGcm(_)) => (),
+            Err(e) => panic!("expected EncryptionError(AesGcm) got Err({e:?})"),
+            Ok(_) => panic!("expected EncryptionError(AesGcm) got Ok()"),
+        }
     }
 }

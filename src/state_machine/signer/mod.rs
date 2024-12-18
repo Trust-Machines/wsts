@@ -1,4 +1,3 @@
-use aes_gcm::Error as AesGcmError;
 use hashbrown::{HashMap, HashSet};
 use rand_core::{CryptoRng, RngCore};
 use std::collections::BTreeMap;
@@ -10,7 +9,7 @@ use crate::{
         point::{Compressed, Point, G},
         scalar::Scalar,
     },
-    errors::DkgError,
+    errors::{DkgError, EncryptionError},
     net::{
         BadPrivateShare, DkgBegin, DkgEnd, DkgEndBegin, DkgFailure, DkgPrivateBegin,
         DkgPrivateShares, DkgPublicShares, DkgStatus, Message, NonceRequest, NonceResponse, Packet,
@@ -59,15 +58,9 @@ pub enum Error {
     /// A bad state change was made
     #[error("Bad State Change: {0}")]
     BadStateChange(String),
-    /// An AES-GCM error occurred
-    #[error("AES-GCM: {0}")]
-    AesGcm(AesGcmError),
-}
-
-impl From<AesGcmError> for Error {
-    fn from(err: AesGcmError) -> Self {
-        Error::AesGcm(err)
-    }
+    /// An encryption error occurred
+    #[error("Encryption error: {0}")]
+    Encryption(#[from] EncryptionError),
 }
 
 /// The saved state required to reconstruct a signer

@@ -1,3 +1,4 @@
+use aes_gcm::Error as AesGcmError;
 use core::num::TryFromIntError;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -65,5 +66,22 @@ pub enum AggregatorError {
 impl From<TryFromIntError> for AggregatorError {
     fn from(_e: TryFromIntError) -> Self {
         Self::TryFromInt
+    }
+}
+
+#[derive(Error, Debug, Clone, PartialEq)]
+/// Errors which can happen during signature aggregation
+pub enum EncryptionError {
+    #[error("AES nonce was missing from the data")]
+    /// AES nonce was missing from the data")]
+    MissingNonce,
+    #[error("AES GCM error {0:?}")]
+    /// Wrapped aes_gcm::Error, an opaque type
+    AesGcm(AesGcmError),
+}
+
+impl From<AesGcmError> for EncryptionError {
+    fn from(e: AesGcmError) -> Self {
+        Self::AesGcm(e)
     }
 }
