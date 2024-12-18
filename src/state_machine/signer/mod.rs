@@ -464,6 +464,10 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             "sending DkgEnd"
         );
 
+        self.dkg_private_shares.clear();
+        self.dkg_public_shares.clear();
+        self.signer.clear_polys();
+
         let dkg_end = Message::DkgEnd(dkg_end);
         Ok(dkg_end)
     }
