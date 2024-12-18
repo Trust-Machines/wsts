@@ -350,6 +350,10 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 %key,
                 "Aggregate public key"
             );
+
+            self.dkg_public_shares.clear();
+            self.dkg_private_shares.clear();
+
             self.aggregate_public_key = Some(key);
             self.move_to(State::Idle)?;
         }

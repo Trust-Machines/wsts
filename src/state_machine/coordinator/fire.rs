@@ -736,6 +736,9 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             .flat_map(|signer_id| self.dkg_public_shares[signer_id].comms.clone())
             .fold(Point::default(), |s, (_, comm)| s + comm.poly[0]);
 
+        self.dkg_public_shares.clear();
+        self.dkg_private_shares.clear();
+
         info!("Aggregate public key: {}", key);
         self.aggregate_public_key = Some(key);
         self.move_to(State::Idle)
