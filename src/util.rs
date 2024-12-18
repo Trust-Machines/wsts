@@ -77,15 +77,19 @@ pub fn encrypt<RNG: RngCore + CryptoRng>(
 
 /// Decrypt the passed data using the key
 pub fn decrypt(key: &[u8; 32], data: &[u8]) -> Result<Vec<u8>, EncryptionError> {
-    if data.len() < AES_GCM_NONCE_SIZE {
+    let Some(nonce_data) = data.get(..AES_GCM_NONCE_SIZE) else {
         return Err(EncryptionError::MissingNonce);
+    };
+    let Some(cipher_data) = data.get(AES_GCM_NONCE_SIZE..) else {
+        return Err(EncryptionError::MissingData);
+    };
+    if cipher_data.is_empty() {
+        return Err(EncryptionError::MissingData);
     }
-    let nonce_vec = data[..AES_GCM_NONCE_SIZE].to_vec();
-    let cipher_vec = data[AES_GCM_NONCE_SIZE..].to_vec();
-    let nonce = Nonce::from_slice(&nonce_vec);
+    let nonce = Nonce::from_slice(&nonce_data);
     let cipher = Aes256Gcm::new(key.into());
 
-    Ok(cipher.decrypt(nonce, cipher_vec.as_ref())?)
+    Ok(cipher.decrypt(nonce, cipher_data)?)
 }
 
 /// Creates a new random number generator.
@@ -144,9 +148,9 @@ mod test {
 
         let missing_data = &cipher[..AES_GCM_NONCE_SIZE];
         match decrypt(&yx, &missing_data) {
-            Err(EncryptionError::AesGcm(_)) => (),
-            Err(e) => panic!("expected EncryptionError(AesGcm) got Err({e:?})"),
-            Ok(_) => panic!("expected EncryptionError(AesGcm) got Ok()"),
+            Err(EncryptionError::MissingData) => (),
+            Err(e) => panic!("expected MissingData got Err({e})"),
+            Ok(_) => panic!("expected MissingData got Ok()"),
         }
 
         let small_data = &cipher[..AES_GCM_NONCE_SIZE + 1];

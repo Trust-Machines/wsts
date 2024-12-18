@@ -72,9 +72,12 @@ impl From<TryFromIntError> for AggregatorError {
 #[derive(Error, Debug, Clone, PartialEq)]
 /// Errors which can happen during signature aggregation
 pub enum EncryptionError {
-    #[error("AES nonce was missing from the data")]
-    /// AES nonce was missing from the data")]
+    #[error("AES nonce was missing from the buffer")]
+    /// AES nonce was missing from the buffer")]
     MissingNonce,
+    #[error("AES data was missing from the buffer")]
+    /// AES data was missing from the buffer")]
+    MissingData,
     #[error("AES GCM error {0:?}")]
     /// Wrapped aes_gcm::Error, an opaque type
     AesGcm(AesGcmError),
