@@ -1037,7 +1037,7 @@ pub mod test {
                 panic!("Message should have been SignatureShareResponse");
             };
 
-            assert!(share1.z_i != share2.z_i);
+            assert_ne!(share1.z_i, share2.z_i);
         }
     }
 }
