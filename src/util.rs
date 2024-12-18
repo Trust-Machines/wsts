@@ -86,7 +86,7 @@ pub fn decrypt(key: &[u8; 32], data: &[u8]) -> Result<Vec<u8>, EncryptionError> 
     if cipher_data.is_empty() {
         return Err(EncryptionError::MissingData);
     }
-    let nonce = Nonce::from_slice(&nonce_data);
+    let nonce = Nonce::from_slice(nonce_data);
     let cipher = Aes256Gcm::new(key.into());
 
     Ok(cipher.decrypt(nonce, cipher_data)?)
