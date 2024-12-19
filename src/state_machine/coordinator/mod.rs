@@ -974,6 +974,9 @@ pub mod test {
         assert_eq!(signers, loaded_signers);
     }
 
+    /// Test if a signer will generate a new nonce after a signing round as a defense
+    /// against a malicious coordinator who requests multiple signing rounds
+    /// with no nonce round in between to generate a new nonce
     pub fn gen_nonces<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
         num_signers: u32,
         keys_per_signer: u32,
@@ -1000,7 +1003,8 @@ pub mod test {
             State::NonceGather(signature_type)
         );
 
-        // Send the message to all signers and gather responses by sharing with all other signers and coordinator
+        // Send the NonceRequest to all signers and gather NonceResponses
+        // by sharing with all other signers and coordinator
         let (outbound_messages, operation_results) =
             feedback_messages(&mut coordinators, &mut signers, &[message]);
         assert!(operation_results.is_empty());
@@ -1009,6 +1013,8 @@ pub mod test {
             State::SigShareGather(signature_type)
         );
 
+        // Once the coordinator has received sufficient NonceResponses,
+        // it should send out a SignatureShareRequest
         assert_eq!(outbound_messages.len(), 1);
         match &outbound_messages[0].msg {
             Message::SignatureShareRequest(_) => {}
@@ -1017,14 +1023,21 @@ pub mod test {
             }
         }
 
+        // Pass the SignatureShareRequest to the first signer and get his SignatureShares
+        // which should use the nonce generated before sending out NonceResponse above
         let messages1 = signers[0]
             .process(&outbound_messages[0].msg, &mut rng)
             .unwrap();
 
+        // Pass the SignatureShareRequest to the second signer and get his SignatureShares
+        // which should use the nonce generated just before sending out the previous SignatureShare
         let messages2 = signers[0]
             .process(&outbound_messages[0].msg, &mut rng)
             .unwrap();
 
+        // iterate through the responses and collect the embedded shares
+        // if the signer didn't generate a nonce after sending the first signature shares
+        // then the shares should be the same, since the message and everything else is
         for (message1, message2) in messages1.into_iter().zip(messages2) {
             let share1 = if let Message::SignatureShareResponse(response) = message1 {
                 response.signature_shares[0].clone()
