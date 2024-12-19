@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use hashbrown::HashMap;
-use thiserror::Error;
+use thiserror::Error as ThisError;
 
 use crate::{
     common::Signature,
@@ -9,6 +9,7 @@ use crate::{
     errors::AggregatorError,
     net::DkgFailure,
     state_machine::coordinator::Error as CoordinatorError,
+    state_machine::signer::Error as SignerError,
     taproot::SchnorrProof,
 };
 
@@ -20,8 +21,20 @@ pub trait StateMachine<S, E> {
     fn can_move_to(&self, state: &S) -> Result<(), E>;
 }
 
+/// All possible state machine errors
+#[derive(ThisError, Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
+pub enum Error {
+    /// signer error
+    #[error("signer error {0:?}")]
+    Signer(#[from] SignerError),
+    /// coordinator error
+    #[error("coordinator error {0:?}")]
+    Coordinator(#[from] CoordinatorError),
+}
+
 /// DKG errors
-#[derive(Error, Debug, Clone)]
+#[derive(ThisError, Debug, Clone)]
 pub enum DkgError {
     /// DKG public timeout
     #[error("DKG public timeout, waiting for {0:?}")]
@@ -38,7 +51,7 @@ pub enum DkgError {
 }
 
 /// Sign errors
-#[derive(Error, Debug, Clone)]
+#[derive(ThisError, Debug, Clone)]
 #[allow(clippy::large_enum_variant)]
 pub enum SignError {
     /// Nonce timeout
