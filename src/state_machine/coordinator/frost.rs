@@ -229,10 +229,18 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             dkg_id = %self.current_dkg_id,
             "Starting Private Share Distribution"
         );
+        let dkg_public_shares = if self.config.embed_public_private_shares {
+            (0..self.config.num_signers)
+                .map(|id| (id, self.dkg_public_shares[&id].clone()))
+                .collect()
+        } else {
+            Default::default()
+        };
         let dkg_begin = DkgPrivateBegin {
             dkg_id: self.current_dkg_id,
             key_ids: (1..self.config.num_keys + 1).collect(),
             signer_ids: (0..self.config.num_signers).collect(),
+            dkg_public_shares,
         };
         let dkg_private_begin_msg = Packet {
             sig: dkg_begin
@@ -251,10 +259,18 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             dkg_id = %self.current_dkg_id,
             "Starting DKG End Distribution"
         );
+        let dkg_private_shares = if self.config.embed_public_private_shares {
+            (0..self.config.num_signers)
+                .map(|id| (id, self.dkg_private_shares[&id].clone()))
+                .collect()
+        } else {
+            Default::default()
+        };
         let dkg_begin = DkgEndBegin {
             dkg_id: self.current_dkg_id,
             key_ids: (0..self.config.num_keys).collect(),
             signer_ids: (0..self.config.num_signers).collect(),
+            dkg_private_shares,
         };
         let dkg_end_begin_msg = Packet {
             sig: dkg_begin.sign(&self.config.message_private_key).expect(""),
@@ -787,7 +803,7 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
 
 #[cfg(test)]
 /// Test module for coordinator functionality
-pub mod test {
+mod test {
     use crate::{
         curve::scalar::Scalar,
         net::{DkgBegin, Message, NonceRequest, Packet, SignatureType},
