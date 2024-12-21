@@ -1130,12 +1130,12 @@ pub mod test {
         }
 
         // Send the SignatureShareRequest message to all signers and share their responses with the coordinator and signers
-        match feedback_messages_with_errors(&mut coordinators, &mut signers, &[packet]) {
-            Err(StateMachineError::Signer(SignerError::InvalidNonceResponse)) => {}
-            error => panic!(
-                "Should have received signer invalid nonce response error, got {:?}",
-                error
-            ),
-        };
+        let result = feedback_messages_with_errors(&mut coordinators, &mut signers, &[packet]);
+        if !matches!(
+            result,
+            Err(StateMachineError::Signer(SignerError::InvalidNonceResponse))
+        ) {
+            panic!("Should have received signer invalid nonce response error, got {result:?}");
+        }
     }
 }
