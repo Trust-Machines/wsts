@@ -6,7 +6,7 @@ use crate::{
     state_machine::{DkgFailure, OperationResult},
     taproot::SchnorrProof,
 };
-use core::{cmp::PartialEq, fmt::Debug};
+use core::{cmp::PartialEq, fmt::Debug, num::TryFromIntError};
 use hashbrown::{HashMap, HashSet};
 use std::{
     collections::BTreeMap,
@@ -78,6 +78,12 @@ pub enum Error {
     /// Missing message response information for a signing round
     #[error("Missing message nonce information")]
     MissingMessageNonceInfo,
+    /// Missing DkgPublicShares for a signer_id
+    #[error("Missing DkgPublicShares for signer_id {0}")]
+    MissingPublicShares(u32),
+    /// Missing DkgPrivateShares for a signer_id
+    #[error("Missing DkgPrivateShares for signer_id {0}")]
+    MissingPrivateShares(u32),
     /// DKG failure from signers
     #[error("DKG failure from signers")]
     DkgFailure(HashMap<u32, DkgFailure>),
@@ -89,11 +95,20 @@ pub enum Error {
     /// Supplied party polynomial contained duplicate party IDs
     #[error("Supplied party polynomials contained a duplicate party ID")]
     DuplicatePartyId,
+    #[error("integer conversion error")]
+    /// An error during integer conversion operations
+    TryFromInt,
 }
 
 impl From<AggregatorError> for Error {
     fn from(err: AggregatorError) -> Self {
         Error::Aggregator(err)
+    }
+}
+
+impl From<TryFromIntError> for Error {
+    fn from(_e: TryFromIntError) -> Self {
+        Self::TryFromInt
     }
 }
 
@@ -124,6 +139,8 @@ pub struct Config {
     pub signer_key_ids: HashMap<u32, HashSet<u32>>,
     /// ECDSA public keys as Point objects indexed by signer_id
     pub signer_public_keys: HashMap<u32, Point>,
+    /// Embed public and private shares into DkgBegin messages
+    pub embed_public_private_shares: bool,
 }
 
 impl Config {
@@ -147,6 +164,7 @@ impl Config {
             sign_timeout: None,
             signer_key_ids: Default::default(),
             signer_public_keys: Default::default(),
+            embed_public_private_shares: false,
         }
     }
 
@@ -165,6 +183,7 @@ impl Config {
         sign_timeout: Option<Duration>,
         signer_key_ids: HashMap<u32, HashSet<u32>>,
         signer_public_keys: HashMap<u32, Point>,
+        embed_public_private_shares: bool,
     ) -> Self {
         Config {
             num_signers,
@@ -179,6 +198,7 @@ impl Config {
             sign_timeout,
             signer_key_ids,
             signer_public_keys,
+            embed_public_private_shares,
         }
     }
 }
@@ -438,9 +458,12 @@ pub mod test {
             None,
             None,
             None,
+            false,
         )
     }
 
+    #[allow(static_mut_refs)]
+    #[allow(clippy::too_many_arguments)]
     pub fn setup_with_timeouts<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
         num_signers: u32,
         keys_per_signer: u32,
@@ -449,6 +472,7 @@ pub mod test {
         dkg_end_timeout: Option<Duration>,
         nonce_timeout: Option<Duration>,
         sign_timeout: Option<Duration>,
+        embed_public_private_shares: bool,
     ) -> (Vec<Coordinator>, Vec<Signer<SignerType>>) {
         INIT.call_once(|| {
             tracing_subscriber::registry()
@@ -505,6 +529,7 @@ pub mod test {
                     signer_key_ids[&(signer_id as u32)].clone(),
                     *private_key,
                     public_keys.clone(),
+                    embed_public_private_shares,
                     &mut rng,
                 )
             })
@@ -525,6 +550,7 @@ pub mod test {
                     sign_timeout,
                     signer_key_ids_set.clone(),
                     signer_public_keys.clone(),
+                    embed_public_private_shares,
                 );
                 Coordinator::new(config)
             })
