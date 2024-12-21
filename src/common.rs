@@ -214,6 +214,11 @@ impl TupleProof {
     }
 }
 
+/// Check that the PolyCommitment is properly signed and has the correct degree polynomial
+pub fn check_public_shares(poly_comm: &PolyCommitment, threshold: usize) -> bool {
+    poly_comm.verify() && poly_comm.poly.len() == threshold
+}
+
 /// An implementation of p256k1's MultiMult trait that allows fast checking of DKG private shares
 /// We convert a set of checked polynomial evaluations into a single giant multimult
 /// These evaluations take the form of s * G == \Sum{k=0}{T+1}(a_k * x^k) where the a vals are the coeffs of the polys

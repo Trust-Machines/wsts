@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use tracing::{debug, info, trace, warn};
 
 use crate::{
-    common::{PolyCommitment, PublicNonce, TupleProof},
+    common::{check_public_shares, PolyCommitment, PublicNonce, TupleProof},
     curve::{
         point::{Compressed, Point, G},
         scalar::Scalar,
@@ -357,7 +357,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             for signer_id in &dkg_end_begin.signer_ids {
                 if let Some(shares) = self.dkg_public_shares.get(signer_id) {
                     for (party_id, comm) in shares.comms.iter() {
-                        if comm.poly.len() != threshold || !comm.verify() {
+                        if !check_public_shares(comm, threshold) {
                             bad_public_shares.insert(*signer_id);
                         } else {
                             self.commitments.insert(*party_id, comm.clone());
