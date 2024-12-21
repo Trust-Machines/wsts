@@ -314,8 +314,8 @@ pub mod test {
         net::{Message, Packet, SignatureShareResponse, SignatureType},
         state_machine::{
             coordinator::{Config, Coordinator as CoordinatorTrait, Error, State},
-            signer::Signer,
-            OperationResult, PublicKeys, SignError, StateMachine,
+            signer::{Error as SignerError, Signer},
+            Error as StateMachineError, OperationResult, PublicKeys, SignError, StateMachine,
         },
         traits::Signer as SignerTrait,
         util::create_rng,
@@ -540,6 +540,7 @@ pub mod test {
     ) -> (Vec<Packet>, Vec<OperationResult>) {
         feedback_mutated_messages(coordinators, signers, messages, |_signer, msgs| msgs)
     }
+
     /// Helper function for feeding mutated messages back from the processor into the signing rounds and coordinators
     pub fn feedback_mutated_messages<
         Coordinator: CoordinatorTrait,
@@ -551,38 +552,60 @@ pub mod test {
         messages: &[Packet],
         signer_mutator: F,
     ) -> (Vec<Packet>, Vec<OperationResult>) {
+        feedback_mutated_messages_with_errors(coordinators, signers, messages, signer_mutator)
+            .unwrap()
+    }
+
+    /// Helper function for feeding mutated messages back from the processor into the signing rounds and coordinators
+    pub fn feedback_messages_with_errors<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
+        coordinators: &mut [Coordinator],
+        signers: &mut [Signer<SignerType>],
+        messages: &[Packet],
+    ) -> Result<(Vec<Packet>, Vec<OperationResult>), StateMachineError> {
+        feedback_mutated_messages_with_errors(coordinators, signers, messages, |_signer, msgs| msgs)
+    }
+
+    /// Helper function for feeding mutated messages back from the processor into the signing rounds and coordinators
+    pub fn feedback_mutated_messages_with_errors<
+        Coordinator: CoordinatorTrait,
+        SignerType: SignerTrait,
+        F: Fn(&Signer<SignerType>, Vec<Packet>) -> Vec<Packet>,
+    >(
+        coordinators: &mut [Coordinator],
+        signers: &mut [Signer<SignerType>],
+        messages: &[Packet],
+        signer_mutator: F,
+    ) -> Result<(Vec<Packet>, Vec<OperationResult>), StateMachineError> {
         let mut inbound_messages = vec![];
         let mut feedback_messages = vec![];
         let mut rng = create_rng();
         for signer in signers.iter_mut() {
-            let outbound_messages = signer.process_inbound_messages(messages, &mut rng).unwrap();
+            let outbound_messages = signer.process_inbound_messages(messages, &mut rng)?;
             let outbound_messages = signer_mutator(signer, outbound_messages);
             feedback_messages.extend_from_slice(outbound_messages.as_slice());
             inbound_messages.extend(outbound_messages);
         }
         for signer in signers.iter_mut() {
-            let outbound_messages = signer
-                .process_inbound_messages(&feedback_messages, &mut rng)
-                .unwrap();
+            let outbound_messages =
+                signer.process_inbound_messages(&feedback_messages, &mut rng)?;
             inbound_messages.extend(outbound_messages);
         }
         for coordinator in coordinators.iter_mut() {
             // Process all coordinator messages, but don't bother with propogating these results
-            let _ = coordinator.process_inbound_messages(messages).unwrap();
+            let _ = coordinator.process_inbound_messages(messages)?;
         }
         let mut results = vec![];
         let mut messages = vec![];
         for (i, coordinator) in coordinators.iter_mut().enumerate() {
-            let (outbound_messages, outbound_results) = coordinator
-                .process_inbound_messages(&inbound_messages)
-                .unwrap();
+            let (outbound_messages, outbound_results) =
+                coordinator.process_inbound_messages(&inbound_messages)?;
             // Only propogate a single coordinator's messages and results
             if i == 0 {
                 messages.extend(outbound_messages);
                 results.extend(outbound_results);
             }
         }
-        (messages, results)
+        Ok((messages, results))
     }
 
     pub fn run_dkg<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
@@ -1051,6 +1074,68 @@ pub mod test {
             };
 
             assert_ne!(share1.z_i, share2.z_i);
+        }
+    }
+
+    pub fn bad_signature_share_request<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
+        num_signers: u32,
+        keys_per_signer: u32,
+    ) {
+        let (mut coordinators, mut signers) =
+            run_dkg::<Coordinator, SignerType>(num_signers, keys_per_signer);
+
+        let msg = "It was many and many a year ago, in a kingdom by the sea"
+            .as_bytes()
+            .to_vec();
+
+        // Start a signing round
+        let signature_type = SignatureType::Frost;
+        let message = coordinators
+            .first_mut()
+            .unwrap()
+            .start_signing_round(&msg, signature_type)
+            .unwrap();
+        assert_eq!(
+            coordinators.first_mut().unwrap().get_state(),
+            State::NonceGather(signature_type)
+        );
+
+        // Send the message to all signers and gather responses by sharing with all other signers and coordinator
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &[message]);
+        assert!(operation_results.is_empty());
+        assert_eq!(
+            coordinators.first_mut().unwrap().get_state(),
+            State::SigShareGather(signature_type)
+        );
+
+        assert_eq!(outbound_messages.len(), 1);
+        match &outbound_messages[0].msg {
+            Message::SignatureShareRequest(_) => {}
+            _ => {
+                panic!("Expected SignatureShareRequest message");
+            }
+        }
+
+        // add NonceResponses so there's more than the number of signers
+        let mut packet = outbound_messages[0].clone();
+        if let Message::SignatureShareRequest(ref mut request) = packet.msg {
+            for _ in 0..1000 {
+                request
+                    .nonce_responses
+                    .push(request.nonce_responses.first().unwrap().clone());
+            }
+        } else {
+            panic!("failed to match message");
+        }
+
+        // Send the SignatureShareRequest message to all signers and share their responses with the coordinator and signers
+        let result = feedback_messages_with_errors(&mut coordinators, &mut signers, &[packet]);
+        if !matches!(
+            result,
+            Err(StateMachineError::Signer(SignerError::InvalidNonceResponse))
+        ) {
+            panic!("Should have received signer invalid nonce response error, got {result:?}");
         }
     }
 }

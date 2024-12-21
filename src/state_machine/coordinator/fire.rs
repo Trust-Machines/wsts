@@ -1281,9 +1281,10 @@ pub mod test {
             coordinator::{
                 fire::Coordinator as FireCoordinator,
                 test::{
-                    check_signature_shares, coordinator_state_machine, equal_after_save_load,
-                    feedback_messages, feedback_mutated_messages, gen_nonces, new_coordinator,
-                    run_dkg_sign, setup, setup_with_timeouts, start_dkg_round,
+                    bad_signature_share_request, check_signature_shares, coordinator_state_machine,
+                    equal_after_save_load, feedback_messages, feedback_mutated_messages,
+                    gen_nonces, new_coordinator, run_dkg_sign, setup, setup_with_timeouts,
+                    start_dkg_round,
                 },
                 Config, Coordinator as CoordinatorTrait, State,
             },
@@ -2821,5 +2822,15 @@ pub mod test {
     #[test]
     fn gen_nonces_v2() {
         gen_nonces::<FireCoordinator<v2::Aggregator>, v2::Signer>(5, 1);
+    }
+
+    #[test]
+    fn bad_signature_share_request_v1() {
+        bad_signature_share_request::<FireCoordinator<v1::Aggregator>, v1::Signer>(5, 2);
+    }
+
+    #[test]
+    fn bad_signature_share_request_v2() {
+        bad_signature_share_request::<FireCoordinator<v2::Aggregator>, v2::Signer>(5, 2);
     }
 }
