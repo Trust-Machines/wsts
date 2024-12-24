@@ -563,91 +563,75 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         sign_request: &SignatureShareRequest,
         rng: &mut R,
     ) -> Result<Vec<Message>, Error> {
-        let mut msgs = vec![];
-
-        let signer_ids = sign_request
-            .nonce_responses
-            .iter()
-            .map(|nr| nr.signer_id)
-            .collect::<Vec<u32>>();
-
         let signer_id_set = sign_request
             .nonce_responses
             .iter()
             .map(|nr| nr.signer_id)
             .collect::<BTreeSet<u32>>();
 
-        if signer_ids.len() != signer_id_set.len()
+        // The expected usage is that Signer IDs start at zero and
+        // increment by one until self.total_signers - 1. So the checks
+        // here should be sufficient for catching empty signer ID sets,
+        // duplicate signer IDs, or unknown signer IDs.
+        let is_valid_request = sign_request.nonce_responses.len() != signer_id_set.len()
             || signer_id_set.is_empty()
-            || signer_id_set.len() > self.total_signers.try_into().unwrap()
-            || signer_id_set.last().unwrap() > &self.total_signers
-        {
-            warn!(
-                ?signer_ids,
-                "Got SignatureShareRequest with invalid NonceResponse"
-            );
+            || signer_id_set.last() >= Some(&self.total_signers);
+
+        if is_valid_request {
+            warn!("received an invalid SignatureShareRequest");
             return Err(Error::InvalidNonceResponse);
+        }
+
+        debug!(%self.signer_id, "received a valid SignatureShareRequest");
+
+        if signer_id_set.contains(&self.signer_id) {
+            let key_ids: Vec<u32> = sign_request
+                .nonce_responses
+                .iter()
+                .flat_map(|nr| nr.key_ids.iter().copied())
+                .collect::<Vec<u32>>();
+            let nonces = sign_request
+                .nonce_responses
+                .iter()
+                .flat_map(|nr| nr.nonces.clone())
+                .collect::<Vec<PublicNonce>>();
+
+            let signer_ids = signer_id_set.into_iter().collect::<Vec<_>>();
+            let msg = &sign_request.message;
+            let signature_shares = match sign_request.signature_type {
+                SignatureType::Taproot(merkle_root) => {
+                    self.signer
+                        .sign_taproot(msg, &signer_ids, &key_ids, &nonces, merkle_root)
+                }
+                SignatureType::Schnorr => {
+                    self.signer
+                        .sign_schnorr(msg, &signer_ids, &key_ids, &nonces)
+                }
+                SignatureType::Frost => self.signer.sign(msg, &signer_ids, &key_ids, &nonces),
+            };
+
+            self.signer.gen_nonces(rng);
+
+            let response = SignatureShareResponse {
+                dkg_id: sign_request.dkg_id,
+                sign_id: sign_request.sign_id,
+                sign_iter_id: sign_request.sign_iter_id,
+                signer_id: self.signer_id,
+                signature_shares,
+            };
+            info!(
+                signer_id = %self.signer_id,
+                dkg_id = %sign_request.dkg_id,
+                sign_id = %sign_request.sign_id,
+                sign_iter_id = %sign_request.sign_iter_id,
+                "sending SignatureShareResponse"
+            );
+
+            Ok(vec![Message::SignatureShareResponse(response)])
         } else {
-            debug!(?signer_ids, "Got SignatureShareRequest");
+            debug!(signer_id = %self.signer_id, "signer not included in SignatureShareRequest");
+            Ok(Vec::new())
         }
-
-        for signer_id in &signer_ids {
-            if *signer_id == self.signer_id {
-                let key_ids: Vec<u32> = sign_request
-                    .nonce_responses
-                    .iter()
-                    .flat_map(|nr| nr.key_ids.iter().copied())
-                    .collect::<Vec<u32>>();
-                let nonces = sign_request
-                    .nonce_responses
-                    .iter()
-                    .flat_map(|nr| nr.nonces.clone())
-                    .collect::<Vec<PublicNonce>>();
-                let signature_shares = match sign_request.signature_type {
-                    SignatureType::Taproot(m) => self.signer.sign_taproot(
-                        &sign_request.message,
-                        &signer_ids,
-                        &key_ids,
-                        &nonces,
-                        m,
-                    ),
-                    SignatureType::Schnorr => self.signer.sign_schnorr(
-                        &sign_request.message,
-                        &signer_ids,
-                        &key_ids,
-                        &nonces,
-                    ),
-                    SignatureType::Frost => {
-                        self.signer
-                            .sign(&sign_request.message, &signer_ids, &key_ids, &nonces)
-                    }
-                };
-
-                self.signer.gen_nonces(rng);
-
-                let response = SignatureShareResponse {
-                    dkg_id: sign_request.dkg_id,
-                    sign_id: sign_request.sign_id,
-                    sign_iter_id: sign_request.sign_iter_id,
-                    signer_id: *signer_id,
-                    signature_shares,
-                };
-                info!(
-                    %signer_id,
-                    dkg_id = %sign_request.dkg_id,
-                    sign_id = %sign_request.sign_id,
-                    sign_iter_id = %sign_request.sign_iter_id,
-                    "sending SignatureShareResponse"
-                );
-
-                let response = Message::SignatureShareResponse(response);
-
-                msgs.push(response);
-            } else {
-                debug!("SignatureShareRequest for {} dropped.", signer_id);
-            }
-        }
-        Ok(msgs)
     }
 
     fn dkg_begin<R: RngCore + CryptoRng>(
