@@ -424,11 +424,19 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             .keys()
             .flat_map(|signer_id| self.config.signer_key_ids[signer_id].clone())
             .collect::<Vec<u32>>();
-
+        let dkg_public_shares = if self.config.embed_public_private_shares {
+            self.dkg_public_shares
+                .iter()
+                .map(|(id, share)| (*id, share.clone()))
+                .collect()
+        } else {
+            Default::default()
+        };
         let dkg_begin = DkgPrivateBegin {
             dkg_id: self.current_dkg_id,
             key_ids: active_key_ids,
             signer_ids: self.dkg_public_shares.keys().cloned().collect(),
+            dkg_public_shares,
         };
         let dkg_private_begin_msg = Packet {
             sig: dkg_begin
@@ -458,11 +466,20 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             .keys()
             .flat_map(|signer_id| self.config.signer_key_ids[signer_id].clone())
             .collect::<Vec<u32>>();
+        let dkg_private_shares = if self.config.embed_public_private_shares {
+            self.dkg_private_shares
+                .iter()
+                .map(|(id, share)| (*id, share.clone()))
+                .collect()
+        } else {
+            Default::default()
+        };
 
         let dkg_end_begin = DkgEndBegin {
             dkg_id: self.current_dkg_id,
             key_ids: active_key_ids,
             signer_ids: self.dkg_private_shares.keys().cloned().collect(),
+            dkg_private_shares,
         };
         let dkg_end_begin_msg = Packet {
             sig: dkg_end_begin
@@ -1275,7 +1292,7 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
 
 #[cfg(test)]
 /// Test module for coordinator functionality
-pub mod test {
+mod test {
     use crate::{
         curve::{point::Point, scalar::Scalar},
         net::{
@@ -1530,17 +1547,27 @@ pub mod test {
 
     #[test]
     fn missing_public_keys_dkg_v1() {
-        missing_public_keys_dkg::<v1::Aggregator, v1::Signer>(10, 1);
+        missing_public_keys_dkg::<v1::Aggregator, v1::Signer>(10, 1, false);
+    }
+    #[test]
+    fn missing_public_keys_dkg_v1_embed() {
+        missing_public_keys_dkg::<v1::Aggregator, v1::Signer>(10, 1, true);
     }
 
     #[test]
     fn missing_public_keys_dkg_v2() {
-        missing_public_keys_dkg::<v2::Aggregator, v2::Signer>(10, 1);
+        missing_public_keys_dkg::<v2::Aggregator, v2::Signer>(10, 1, false);
+    }
+
+    #[test]
+    fn missing_public_keys_dkg_v2_embed() {
+        missing_public_keys_dkg::<v2::Aggregator, v2::Signer>(10, 1, true);
     }
 
     fn missing_public_keys_dkg<Aggregator: AggregatorTrait, SignerType: SignerTrait>(
         num_signers: u32,
         keys_per_signer: u32,
+        embed_public_private_shares: bool,
     ) -> (Vec<FireCoordinator<Aggregator>>, Vec<Signer<SignerType>>) {
         let timeout = Duration::from_millis(1024);
         let expire = Duration::from_millis(1280);
@@ -1553,6 +1580,7 @@ pub mod test {
                 Some(timeout),
                 Some(timeout),
                 Some(timeout),
+                embed_public_private_shares,
             );
 
         // Start a DKG round where we will not allow all signers to recv DkgBegin, so they will not respond with DkgPublicShares
@@ -1611,17 +1639,28 @@ pub mod test {
 
     #[test]
     fn minimum_signers_dkg_v1() {
-        minimum_signers_dkg::<v1::Aggregator, v1::Signer>(10, 2);
+        minimum_signers_dkg::<v1::Aggregator, v1::Signer>(10, 2, false);
     }
 
     #[test]
     fn minimum_signers_dkg_v2() {
-        minimum_signers_dkg::<v2::Aggregator, v2::Signer>(10, 2);
+        minimum_signers_dkg::<v2::Aggregator, v2::Signer>(10, 2, false);
+    }
+
+    #[test]
+    fn minimum_signers_dkg_v1_embed() {
+        minimum_signers_dkg::<v1::Aggregator, v1::Signer>(10, 2, true);
+    }
+
+    #[test]
+    fn minimum_signers_dkg_v2_embed() {
+        minimum_signers_dkg::<v2::Aggregator, v2::Signer>(10, 2, true);
     }
 
     fn minimum_signers_dkg<Aggregator: AggregatorTrait, SignerType: SignerTrait>(
         num_signers: u32,
         keys_per_signer: u32,
+        embed_public_private_shares: bool,
     ) -> (Vec<FireCoordinator<Aggregator>>, Vec<Signer<SignerType>>) {
         let timeout = Duration::from_millis(1024);
         let expire = Duration::from_millis(1280);
@@ -1634,6 +1673,7 @@ pub mod test {
                 Some(timeout),
                 Some(timeout),
                 Some(timeout),
+                embed_public_private_shares,
             );
 
         // Start a DKG round where we will not allow all signers to recv DkgBegin, so they will not respond with DkgPublicShares
@@ -1766,15 +1806,27 @@ pub mod test {
 
     #[test]
     fn insufficient_signers_dkg_v1() {
-        insufficient_signers_dkg::<v1::Aggregator, v1::Signer>();
+        insufficient_signers_dkg::<v1::Aggregator, v1::Signer>(false);
     }
 
     #[test]
     fn insufficient_signers_dkg_v2() {
-        insufficient_signers_dkg::<v2::Aggregator, v2::Signer>();
+        insufficient_signers_dkg::<v2::Aggregator, v2::Signer>(false);
     }
 
-    fn insufficient_signers_dkg<Aggregator: AggregatorTrait, Signer: SignerTrait>() {
+    #[test]
+    fn insufficient_signers_dkg_v1_embed() {
+        insufficient_signers_dkg::<v1::Aggregator, v1::Signer>(true);
+    }
+
+    #[test]
+    fn insufficient_signers_dkg_v2_embed() {
+        insufficient_signers_dkg::<v2::Aggregator, v2::Signer>(true);
+    }
+
+    fn insufficient_signers_dkg<Aggregator: AggregatorTrait, Signer: SignerTrait>(
+        embed_public_private_shares: bool,
+    ) {
         let timeout = Duration::from_millis(1024);
         let expire = Duration::from_millis(1280);
         let num_signers = 10;
@@ -1787,6 +1839,7 @@ pub mod test {
             Some(timeout),
             Some(timeout),
             Some(timeout),
+            embed_public_private_shares,
         );
 
         // Start a DKG round where we will not allow all signers to recv DkgBegin, so they will not respond with DkgPublicShares
@@ -2215,20 +2268,35 @@ pub mod test {
 
     #[test]
     fn minimum_signers_sign_v1() {
-        minimum_signers_sign::<v1::Aggregator, v1::Signer>();
+        minimum_signers_sign::<v1::Aggregator, v1::Signer>(false);
     }
 
     #[test]
     fn minimum_signers_sign_v2() {
-        minimum_signers_sign::<v2::Aggregator, v2::Signer>();
+        minimum_signers_sign::<v2::Aggregator, v2::Signer>(false);
     }
 
-    fn minimum_signers_sign<Aggregator: AggregatorTrait, Signer: SignerTrait>() {
+    #[test]
+    fn minimum_signers_sign_v1_embed() {
+        minimum_signers_sign::<v1::Aggregator, v1::Signer>(true);
+    }
+
+    #[test]
+    fn minimum_signers_sign_v2_embed() {
+        minimum_signers_sign::<v2::Aggregator, v2::Signer>(true);
+    }
+
+    fn minimum_signers_sign<Aggregator: AggregatorTrait, Signer: SignerTrait>(
+        embed_public_private_shares: bool,
+    ) {
         let num_signers = 10;
         let keys_per_signer = 2;
 
-        let (mut coordinators, mut signers) =
-            minimum_signers_dkg::<Aggregator, Signer>(num_signers, keys_per_signer);
+        let (mut coordinators, mut signers) = minimum_signers_dkg::<Aggregator, Signer>(
+            num_signers,
+            keys_per_signer,
+            embed_public_private_shares,
+        );
         let config = coordinators.first().unwrap().get_config();
 
         // Figure out how many signers we can remove and still be above the threshold
@@ -2299,20 +2367,35 @@ pub mod test {
 
     #[test]
     fn missing_public_keys_sign_v1() {
-        missing_public_keys_sign::<v1::Aggregator, v1::Signer>();
+        missing_public_keys_sign::<v1::Aggregator, v1::Signer>(false);
     }
 
     #[test]
-    fn minimum_missing_public_keys_sign_v2() {
-        missing_public_keys_sign::<v2::Aggregator, v2::Signer>();
+    fn missing_public_keys_sign_v2() {
+        missing_public_keys_sign::<v2::Aggregator, v2::Signer>(false);
     }
 
-    fn missing_public_keys_sign<Aggregator: AggregatorTrait, Signer: SignerTrait>() {
+    #[test]
+    fn missing_public_keys_sign_v1_embed() {
+        missing_public_keys_sign::<v1::Aggregator, v1::Signer>(true);
+    }
+
+    #[test]
+    fn missing_public_keys_sign_v2_embed() {
+        missing_public_keys_sign::<v2::Aggregator, v2::Signer>(true);
+    }
+
+    fn missing_public_keys_sign<Aggregator: AggregatorTrait, Signer: SignerTrait>(
+        embed_public_private_shares: bool,
+    ) {
         let num_signers = 10;
         let keys_per_signer = 2;
 
-        let (mut coordinators, mut signers) =
-            minimum_signers_dkg::<Aggregator, Signer>(num_signers, keys_per_signer);
+        let (mut coordinators, mut signers) = minimum_signers_dkg::<Aggregator, Signer>(
+            num_signers,
+            keys_per_signer,
+            embed_public_private_shares,
+        );
 
         // Let us also remove that signers public key from the config including all of its key ids
         let mut removed_signer = signers.pop().expect("Failed to pop signer");
@@ -2386,15 +2469,27 @@ pub mod test {
 
     #[test]
     fn insufficient_signers_sign_v1() {
-        insufficient_signers_sign::<v1::Aggregator, v1::Signer>();
+        insufficient_signers_sign::<v1::Aggregator, v1::Signer>(false);
     }
 
     #[test]
     fn insufficient_signers_sign_v2() {
-        insufficient_signers_sign::<v2::Aggregator, v2::Signer>();
+        insufficient_signers_sign::<v2::Aggregator, v2::Signer>(false);
     }
 
-    fn insufficient_signers_sign<Aggregator: AggregatorTrait, Signer: SignerTrait>() {
+    #[test]
+    fn insufficient_signers_sign_v1_embed() {
+        insufficient_signers_sign::<v1::Aggregator, v1::Signer>(true);
+    }
+
+    #[test]
+    fn insufficient_signers_sign_v2_embed() {
+        insufficient_signers_sign::<v2::Aggregator, v2::Signer>(true);
+    }
+
+    fn insufficient_signers_sign<Aggregator: AggregatorTrait, Signer: SignerTrait>(
+        embed_public_private_shares: bool,
+    ) {
         let num_signers = 5;
         let keys_per_signer = 2;
         let (mut coordinators, mut signers) =
@@ -2406,6 +2501,7 @@ pub mod test {
                 None,
                 Some(Duration::from_millis(128)),
                 Some(Duration::from_millis(128)),
+                embed_public_private_shares,
             );
         let config = coordinators.first().unwrap().get_config();
 
