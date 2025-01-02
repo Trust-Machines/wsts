@@ -61,9 +61,25 @@ impl Nonce {
     /// Construct a random nonce
     pub fn random<RNG: RngCore + CryptoRng>(rng: &mut RNG) -> Self {
         Self {
-            d: Scalar::random(rng),
-            e: Scalar::random(rng),
+            d: Self::gen(rng),
+            e: Self::gen(rng),
         }
+    }
+
+    /// Use the IETF nonce generation function from section 4.1 of
+    ///   https://datatracker.ietf.org/doc/rfc9591
+    fn gen<RNG: RngCore + CryptoRng>(rng: &mut RNG) -> Scalar {
+        let mut bytes: [u8; 32] = [0; 32];
+        rng.fill_bytes(&mut bytes);
+
+        let s = Scalar::random(rng);
+
+        let mut hasher = Sha256::new();
+
+        hasher.update(bytes);
+        hasher.update(s.to_bytes());
+
+        hash_to_scalar(&mut hasher)
     }
 }
 
@@ -330,6 +346,9 @@ pub mod test {
     use super::*;
     use crate::util::create_rng;
 
+    use rand::prelude::*;
+    use rand_chacha::ChaCha8Rng;
+
     #[test]
     #[allow(non_snake_case)]
     fn tuple_proof() {
@@ -363,5 +382,28 @@ pub mod test {
         let tuple_proof = TupleProof::new(&a, &A, &B, &K, &mut rng);
         assert!(!tuple_proof.verify(&A, &B, &K));
         assert!(!tuple_proof.verify(&B, &A, &K));
+    }
+
+    #[test]
+    /// Generating a nonce prior to IETF standard required two 32 byte random fills,
+    /// each of which is directly used as the data buffer for a Scalar (then reduxced).
+    /// Now it requires four fills, two of which are likewise used for Scalar data.
+    ///
+    /// So a reasonable test would be to call the seeded RNG four times to construct
+    /// Scalars, reseed, then compare the output of Nonce::generation.  If none of those
+    /// scalars match the nonce (d,e) values then we have succeeded in scrambling more.
+    fn nonce_generation() {
+        let mut rng = ChaCha8Rng::seed_from_u64(2);
+        let test_scalars = (0..4)
+            .map(|_| Scalar::random(&mut rng))
+            .collect::<Vec<Scalar>>();
+
+        let mut rng = ChaCha8Rng::seed_from_u64(2);
+        let nonce = Nonce::random(&mut rng);
+
+        for scalar in test_scalars {
+            assert_ne!(scalar, nonce.d);
+            assert_ne!(scalar, nonce.e);
+        }
     }
 }
