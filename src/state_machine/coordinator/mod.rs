@@ -1117,19 +1117,58 @@ pub mod test {
             }
         }
 
-        // add NonceResponses so there's more than the number of signers
+        let messages = outbound_messages.clone();
+        let result = feedback_messages_with_errors(&mut coordinators, &mut signers, &messages);
+        assert!(result.is_ok());
+
+        // test request with no NonceResponses
         let mut packet = outbound_messages[0].clone();
         if let Message::SignatureShareRequest(ref mut request) = packet.msg {
-            for _ in 0..1000 {
-                request
-                    .nonce_responses
-                    .push(request.nonce_responses.first().unwrap().clone());
-            }
+            request.nonce_responses.clear();
         } else {
             panic!("failed to match message");
         }
 
-        // Send the SignatureShareRequest message to all signers and share their responses with the coordinator and signers
+        // Send the SignatureShareRequest message to all signers and share
+        // their responses with the coordinator and signers
+        let result = feedback_messages_with_errors(&mut coordinators, &mut signers, &[packet]);
+        if !matches!(
+            result,
+            Err(StateMachineError::Signer(SignerError::InvalidNonceResponse))
+        ) {
+            panic!("Should have received signer invalid nonce response error, got {result:?}");
+        }
+
+        // test request with a duplicate NonceResponse
+        let mut packet = outbound_messages[0].clone();
+        if let Message::SignatureShareRequest(ref mut request) = packet.msg {
+            request
+                .nonce_responses
+                .push(request.nonce_responses[0].clone());
+        } else {
+            panic!("failed to match message");
+        }
+
+        // Send the SignatureShareRequest message to all signers and share
+        // their responses with the coordinator and signers
+        let result = feedback_messages_with_errors(&mut coordinators, &mut signers, &[packet]);
+        if !matches!(
+            result,
+            Err(StateMachineError::Signer(SignerError::InvalidNonceResponse))
+        ) {
+            panic!("Should have received signer invalid nonce response error, got {result:?}");
+        }
+
+        // test request with an out of range signer_id
+        let mut packet = outbound_messages[0].clone();
+        if let Message::SignatureShareRequest(ref mut request) = packet.msg {
+            request.nonce_responses[0].signer_id = num_signers;
+        } else {
+            panic!("failed to match message");
+        }
+
+        // Send the SignatureShareRequest message to all signers and share
+        // their responses with the coordinator and signers
         let result = feedback_messages_with_errors(&mut coordinators, &mut signers, &[packet]);
         if !matches!(
             result,
