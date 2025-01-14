@@ -573,16 +573,16 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         // increment by one until self.total_signers - 1. So the checks
         // here should be sufficient for catching empty signer ID sets,
         // duplicate signer IDs, or unknown signer IDs.
-        let is_valid_request = sign_request.nonce_responses.len() != signer_id_set.len()
+        let is_invalid_request = sign_request.nonce_responses.len() != signer_id_set.len()
             || signer_id_set.is_empty()
             || signer_id_set.last() >= Some(&self.total_signers);
 
-        if is_valid_request {
+        if is_invalid_request {
             warn!("received an invalid SignatureShareRequest");
             return Err(Error::InvalidNonceResponse);
         }
 
-        debug!(%self.signer_id, "received a valid SignatureShareRequest");
+        debug!(signer_id = %self.signer_id, "received a valid SignatureShareRequest");
 
         if signer_id_set.contains(&self.signer_id) {
             let key_ids: Vec<u32> = sign_request

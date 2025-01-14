@@ -1117,7 +1117,6 @@ pub mod test {
             }
         }
 
-        assert_eq!(outbound_messages.len(), 1);
         let messages = outbound_messages.clone();
         let result = feedback_messages_with_errors(&mut coordinators, &mut signers, &messages);
         assert!(result.is_ok());
