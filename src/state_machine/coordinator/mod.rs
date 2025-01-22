@@ -491,6 +491,7 @@ pub mod test {
         let public_keys = PublicKeys {
             signers: signer_ids_map,
             key_ids: key_ids_map,
+            signer_key_ids: signer_key_ids_set.clone(),
         };
 
         let signers = key_pairs
@@ -499,6 +500,7 @@ pub mod test {
             .map(|(signer_id, (private_key, _public_key))| {
                 Signer::<SignerType>::new(
                     threshold,
+                    dkg_threshold,
                     num_signers,
                     num_keys,
                     signer_id as u32,
@@ -507,6 +509,7 @@ pub mod test {
                     public_keys.clone(),
                     &mut rng,
                 )
+                .unwrap()
             })
             .collect::<Vec<Signer<SignerType>>>();
         let coordinators = key_pairs
