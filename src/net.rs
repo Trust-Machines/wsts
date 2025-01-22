@@ -57,6 +57,8 @@ pub struct BadPrivateShare {
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 /// Final DKG status after receiving public and private shares
 pub enum DkgFailure {
+    /// DKG threshold not met
+    Threshold,
     /// Signer was in the wrong internal state to complete DKG
     BadState,
     /// DKG public shares were missing from these signer_ids
@@ -625,12 +627,17 @@ mod test {
             let signer_private_key = Scalar::random(&mut rng);
             let signer_public_key = ecdsa::PublicKey::new(&signer_private_key).unwrap();
             let mut signer_ids_map = HashMap::new();
+            let mut signer_key_ids = HashMap::new();
             let mut key_ids_map = HashMap::new();
+            let mut key_ids_set = HashSet::new();
             signer_ids_map.insert(0, signer_public_key);
             key_ids_map.insert(1, signer_public_key);
+            key_ids_set.insert(1);
+            signer_key_ids.insert(0, key_ids_set);
             let public_keys = PublicKeys {
                 signers: signer_ids_map,
                 key_ids: key_ids_map,
+                signer_key_ids,
             };
             let coordinator_private_key = Scalar::random(&mut rng);
             let coordinator_public_key = ecdsa::PublicKey::new(&coordinator_private_key).unwrap();
