@@ -320,7 +320,7 @@ pub mod test_helpers {
 }
 
 #[cfg(test)]
-pub mod test {
+mod test {
     use rand_core::OsRng;
 
     use crate::{

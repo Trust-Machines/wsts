@@ -761,7 +761,7 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
 }
 
 #[cfg(test)]
-pub mod test {
+mod test {
     use crate::{
         curve::scalar::Scalar,
         net::{DkgBegin, Message, NonceRequest, Packet, SignatureType},
