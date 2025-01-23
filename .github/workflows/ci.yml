@@ -64,26 +64,26 @@ jobs:
           command: clippy
           args: -- -D warnings -A clippy::op-ref -A clippy::needless-range-loop
 
-  doc:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
-      - name: Install LaTeX
-        run: ./.doc/install-latex-ubuntu.sh
-      - name: Build WebSite
-        run: ./.doc/build.sh
-      - name: upload pdf
-        uses: actions/upload-artifact@v3
-        with:
-          name: wsts.pdf
-          path: wsts.pdf
-      - name: upload website
-        uses: actions/upload-artifact@v3
-        with:
-          name: website
-          path: ./target/doc/
+#  doc:
+#    runs-on: ubuntu-latest
+#    steps:
+#      - uses: actions/checkout@v2
+#      - uses: actions-rs/toolchain@v1
+#        with:
+#          profile: minimal
+#          toolchain: stable
+#          override: true
+#      - name: Install LaTeX
+#        run: ./.doc/install-latex-ubuntu.sh
+#      - name: Build WebSite
+#        run: ./.doc/build.sh
+#      - name: upload pdf
+#        uses: actions/upload-artifact@v3
+#        with:
+#          name: wsts.pdf
+#          path: wsts.pdf
+#      - name: upload website
+#        uses: actions/upload-artifact@v3
+#        with:
+#          name: website
+#          path: ./target/doc/
