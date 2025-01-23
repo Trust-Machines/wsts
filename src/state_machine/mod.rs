@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use hashbrown::HashMap;
+use hashbrown::{HashMap, HashSet};
 use thiserror::Error as ThisError;
 
 use crate::{
@@ -92,6 +92,8 @@ pub struct PublicKeys {
     pub signers: HashMap<u32, ecdsa::PublicKey>,
     /// key_id -> public key
     pub key_ids: HashMap<u32, ecdsa::PublicKey>,
+    /// map of signer_id to controlled key_ids
+    pub signer_key_ids: HashMap<u32, HashSet<u32>>,
 }
 
 impl std::fmt::Debug for PublicKeys {
