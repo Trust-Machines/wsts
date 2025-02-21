@@ -39,7 +39,7 @@ impl ID {
     /// Compute the schnorr challenge
     pub fn challenge(id: &Scalar, K: &Point, A: &Point) -> Scalar {
         let mut hasher = Sha256::new();
-	let tag = "WSTS/polynomial-constant";
+        let tag = "WSTS/polynomial-constant";
 
         hasher.update(tag.as_bytes());
         hasher.update(id.to_bytes());
