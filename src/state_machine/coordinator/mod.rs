@@ -3,7 +3,7 @@ use crate::{
     curve::{point::Point, scalar::Scalar},
     errors::AggregatorError,
     net::{DkgEnd, DkgPrivateShares, DkgPublicShares, NonceResponse, Packet, SignatureType},
-    state_machine::{DkgFailure, OperationResult},
+    state_machine::{DkgFailure, OperationResult, StateMachine},
     taproot::SchnorrProof,
 };
 use core::{cmp::PartialEq, fmt::Debug};
@@ -248,7 +248,7 @@ pub struct SavedState {
 }
 
 /// Coordinator trait for handling the coordination of DKG and sign messages
-pub trait Coordinator: Clone + Debug + PartialEq {
+pub trait Coordinator: Clone + Debug + PartialEq + StateMachine<State, Error> {
     /// Create a new Coordinator
     fn new(config: Config) -> Self;
 
@@ -260,6 +260,13 @@ pub trait Coordinator: Clone + Debug + PartialEq {
 
     /// Retrieve the config
     fn get_config(&self) -> Config;
+
+    /// Initialize Coordinator from partial saved state
+    fn set_key_and_party_polynomials(
+        &mut self,
+        aggregate_key: Point,
+        party_polynomials: Vec<(u32, PolyCommitment)>,
+    ) -> Result<(), Error>;
 
     /// Process inbound messages
     fn process_inbound_messages(

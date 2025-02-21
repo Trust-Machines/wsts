@@ -710,6 +710,32 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
         self.config.clone()
     }
 
+    /// Set the aggregate key and polynomial commitments used to form that key.
+    ///  Check if the polynomial commitments match the key
+    fn set_key_and_party_polynomials(
+        &mut self,
+        aggregate_key: Point,
+        party_polynomials: Vec<(u32, PolyCommitment)>,
+    ) -> Result<(), Error> {
+        let computed_key = party_polynomials
+            .iter()
+            .fold(Point::default(), |s, (_, comm)| s + comm.poly[0]);
+        if computed_key != aggregate_key {
+            return Err(Error::AggregateKeyPolynomialMismatch(
+                computed_key,
+                aggregate_key,
+            ));
+        }
+        let party_polynomials_len = party_polynomials.len();
+        let party_polynomials = HashMap::from_iter(party_polynomials);
+        if party_polynomials.len() != party_polynomials_len {
+            return Err(Error::DuplicatePartyId);
+        }
+        self.aggregate_public_key = Some(aggregate_key);
+        self.party_polynomials = party_polynomials;
+        Ok(())
+    }
+
     /// Process inbound messages
     fn process_inbound_messages(
         &mut self,
