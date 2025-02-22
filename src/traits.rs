@@ -304,20 +304,5 @@ pub mod test_helpers {
         if dkg(&mut signers, &mut rng).is_ok() {
             panic!("DKG should have failed")
         }
-
-        let polys: HashMap<u32, PolyCommitment> = signers
-            .iter()
-            .flat_map(|s| s.get_poly_commitments(&mut rng))
-            .map(|comm| (comm.id.id.get_u32(), comm))
-            .collect();
-
-        let mut aggregator = Aggregator::new(Nk, T);
-        match aggregator.init(&polys) {
-            Ok(_) => panic!("Aggregator::init should not have succeeded"),
-            Err(e) => match e {
-                super::AggregatorError::BadPolyCommitments(_) => (),
-                _ => panic!("Should have failed with BadPolyCommitments"),
-            },
-        }
     }
 }
