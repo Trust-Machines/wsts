@@ -913,7 +913,7 @@ mod tests {
 
     #[allow(non_snake_case)]
     #[test]
-    /// Run DKG and aggregator init with a bad polynomial
+    /// Run DKG and aggregator init with a bad polynomial length
     pub fn bad_polynomial_length() {
         let gt = |t| t + 1;
         let lt = |t| t - 1;
@@ -922,7 +922,7 @@ mod tests {
     }
 
     #[test]
-    /// Run DKG and aggregator init with a bad polynomial length
+    /// Run DKG and aggregator init with a bad polynomial commitment
     pub fn bad_polynomial_commitment() {
         traits::test_helpers::bad_polynomial_commitment::<v1::Signer>();
     }

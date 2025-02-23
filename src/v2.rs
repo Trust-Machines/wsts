@@ -822,7 +822,7 @@ mod tests {
     }
 
     #[test]
-    /// Run DKG and aggregator init with a bad polynomial length
+    /// Run DKG and aggregator init with a bad polynomial commitment
     pub fn bad_polynomial_commitment() {
         traits::test_helpers::bad_polynomial_commitment::<v2::Signer>();
     }

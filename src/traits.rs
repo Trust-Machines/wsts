@@ -335,6 +335,10 @@ pub mod test_helpers {
             })
             .collect();
 
+        // The code that follows is essentially the same code that we have
+        // in the `dkg` helper function above, except we've corrupted the
+        // schnorr proof so that we can test verification would fail at
+        // the end.
         let bad_party_id = 2u32;
         let public_shares: HashMap<u32, PolyCommitment> = signers
             .iter()
