@@ -409,16 +409,6 @@ impl traits::Aggregator for Aggregator {
     /// Initialize the Aggregator polynomial
     fn init(&mut self, comms: &HashMap<u32, PolyCommitment>) -> Result<(), AggregatorError> {
         let threshold: usize = self.threshold.try_into()?;
-        let mut bad_poly_commitments = Vec::new();
-        for (_id, comm) in comms {
-            if !check_public_shares(comm, threshold) {
-                bad_poly_commitments.push(comm.id.id);
-            }
-        }
-        if !bad_poly_commitments.is_empty() {
-            return Err(AggregatorError::BadPolyCommitments(bad_poly_commitments));
-        }
-
         let mut poly = Vec::with_capacity(threshold);
 
         for i in 0..poly.capacity() {
@@ -823,11 +813,17 @@ mod tests {
     }
 
     #[test]
-    /// Run DKG and aggregator init with a bad polynomial
+    /// Run DKG and aggregator init with a bad polynomial length
     pub fn bad_polynomial_length() {
         let gt = |t| t + 1;
         let lt = |t| t - 1;
-        traits::test_helpers::bad_polynomial_length::<v2::Signer, v2::Aggregator, _>(gt);
-        traits::test_helpers::bad_polynomial_length::<v2::Signer, v2::Aggregator, _>(lt);
+        traits::test_helpers::bad_polynomial_length::<v2::Signer, _>(gt);
+        traits::test_helpers::bad_polynomial_length::<v2::Signer, _>(lt);
+    }
+
+    #[test]
+    /// Run DKG and aggregator init with a bad polynomial commitment
+    pub fn bad_polynomial_commitment() {
+        traits::test_helpers::bad_polynomial_commitment::<v2::Signer>();
     }
 }
