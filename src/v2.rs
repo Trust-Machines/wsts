@@ -813,11 +813,17 @@ mod tests {
     }
 
     #[test]
-    /// Run DKG and aggregator init with a bad polynomial
+    /// Run DKG and aggregator init with a bad polynomial length
     pub fn bad_polynomial_length() {
         let gt = |t| t + 1;
         let lt = |t| t - 1;
-        traits::test_helpers::bad_polynomial_length::<v2::Signer, v2::Aggregator, _>(gt);
-        traits::test_helpers::bad_polynomial_length::<v2::Signer, v2::Aggregator, _>(lt);
+        traits::test_helpers::bad_polynomial_length::<v2::Signer, _>(gt);
+        traits::test_helpers::bad_polynomial_length::<v2::Signer, _>(lt);
+    }
+
+    #[test]
+    /// Run DKG and aggregator init with a bad polynomial length
+    pub fn bad_polynomial_commitment() {
+        traits::test_helpers::bad_polynomial_commitment::<v2::Signer>();
     }
 }

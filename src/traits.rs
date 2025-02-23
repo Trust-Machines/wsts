@@ -172,7 +172,7 @@ pub mod test_helpers {
     use hashbrown::HashMap;
     use rand_core::{CryptoRng, RngCore};
 
-    use crate::{common::PolyCommitment, errors::DkgError, util::create_rng};
+    use crate::{common::PolyCommitment, errors::DkgError, traits::Scalar, util::create_rng};
 
     /// Run DKG on the passed signers
     pub fn dkg<RNG: RngCore + CryptoRng, Signer: super::Signer>(
@@ -275,18 +275,11 @@ pub mod test_helpers {
         }
     }
 
-    #[allow(non_snake_case)]
-    /// Check that bad polynomial lengths are properly caught as errors
-    pub fn bad_polynomial_length<
-        Signer: super::Signer,
-        Aggregator: super::Aggregator,
-        F: Fn(u32) -> u32,
-    >(
-        func: F,
-    ) {
-        let Nk: u32 = 10;
-        let Np: u32 = 4;
-        let T: u32 = 7;
+    /// Check that bad polynomial lengths are properly caught as errors during DKG
+    pub fn bad_polynomial_length<Signer: super::Signer, F: Fn(u32) -> u32>(func: F) {
+        let num_keys: u32 = 10;
+        let num_signers: u32 = 4;
+        let threshold: u32 = 7;
         let signer_ids: Vec<Vec<u32>> = vec![vec![1, 2, 3, 4], vec![5, 6, 7], vec![8, 9], vec![10]];
         let mut rng = create_rng();
         let mut signers: Vec<Signer> = signer_ids
@@ -294,9 +287,23 @@ pub mod test_helpers {
             .enumerate()
             .map(|(id, ids)| {
                 if *ids == vec![10] {
-                    Signer::new(id.try_into().unwrap(), ids, Nk, Np, func(T), &mut rng)
+                    Signer::new(
+                        id.try_into().unwrap(),
+                        ids,
+                        num_signers,
+                        num_keys,
+                        func(threshold),
+                        &mut rng,
+                    )
                 } else {
-                    Signer::new(id.try_into().unwrap(), ids, Nk, Np, T, &mut rng)
+                    Signer::new(
+                        id.try_into().unwrap(),
+                        ids,
+                        num_signers,
+                        num_keys,
+                        threshold,
+                        &mut rng,
+                    )
                 }
             })
             .collect();
@@ -304,5 +311,63 @@ pub mod test_helpers {
         if dkg(&mut signers, &mut rng).is_ok() {
             panic!("DKG should have failed")
         }
+    }
+
+    /// Check that bad polynomial commitments are properly caught as errors during DKG
+    pub fn bad_polynomial_commitment<Signer: super::Signer>() {
+        let num_keys: u32 = 10;
+        let num_signers: u32 = 4;
+        let threshold: u32 = 7;
+        let signer_ids: Vec<Vec<u32>> = vec![vec![1, 2, 3, 4], vec![5, 6, 7], vec![8, 9], vec![10]];
+        let mut rng = create_rng();
+        let mut signers: Vec<Signer> = signer_ids
+            .iter()
+            .enumerate()
+            .map(|(id, ids)| {
+                Signer::new(
+                    id.try_into().unwrap(),
+                    ids,
+                    num_signers,
+                    num_keys,
+                    threshold,
+                    &mut rng,
+                )
+            })
+            .collect();
+
+        let bad_party_id = 2u32;
+        let public_shares: HashMap<u32, PolyCommitment> = signers
+            .iter()
+            .flat_map(|s| s.get_poly_commitments(&mut rng))
+            .map(|comm| {
+                let party_id = comm.id.id.get_u32();
+                if party_id == bad_party_id {
+                    // alter the schnorr proof so it will fail verification
+                    let mut bad_comm = comm.clone();
+                    bad_comm.id.kca += Scalar::from(1);
+                    (party_id, bad_comm)
+                } else {
+                    (party_id, comm)
+                }
+            })
+            .collect();
+        let mut private_shares = HashMap::new();
+
+        for signer in signers.iter() {
+            for (signer_id, signer_shares) in signer.get_shares() {
+                private_shares.insert(signer_id, signer_shares);
+            }
+        }
+
+        let mut secret_errors = HashMap::new();
+        for signer in signers.iter_mut() {
+            if let Err(signer_secret_errors) =
+                signer.compute_secrets(&private_shares, &public_shares)
+            {
+                secret_errors.extend(signer_secret_errors.into_iter());
+            }
+        }
+
+        assert!(!secret_errors.is_empty());
     }
 }
