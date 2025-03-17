@@ -1,4 +1,4 @@
-use hashbrown::HashMap;
+use hashbrown::{HashMap, HashSet};
 use num_traits::{One, Zero};
 use polynomial::Polynomial;
 use rand_core::{CryptoRng, RngCore};
@@ -611,6 +611,14 @@ impl traits::Signer for Party {
         compute::intermediate(msg, signer_ids, nonces)
     }
 
+    fn validate_party_id(
+        signer_id: u32,
+        party_id: u32,
+        _signer_key_ids: &HashMap<u32, HashSet<u32>>,
+    ) -> bool {
+        signer_id == party_id
+    }
+
     fn sign(
         &self,
         msg: &[u8],
@@ -722,6 +730,8 @@ pub mod test_helpers {
 
 #[cfg(test)]
 mod tests {
+    use hashbrown::{HashMap, HashSet};
+
     use crate::util::create_rng;
     use crate::{
         traits::{
@@ -825,5 +835,18 @@ mod tests {
     /// Run DKG and aggregator init with a bad polynomial commitment
     pub fn bad_polynomial_commitment() {
         traits::test_helpers::bad_polynomial_commitment::<v2::Signer>();
+    }
+
+    #[test]
+    /// Check that party_ids can be properly validated
+    fn validate_party_id() {
+        let mut signer_key_ids = HashMap::new();
+        let mut key_ids = HashSet::new();
+
+        key_ids.insert(1);
+        signer_key_ids.insert(0, key_ids);
+
+        assert!(v2::Signer::validate_party_id(0, 0, &signer_key_ids));
+        assert!(!v2::Signer::validate_party_id(0, 1, &signer_key_ids));
     }
 }

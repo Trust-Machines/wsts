@@ -1,6 +1,6 @@
 use hashbrown::{HashMap, HashSet};
 use std::collections::BTreeMap;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use crate::{
     common::{PolyCommitment, PublicNonce, Signature, SignatureShare},
@@ -273,6 +273,13 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 ));
             }
 
+            // check that the signer_id exists in the config
+            let signer_public_keys = &self.config.signer_public_keys;
+            if !signer_public_keys.contains_key(&dkg_public_shares.signer_id) {
+                warn!(signer_id = %dkg_public_shares.signer_id, "No public key in config");
+                return Ok(());
+            };
+
             self.ids_to_await.remove(&dkg_public_shares.signer_id);
 
             self.dkg_public_shares
@@ -302,6 +309,13 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                     self.current_dkg_id,
                 ));
             }
+
+            // check that the signer_id exists in the config
+            let signer_public_keys = &self.config.signer_public_keys;
+            if !signer_public_keys.contains_key(&dkg_private_shares.signer_id) {
+                warn!(signer_id = %dkg_private_shares.signer_id, "No public key in config");
+                return Ok(());
+            };
 
             self.ids_to_await.remove(&dkg_private_shares.signer_id);
 
@@ -403,6 +417,30 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 ));
             }
 
+            // check that the signer_id exists in the config
+            let signer_public_keys = &self.config.signer_public_keys;
+            if !signer_public_keys.contains_key(&nonce_response.signer_id) {
+                warn!(signer_id = %nonce_response.signer_id, "No public key in config");
+                return Ok(());
+            };
+
+            // check that the key_ids match the config
+            let Some(signer_key_ids) = self.config.signer_key_ids.get(&nonce_response.signer_id)
+            else {
+                warn!(signer_id = %nonce_response.signer_id, "No keys IDs configured");
+                return Ok(());
+            };
+
+            let nonce_response_key_ids = nonce_response
+                .key_ids
+                .iter()
+                .cloned()
+                .collect::<HashSet<u32>>();
+            if *signer_key_ids != nonce_response_key_ids {
+                warn!(signer_id = %nonce_response.signer_id, "Nonce response key_ids didn't match config");
+                return Ok(());
+            }
+
             self.public_nonces
                 .insert(nonce_response.signer_id, nonce_response.clone());
             self.ids_to_await.remove(&nonce_response.signer_id);
@@ -473,6 +511,36 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                     self.current_sign_id,
                 ));
             }
+
+            // check that the signer_id exists in the config
+            let signer_public_keys = &self.config.signer_public_keys;
+            if !signer_public_keys.contains_key(&sig_share_response.signer_id) {
+                warn!(signer_id = %sig_share_response.signer_id, "No public key in config");
+                return Ok(());
+            };
+
+            // check that the key_ids match the config
+            let Some(signer_key_ids) = self
+                .config
+                .signer_key_ids
+                .get(&sig_share_response.signer_id)
+            else {
+                warn!(signer_id = %sig_share_response.signer_id, "No keys IDs configured");
+                return Ok(());
+            };
+
+            let mut sig_share_response_key_ids = HashSet::new();
+            for sig_share in &sig_share_response.signature_shares {
+                for key_id in &sig_share.key_ids {
+                    sig_share_response_key_ids.insert(*key_id);
+                }
+            }
+
+            if *signer_key_ids != sig_share_response_key_ids {
+                warn!(signer_id = %sig_share_response.signer_id, "SignatureShareResponse key_ids didn't match config");
+                return Ok(());
+            }
+
             self.signature_shares.insert(
                 sig_share_response.signer_id,
                 sig_share_response.signature_shares.clone(),
