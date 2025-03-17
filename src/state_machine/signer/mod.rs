@@ -830,6 +830,26 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             self.commitments.len(),
             self.signer.get_num_parties(),
         );
+
+        let signer_id = dkg_public_shares.signer_id;
+
+        // check that the signer_id exists in the config
+        let Some(_signer_public_key) = self.public_keys.signers.get(&signer_id) else {
+            warn!(%signer_id, "No public key configured");
+            return Ok(vec![]);
+        };
+
+        for (party_id, _) in &dkg_public_shares.comms {
+            if !SignerType::validate_party_id(
+                signer_id,
+                *party_id,
+                &self.public_keys.signer_key_ids,
+            ) {
+                warn!(%signer_id, %party_id, "signer sent polynomial commitment for wrong party");
+                return Ok(vec![]);
+            }
+        }
+
         self.dkg_public_shares
             .insert(dkg_public_shares.signer_id, dkg_public_shares.clone());
         Ok(vec![])
@@ -843,6 +863,27 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
     ) -> Result<Vec<Message>, Error> {
         // go ahead and decrypt here, since we know the signer_id and hence the pubkey of the sender
         let src_signer_id = dkg_private_shares.signer_id;
+
+        // check that the signer_id exists in the config
+        let Some(_signer_public_key) = self.public_keys.signers.get(&src_signer_id) else {
+            warn!(%src_signer_id, "No public key configured");
+            return Ok(vec![]);
+        };
+
+        for (party_id, _shares) in &dkg_private_shares.shares {
+            if !SignerType::validate_party_id(
+                src_signer_id,
+                *party_id,
+                &self.public_keys.signer_key_ids,
+            ) {
+                warn!(
+                    "Signer {} sent a polynomial commitment for party {}",
+                    src_signer_id, party_id
+                );
+                return Ok(vec![]);
+            }
+        }
+
         self.dkg_private_shares
             .insert(src_signer_id, dkg_private_shares.clone());
 
@@ -965,6 +1006,8 @@ pub mod test {
         v1, v2,
     };
 
+    use hashbrown::HashSet;
+
     #[test]
     fn dkg_public_share_v1() {
         dkg_public_share::<v1::Signer>();
@@ -977,28 +1020,30 @@ pub mod test {
 
     fn dkg_public_share<SignerType: SignerTrait>() {
         let mut rng = create_rng();
-        let mut signer = Signer::<SignerType>::new(
-            1,
-            1,
-            1,
-            1,
-            1,
-            vec![1],
-            Default::default(),
-            Default::default(),
-            &mut rng,
-        )
-        .unwrap();
+        let private_key = Scalar::random(&mut rng);
+        let public_key = ecdsa::PublicKey::new(&private_key).unwrap();
+        let mut public_keys: PublicKeys = Default::default();
+        let mut key_ids = HashSet::new();
+
+        public_keys.signers.insert(0, public_key.clone());
+        public_keys.key_ids.insert(1, public_key.clone());
+
+        key_ids.insert(1);
+        public_keys.signer_key_ids.insert(0, key_ids);
+
+        let mut signer =
+            Signer::<SignerType>::new(1, 1, 1, 1, 0, vec![1], private_key, public_keys, &mut rng)
+                .unwrap();
+        let comms: Vec<(u32, PolyCommitment)> = signer
+            .signer
+            .get_poly_commitments(&mut rng)
+            .iter()
+            .map(|comm| (comm.id.id.get_u32(), comm.clone()))
+            .collect();
         let public_share = DkgPublicShares {
             dkg_id: 0,
             signer_id: 0,
-            comms: vec![(
-                0,
-                PolyCommitment {
-                    id: ID::new(&Scalar::new(), &Scalar::new(), &mut rng),
-                    poly: vec![],
-                },
-            )],
+            comms,
         };
         signer.dkg_public_share(&public_share).unwrap();
         assert_eq!(1, signer.dkg_public_shares.len())
@@ -1060,9 +1105,13 @@ pub mod test {
         let private_key = Scalar::random(&mut rng);
         let public_key = ecdsa::PublicKey::new(&private_key).unwrap();
         let mut public_keys: PublicKeys = Default::default();
+        let mut key_ids = HashSet::new();
 
         public_keys.signers.insert(0, public_key.clone());
         public_keys.key_ids.insert(1, public_key.clone());
+
+        key_ids.insert(1);
+        public_keys.signer_key_ids.insert(0, key_ids);
 
         let mut signer =
             Signer::<SignerType>::new(1, 1, 1, 1, 0, vec![1], private_key, public_keys, &mut rng)
