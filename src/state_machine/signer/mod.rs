@@ -39,11 +39,22 @@ pub enum State {
 }
 
 #[derive(thiserror::Error, Clone, Debug)]
-/// The error type for a signer
-pub enum Error {
+/// Config errors for a signer
+pub enum ConfigError {
+    /// Insufficient keys for the number of signers
+    #[error("Insufficient keys for the number of signers")]
+    InsufficientKeys,
     /// The threshold was invalid
     #[error("InvalidThreshold")]
     InvalidThreshold,
+}
+
+#[derive(thiserror::Error, Clone, Debug)]
+/// The error type for a signer
+pub enum Error {
+    /// Config error
+    #[error("Config error {0}")]
+    Config(#[from] ConfigError),
     /// The party ID was invalid
     #[error("InvalidPartyID")]
     InvalidPartyID,
@@ -192,12 +203,16 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         public_keys: PublicKeys,
         rng: &mut R,
     ) -> Result<Self, Error> {
+        if total_signers > total_keys {
+            return Err(Error::Config(ConfigError::InsufficientKeys));
+        }
+
         if threshold == 0 || threshold > total_keys {
-            return Err(Error::InvalidThreshold);
+            return Err(Error::Config(ConfigError::InvalidThreshold));
         }
 
         if dkg_threshold == 0 || dkg_threshold < threshold {
-            return Err(Error::InvalidThreshold);
+            return Err(Error::Config(ConfigError::InvalidThreshold));
         }
 
         let signer = SignerType::new(
@@ -998,7 +1013,7 @@ pub mod test {
         net::{DkgBegin, DkgEndBegin, DkgPrivateBegin, DkgPublicShares, DkgStatus, Message},
         schnorr::ID,
         state_machine::{
-            signer::{Signer, State as SignerState},
+            signer::{ConfigError, Error, Signer, State as SignerState},
             PublicKeys,
         },
         traits::Signer as SignerTrait,
@@ -1007,6 +1022,100 @@ pub mod test {
     };
 
     use hashbrown::HashSet;
+
+    #[test]
+    fn bad_config_v1() {
+        bad_config::<v1::Signer>();
+    }
+
+    #[test]
+    fn bad_config_v2() {
+        bad_config::<v1::Signer>();
+    }
+
+    fn bad_config<SignerType: SignerTrait>() {
+        let mut rng = create_rng();
+
+        // more signers than keys
+        assert!(matches!(
+            Signer::<SignerType>::new(
+                1,
+                1,
+                2,
+                1,
+                1,
+                vec![1],
+                Default::default(),
+                Default::default(),
+                &mut rng,
+            ),
+            Err(Error::Config(ConfigError::InsufficientKeys))
+        ));
+
+        // threshold == 0
+        assert!(matches!(
+            Signer::<SignerType>::new(
+                0,
+                1,
+                4,
+                4,
+                1,
+                vec![1],
+                Default::default(),
+                Default::default(),
+                &mut rng,
+            ),
+            Err(Error::Config(ConfigError::InvalidThreshold))
+        ));
+
+        // dkg_threshold == 0
+        assert!(matches!(
+            Signer::<SignerType>::new(
+                1,
+                0,
+                4,
+                4,
+                1,
+                vec![1],
+                Default::default(),
+                Default::default(),
+                &mut rng,
+            ),
+            Err(Error::Config(ConfigError::InvalidThreshold))
+        ));
+
+        // threshold > total_keys
+        assert!(matches!(
+            Signer::<SignerType>::new(
+                5,
+                5,
+                4,
+                4,
+                1,
+                vec![1],
+                Default::default(),
+                Default::default(),
+                &mut rng,
+            ),
+            Err(Error::Config(ConfigError::InvalidThreshold))
+        ));
+
+        // dkg_threshold < threshold
+        assert!(matches!(
+            Signer::<SignerType>::new(
+                2,
+                1,
+                4,
+                4,
+                1,
+                vec![1],
+                Default::default(),
+                Default::default(),
+                &mut rng,
+            ),
+            Err(Error::Config(ConfigError::InvalidThreshold))
+        ));
+    }
 
     #[test]
     fn dkg_public_share_v1() {
