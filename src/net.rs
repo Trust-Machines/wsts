@@ -462,6 +462,9 @@ impl Signable for SignatureShareResponse {
         for signature_share in &self.signature_shares {
             hasher.update(signature_share.id.to_be_bytes());
             hasher.update(signature_share.z_i.to_bytes());
+            for key_id in &signature_share.key_ids {
+                hasher.update(key_id.to_be_bytes());
+            }
         }
     }
 }

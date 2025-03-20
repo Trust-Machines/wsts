@@ -5,7 +5,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use tracing::{debug, info, trace, warn};
 
 use crate::{
-    common::{check_public_shares, PolyCommitment, PublicNonce, TupleProof},
+    common::{
+        check_public_shares, validate_key_id, validate_signer_id, PolyCommitment, PublicNonce,
+        TupleProof,
+    },
     curve::{
         point::{Compressed, Point, G},
         scalar::Scalar,
@@ -39,11 +42,28 @@ pub enum State {
 }
 
 #[derive(thiserror::Error, Clone, Debug)]
-/// The error type for a signer
-pub enum Error {
+/// Config errors for a signer
+pub enum ConfigError {
+    /// Insufficient keys for the number of signers
+    #[error("Insufficient keys for the number of signers")]
+    InsufficientKeys,
     /// The threshold was invalid
     #[error("InvalidThreshold")]
     InvalidThreshold,
+    /// The signer ID was invalid
+    #[error("Invalid signer ID {0}")]
+    InvalidSignerId(u32),
+    /// The key ID was invalid
+    #[error("Invalid key ID {0}")]
+    InvalidKeyId(u32),
+}
+
+#[derive(thiserror::Error, Clone, Debug)]
+/// The error type for a signer
+pub enum Error {
+    /// Config error
+    #[error("Config error {0}")]
+    Config(#[from] ConfigError),
     /// The party ID was invalid
     #[error("InvalidPartyID")]
     InvalidPartyID,
@@ -192,13 +212,29 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         public_keys: PublicKeys,
         rng: &mut R,
     ) -> Result<Self, Error> {
+        if total_signers > total_keys {
+            return Err(Error::Config(ConfigError::InsufficientKeys));
+        }
+
         if threshold == 0 || threshold > total_keys {
-            return Err(Error::InvalidThreshold);
+            return Err(Error::Config(ConfigError::InvalidThreshold));
         }
 
         if dkg_threshold == 0 || dkg_threshold < threshold {
-            return Err(Error::InvalidThreshold);
+            return Err(Error::Config(ConfigError::InvalidThreshold));
         }
+
+        if !validate_signer_id(signer_id, total_signers) {
+            return Err(Error::Config(ConfigError::InvalidSignerId(signer_id)));
+        }
+
+        for key_id in &key_ids {
+            if !validate_key_id(*key_id, total_keys) {
+                return Err(Error::Config(ConfigError::InvalidKeyId(*key_id)));
+            }
+        }
+
+        public_keys.validate(total_signers, total_keys)?;
 
         let signer = SignerType::new(
             signer_id,
@@ -415,11 +451,15 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
 
         for signer_id in &signer_ids_set {
             if let Some(shares) = self.dkg_public_shares.get(signer_id) {
-                for (party_id, comm) in shares.comms.iter() {
-                    if !check_public_shares(comm, threshold) {
-                        bad_public_shares.insert(*signer_id);
-                    } else {
-                        self.commitments.insert(*party_id, comm.clone());
+                if shares.comms.is_empty() {
+                    missing_public_shares.insert(*signer_id);
+                } else {
+                    for (party_id, comm) in shares.comms.iter() {
+                        if !check_public_shares(comm, threshold) {
+                            bad_public_shares.insert(*signer_id);
+                        } else {
+                            self.commitments.insert(*party_id, comm.clone());
+                        }
                     }
                 }
             } else {
@@ -427,10 +467,14 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             }
             if let Some(shares) = self.dkg_private_shares.get(signer_id) {
                 // signer_id sent shares, but make sure that it sent shares for every one of this signer's key_ids
-                for dst_key_id in self.signer.get_key_ids() {
-                    for (_src_key_id, shares) in &shares.shares {
-                        if shares.get(&dst_key_id).is_none() {
-                            missing_private_shares.insert(*signer_id);
+                if shares.shares.is_empty() {
+                    missing_private_shares.insert(*signer_id);
+                } else {
+                    for dst_key_id in self.signer.get_key_ids() {
+                        for (_src_key_id, shares) in &shares.shares {
+                            if shares.get(&dst_key_id).is_none() {
+                                missing_private_shares.insert(*signer_id);
+                            }
                         }
                     }
                 }
@@ -640,6 +684,22 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             return Err(Error::InvalidNonceResponse);
         }
 
+        let nonces = sign_request
+            .nonce_responses
+            .iter()
+            .flat_map(|nr| nr.nonces.clone())
+            .collect::<Vec<PublicNonce>>();
+
+        for nonce in &nonces {
+            if !nonce.is_valid() {
+                warn!(
+                    signer_id = %self.signer_id,
+                    "received an SignatureShareRequest with invalid nonce"
+                );
+                return Err(Error::InvalidNonceResponse);
+            }
+        }
+
         debug!(signer_id = %self.signer_id, "received a valid SignatureShareRequest");
 
         if signer_id_set.contains(&self.signer_id) {
@@ -648,11 +708,6 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                 .iter()
                 .flat_map(|nr| nr.key_ids.iter().copied())
                 .collect::<Vec<u32>>();
-            let nonces = sign_request
-                .nonce_responses
-                .iter()
-                .flat_map(|nr| nr.nonces.clone())
-                .collect::<Vec<PublicNonce>>();
 
             let signer_ids = signer_id_set.into_iter().collect::<Vec<_>>();
             let msg = &sign_request.message;
@@ -830,6 +885,26 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             self.commitments.len(),
             self.signer.get_num_parties(),
         );
+
+        let signer_id = dkg_public_shares.signer_id;
+
+        // check that the signer_id exists in the config
+        let Some(_signer_public_key) = self.public_keys.signers.get(&signer_id) else {
+            warn!(%signer_id, "No public key configured");
+            return Ok(vec![]);
+        };
+
+        for (party_id, _) in &dkg_public_shares.comms {
+            if !SignerType::validate_party_id(
+                signer_id,
+                *party_id,
+                &self.public_keys.signer_key_ids,
+            ) {
+                warn!(%signer_id, %party_id, "signer sent polynomial commitment for wrong party");
+                return Ok(vec![]);
+            }
+        }
+
         self.dkg_public_shares
             .insert(dkg_public_shares.signer_id, dkg_public_shares.clone());
         Ok(vec![])
@@ -843,6 +918,27 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
     ) -> Result<Vec<Message>, Error> {
         // go ahead and decrypt here, since we know the signer_id and hence the pubkey of the sender
         let src_signer_id = dkg_private_shares.signer_id;
+
+        // check that the signer_id exists in the config
+        let Some(_signer_public_key) = self.public_keys.signers.get(&src_signer_id) else {
+            warn!(%src_signer_id, "No public key configured");
+            return Ok(vec![]);
+        };
+
+        for (party_id, _shares) in &dkg_private_shares.shares {
+            if !SignerType::validate_party_id(
+                src_signer_id,
+                *party_id,
+                &self.public_keys.signer_key_ids,
+            ) {
+                warn!(
+                    "Signer {} sent a polynomial commitment for party {}",
+                    src_signer_id, party_id
+                );
+                return Ok(vec![]);
+            }
+        }
+
         self.dkg_private_shares
             .insert(src_signer_id, dkg_private_shares.clone());
 
@@ -957,13 +1053,159 @@ pub mod test {
         net::{DkgBegin, DkgEndBegin, DkgPrivateBegin, DkgPublicShares, DkgStatus, Message},
         schnorr::ID,
         state_machine::{
-            signer::{Signer, State as SignerState},
+            signer::{ConfigError, Error, Signer, State as SignerState},
             PublicKeys,
         },
         traits::Signer as SignerTrait,
         util::create_rng,
         v1, v2,
     };
+
+    use hashbrown::HashSet;
+
+    #[test]
+    fn bad_config_v1() {
+        bad_config::<v1::Signer>();
+    }
+
+    #[test]
+    fn bad_config_v2() {
+        bad_config::<v1::Signer>();
+    }
+
+    fn bad_config<SignerType: SignerTrait>() {
+        let mut rng = create_rng();
+
+        // more signers than keys
+        assert!(matches!(
+            Signer::<SignerType>::new(
+                1,
+                1,
+                2,
+                1,
+                0,
+                vec![1],
+                Default::default(),
+                Default::default(),
+                &mut rng,
+            ),
+            Err(Error::Config(ConfigError::InsufficientKeys))
+        ));
+
+        // threshold == 0
+        assert!(matches!(
+            Signer::<SignerType>::new(
+                0,
+                1,
+                4,
+                4,
+                0,
+                vec![1],
+                Default::default(),
+                Default::default(),
+                &mut rng,
+            ),
+            Err(Error::Config(ConfigError::InvalidThreshold))
+        ));
+
+        // dkg_threshold == 0
+        assert!(matches!(
+            Signer::<SignerType>::new(
+                1,
+                0,
+                4,
+                4,
+                0,
+                vec![1],
+                Default::default(),
+                Default::default(),
+                &mut rng,
+            ),
+            Err(Error::Config(ConfigError::InvalidThreshold))
+        ));
+
+        // threshold > total_keys
+        assert!(matches!(
+            Signer::<SignerType>::new(
+                5,
+                5,
+                4,
+                4,
+                0,
+                vec![1],
+                Default::default(),
+                Default::default(),
+                &mut rng,
+            ),
+            Err(Error::Config(ConfigError::InvalidThreshold))
+        ));
+
+        // dkg_threshold < threshold
+        assert!(matches!(
+            Signer::<SignerType>::new(
+                2,
+                1,
+                4,
+                4,
+                0,
+                vec![1],
+                Default::default(),
+                Default::default(),
+                &mut rng,
+            ),
+            Err(Error::Config(ConfigError::InvalidThreshold))
+        ));
+
+        // signer_id >= num_signers
+        assert!(matches!(
+            Signer::<SignerType>::new(
+                2,
+                2,
+                4,
+                4,
+                4,
+                vec![1],
+                Default::default(),
+                Default::default(),
+                &mut rng,
+            ),
+            Err(Error::Config(ConfigError::InvalidSignerId(4)))
+        ));
+
+        // key_id == 0
+        assert!(matches!(
+            Signer::<SignerType>::new(
+                2,
+                2,
+                4,
+                4,
+                0,
+                vec![0],
+                Default::default(),
+                Default::default(),
+                &mut rng,
+            ),
+            Err(Error::Config(ConfigError::InvalidKeyId(0)))
+        ));
+
+        // key_id > num_keys
+        assert!(matches!(
+            Signer::<SignerType>::new(
+                2,
+                2,
+                4,
+                4,
+                0,
+                vec![5],
+                Default::default(),
+                Default::default(),
+                &mut rng,
+            ),
+            Err(Error::Config(ConfigError::InvalidKeyId(5)))
+        ));
+
+        // public_keys: key_id == 0
+    }
 
     #[test]
     fn dkg_public_share_v1() {
@@ -977,28 +1219,30 @@ pub mod test {
 
     fn dkg_public_share<SignerType: SignerTrait>() {
         let mut rng = create_rng();
-        let mut signer = Signer::<SignerType>::new(
-            1,
-            1,
-            1,
-            1,
-            1,
-            vec![1],
-            Default::default(),
-            Default::default(),
-            &mut rng,
-        )
-        .unwrap();
+        let private_key = Scalar::random(&mut rng);
+        let public_key = ecdsa::PublicKey::new(&private_key).unwrap();
+        let mut public_keys: PublicKeys = Default::default();
+        let mut key_ids = HashSet::new();
+
+        public_keys.signers.insert(0, public_key.clone());
+        public_keys.key_ids.insert(1, public_key.clone());
+
+        key_ids.insert(1);
+        public_keys.signer_key_ids.insert(0, key_ids);
+
+        let mut signer =
+            Signer::<SignerType>::new(1, 1, 1, 1, 0, vec![1], private_key, public_keys, &mut rng)
+                .unwrap();
+        let comms: Vec<(u32, PolyCommitment)> = signer
+            .signer
+            .get_poly_commitments(&mut rng)
+            .iter()
+            .map(|comm| (comm.id.id.get_u32(), comm.clone()))
+            .collect();
         let public_share = DkgPublicShares {
             dkg_id: 0,
             signer_id: 0,
-            comms: vec![(
-                0,
-                PolyCommitment {
-                    id: ID::new(&Scalar::new(), &Scalar::new(), &mut rng),
-                    poly: vec![],
-                },
-            )],
+            comms,
         };
         signer.dkg_public_share(&public_share).unwrap();
         assert_eq!(1, signer.dkg_public_shares.len())
@@ -1021,7 +1265,7 @@ pub mod test {
             1,
             1,
             1,
-            1,
+            0,
             vec![1],
             Default::default(),
             Default::default(),
@@ -1060,9 +1304,13 @@ pub mod test {
         let private_key = Scalar::random(&mut rng);
         let public_key = ecdsa::PublicKey::new(&private_key).unwrap();
         let mut public_keys: PublicKeys = Default::default();
+        let mut key_ids = HashSet::new();
 
         public_keys.signers.insert(0, public_key.clone());
         public_keys.key_ids.insert(1, public_key.clone());
+
+        key_ids.insert(1);
+        public_keys.signer_key_ids.insert(0, key_ids);
 
         let mut signer =
             Signer::<SignerType>::new(1, 1, 1, 1, 0, vec![1], private_key, public_keys, &mut rng)

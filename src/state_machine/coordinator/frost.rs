@@ -1,20 +1,21 @@
 use hashbrown::{HashMap, HashSet};
 use std::collections::BTreeMap;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use crate::{
     common::{PolyCommitment, PublicNonce, Signature, SignatureShare},
     compute,
     curve::point::Point,
     net::{
-        DkgBegin, DkgEndBegin, DkgPrivateBegin, DkgPrivateShares, DkgPublicShares, Message,
-        NonceRequest, NonceResponse, Packet, Signable, SignatureShareRequest, SignatureType,
+        DkgBegin, DkgEnd, DkgEndBegin, DkgPrivateBegin, DkgPrivateShares, DkgPublicShares,
+        DkgStatus, Message, NonceRequest, NonceResponse, Packet, Signable, SignatureShareRequest,
+        SignatureType,
     },
     state_machine::{
         coordinator::{
             Config, Coordinator as CoordinatorTrait, Error, SavedState, SignRoundInfo, State,
         },
-        OperationResult, SignError, StateMachine,
+        DkgError, OperationResult, SignError, StateMachine,
     },
     taproot::SchnorrProof,
     traits::Aggregator as AggregatorTrait,
@@ -33,6 +34,7 @@ pub struct Coordinator<Aggregator: AggregatorTrait> {
     current_sign_iter_id: u64,
     dkg_public_shares: BTreeMap<u32, DkgPublicShares>,
     dkg_private_shares: BTreeMap<u32, DkgPrivateShares>,
+    dkg_end_messages: BTreeMap<u32, DkgEnd>,
     party_polynomials: HashMap<u32, PolyCommitment>,
     public_nonces: BTreeMap<u32, NonceResponse>,
     signature_shares: BTreeMap<u32, Vec<SignatureShare>>,
@@ -116,7 +118,18 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                     return Ok((Some(packet), None));
                 }
                 State::DkgEndGather => {
-                    self.gather_dkg_end(packet)?;
+                    if let Err(error) = self.gather_dkg_end(packet) {
+                        if let Error::DkgFailure(dkg_failures) = error {
+                            return Ok((
+                                None,
+                                Some(OperationResult::DkgError(DkgError::DkgEndFailure(
+                                    dkg_failures,
+                                ))),
+                            ));
+                        } else {
+                            return Err(error);
+                        }
+                    }
                     if self.state == State::DkgEndGather {
                         // We need more data
                         return Ok((None, None));
@@ -273,6 +286,13 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 ));
             }
 
+            // check that the signer_id exists in the config
+            let signer_public_keys = &self.config.signer_public_keys;
+            if !signer_public_keys.contains_key(&dkg_public_shares.signer_id) {
+                warn!(signer_id = %dkg_public_shares.signer_id, "No public key in config");
+                return Ok(());
+            };
+
             self.ids_to_await.remove(&dkg_public_shares.signer_id);
 
             self.dkg_public_shares
@@ -303,6 +323,13 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 ));
             }
 
+            // check that the signer_id exists in the config
+            let signer_public_keys = &self.config.signer_public_keys;
+            if !signer_public_keys.contains_key(&dkg_private_shares.signer_id) {
+                warn!(signer_id = %dkg_private_shares.signer_id, "No public key in config");
+                return Ok(());
+            };
+
             self.ids_to_await.remove(&dkg_private_shares.signer_id);
 
             self.dkg_private_shares
@@ -330,30 +357,62 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             if dkg_end.dkg_id != self.current_dkg_id {
                 return Err(Error::BadDkgId(dkg_end.dkg_id, self.current_dkg_id));
             }
-            self.ids_to_await.remove(&dkg_end.signer_id);
-            debug!(
-                dkg_id = %dkg_end.dkg_id,
-                signer_id = %dkg_end.signer_id,
-                waiting = ?self.ids_to_await,
-                "DkgEnd received"
-            );
+            if self.ids_to_await.contains(&dkg_end.signer_id) {
+                self.ids_to_await.remove(&dkg_end.signer_id);
+                self.dkg_end_messages
+                    .insert(dkg_end.signer_id, dkg_end.clone());
+                debug!(
+                    dkg_id = %dkg_end.dkg_id,
+                    signer_id = %dkg_end.signer_id,
+                    waiting = ?self.ids_to_await,
+                    "DkgEnd received"
+                );
+            }
         }
 
         if self.ids_to_await.is_empty() {
-            // Calculate the aggregate public key
-            let key = self
-                .party_polynomials
-                .iter()
-                .fold(Point::default(), |s, (_, comm)| s + comm.poly[0]);
+            let mut dkg_failures = HashMap::new();
 
-            info!(
-                %key,
-                "Aggregate public key"
-            );
-            self.aggregate_public_key = Some(key);
-            self.move_to(State::Idle)?;
+            for (signer_id, dkg_end) in &self.dkg_end_messages {
+                if let DkgStatus::Failure(dkg_failure) = &dkg_end.status {
+                    warn!(%signer_id, ?dkg_failure, "DkgEnd failure");
+                    dkg_failures.insert(*signer_id, dkg_failure.clone());
+                }
+            }
+
+            if dkg_failures.is_empty() {
+                self.dkg_end_gathered()?;
+            } else {
+                return Err(Error::DkgFailure(dkg_failures));
+            }
         }
         Ok(())
+    }
+
+    fn dkg_end_gathered(&mut self) -> Result<(), Error> {
+        // Cache the polynomials used in DKG for the aggregator
+        for signer_id in self.dkg_private_shares.keys() {
+            let Some(dkg_public_shares) = self.dkg_public_shares.get(signer_id) else {
+                warn!(%signer_id, "no DkgPublicShares");
+                return Err(Error::BadStateChange(format!("Should not have transitioned to DkgEndGather since we were missing DkgPublicShares from signer {signer_id}")));
+            };
+            for (party_id, comm) in &dkg_public_shares.comms {
+                self.party_polynomials.insert(*party_id, comm.clone());
+            }
+        }
+
+        // Calculate the aggregate public key
+        let key = self
+            .party_polynomials
+            .iter()
+            .fold(Point::default(), |s, (_, comm)| s + comm.poly[0]);
+
+        info!(
+            %key,
+            "Aggregate public key"
+        );
+        self.aggregate_public_key = Some(key);
+        self.move_to(State::Idle)
     }
 
     fn request_nonces(&mut self, signature_type: SignatureType) -> Result<Packet, Error> {
@@ -401,6 +460,42 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                     nonce_response.sign_iter_id,
                     self.current_sign_iter_id,
                 ));
+            }
+
+            // check that the signer_id exists in the config
+            let signer_public_keys = &self.config.signer_public_keys;
+            if !signer_public_keys.contains_key(&nonce_response.signer_id) {
+                warn!(signer_id = %nonce_response.signer_id, "No public key in config");
+                return Ok(());
+            };
+
+            // check that the key_ids match the config
+            let Some(signer_key_ids) = self.config.signer_key_ids.get(&nonce_response.signer_id)
+            else {
+                warn!(signer_id = %nonce_response.signer_id, "No keys IDs configured");
+                return Ok(());
+            };
+
+            let nonce_response_key_ids = nonce_response
+                .key_ids
+                .iter()
+                .cloned()
+                .collect::<HashSet<u32>>();
+            if *signer_key_ids != nonce_response_key_ids {
+                warn!(signer_id = %nonce_response.signer_id, "Nonce response key_ids didn't match config");
+                return Ok(());
+            }
+
+            for nonce in &nonce_response.nonces {
+                if !nonce.is_valid() {
+                    warn!(
+                        sign_id = %nonce_response.sign_id,
+                        sign_iter_id = %nonce_response.sign_iter_id,
+                        signer_id = %nonce_response.signer_id,
+                        "Received invalid nonce in NonceResponse"
+                    );
+                    return Ok(());
+                }
             }
 
             self.public_nonces
@@ -473,6 +568,36 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                     self.current_sign_id,
                 ));
             }
+
+            // check that the signer_id exists in the config
+            let signer_public_keys = &self.config.signer_public_keys;
+            if !signer_public_keys.contains_key(&sig_share_response.signer_id) {
+                warn!(signer_id = %sig_share_response.signer_id, "No public key in config");
+                return Ok(());
+            };
+
+            // check that the key_ids match the config
+            let Some(signer_key_ids) = self
+                .config
+                .signer_key_ids
+                .get(&sig_share_response.signer_id)
+            else {
+                warn!(signer_id = %sig_share_response.signer_id, "No keys IDs configured");
+                return Ok(());
+            };
+
+            let mut sig_share_response_key_ids = HashSet::new();
+            for sig_share in &sig_share_response.signature_shares {
+                for key_id in &sig_share.key_ids {
+                    sig_share_response_key_ids.insert(*key_id);
+                }
+            }
+
+            if *signer_key_ids != sig_share_response_key_ids {
+                warn!(signer_id = %sig_share_response.signer_id, "SignatureShareResponse key_ids didn't match config");
+                return Ok(());
+            }
+
             self.signature_shares.insert(
                 sig_share_response.signer_id,
                 sig_share_response.signature_shares.clone(),
@@ -634,6 +759,7 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
             current_sign_iter_id: 0,
             dkg_public_shares: Default::default(),
             dkg_private_shares: Default::default(),
+            dkg_end_messages: Default::default(),
             party_polynomials: Default::default(),
             public_nonces: Default::default(),
             signature_shares: Default::default(),
@@ -655,6 +781,7 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
             current_sign_iter_id: state.current_sign_iter_id,
             dkg_public_shares: state.dkg_public_shares.clone(),
             dkg_private_shares: state.dkg_private_shares.clone(),
+            dkg_end_messages: state.dkg_end_messages.clone(),
             party_polynomials: state.party_polynomials.clone(),
             public_nonces: state.message_nonces[&Vec::new()].public_nonces.clone(),
             signature_shares: state.signature_shares.clone(),
@@ -685,7 +812,7 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
             current_sign_iter_id: self.current_sign_iter_id,
             dkg_public_shares: self.dkg_public_shares.clone(),
             dkg_private_shares: self.dkg_private_shares.clone(),
-            dkg_end_messages: Default::default(),
+            dkg_end_messages: self.dkg_end_messages.clone(),
             party_polynomials: self.party_polynomials.clone(),
             message_nonces,
             signature_shares: self.signature_shares.clone(),
@@ -820,7 +947,8 @@ pub mod test {
         state_machine::coordinator::{
             frost::Coordinator as FrostCoordinator,
             test::{
-                check_signature_shares, coordinator_state_machine, equal_after_save_load,
+                bad_signature_share_request, check_signature_shares, coordinator_state_machine,
+                empty_private_shares, empty_public_shares, equal_after_save_load, invalid_nonce,
                 new_coordinator, run_dkg_sign, start_dkg_round,
             },
             Config, Coordinator as CoordinatorTrait, State,
@@ -984,6 +1112,26 @@ pub mod test {
     }
 
     #[test]
+    fn bad_signature_share_request_v1() {
+        bad_signature_share_request::<FrostCoordinator<v1::Aggregator>, v1::Signer>(5, 2);
+    }
+
+    #[test]
+    fn bad_signature_share_request_v2() {
+        bad_signature_share_request::<FrostCoordinator<v2::Aggregator>, v2::Signer>(5, 2);
+    }
+
+    #[test]
+    fn invalid_nonce_v1() {
+        invalid_nonce::<FrostCoordinator<v1::Aggregator>, v1::Signer>(5, 2);
+    }
+
+    #[test]
+    fn invalid_nonce_v2() {
+        invalid_nonce::<FrostCoordinator<v2::Aggregator>, v2::Signer>(5, 2);
+    }
+
+    #[test]
     fn process_inbound_messages_v2() {
         run_dkg_sign::<FrostCoordinator<v2::Aggregator>, v2::Signer>(5, 2);
     }
@@ -1065,5 +1213,25 @@ pub mod test {
         assert!(results.is_empty());
         assert_eq!(coordinator.state, State::Idle);
         assert_eq!(coordinator.current_sign_id, id);
+    }
+
+    #[test]
+    fn empty_public_shares_v1() {
+        empty_public_shares::<FrostCoordinator<v1::Aggregator>, v1::Signer>(5, 2);
+    }
+
+    #[test]
+    fn empty_public_shares_v2() {
+        empty_public_shares::<FrostCoordinator<v2::Aggregator>, v2::Signer>(5, 2);
+    }
+
+    #[test]
+    fn empty_private_shares_v1() {
+        empty_private_shares::<FrostCoordinator<v1::Aggregator>, v1::Signer>(5, 2);
+    }
+
+    #[test]
+    fn empty_private_shares_v2() {
+        empty_private_shares::<FrostCoordinator<v2::Aggregator>, v2::Signer>(5, 2);
     }
 }

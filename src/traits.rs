@@ -1,5 +1,5 @@
 use core::{cmp::PartialEq, fmt::Debug};
-use hashbrown::HashMap;
+use hashbrown::{HashMap, HashSet};
 use polynomial::Polynomial;
 use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
@@ -97,6 +97,13 @@ pub trait Signer: Clone + Debug + PartialEq {
         key_ids: &[u32],
         nonces: &[PublicNonce],
     ) -> (Vec<Point>, Point);
+
+    /// Validate that signer_id owns party_id
+    fn validate_party_id(
+        signer_id: u32,
+        party_id: u32,
+        signer_key_ids: &HashMap<u32, HashSet<u32>>,
+    ) -> bool;
 
     /// Sign `msg` using all this signer's keys
     fn sign(

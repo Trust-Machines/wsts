@@ -474,6 +474,13 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 ));
             }
 
+            // check that the signer_id exists in the config
+            let signer_public_keys = &self.config.signer_public_keys;
+            if !signer_public_keys.contains_key(&dkg_public_shares.signer_id) {
+                warn!(signer_id = %dkg_public_shares.signer_id, "No public key in config");
+                return Ok(());
+            };
+
             self.dkg_wait_signer_ids
                 .remove(&dkg_public_shares.signer_id);
 
@@ -505,6 +512,13 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                     self.current_dkg_id,
                 ));
             }
+
+            // check that the signer_id exists in the config
+            let signer_public_keys = &self.config.signer_public_keys;
+            if !signer_public_keys.contains_key(&dkg_private_shares.signer_id) {
+                warn!(signer_id = %dkg_private_shares.signer_id, "No public key in config");
+                return Ok(());
+            };
 
             self.dkg_wait_signer_ids
                 .remove(&dkg_private_shares.signer_id);
@@ -771,6 +785,42 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 ));
             }
 
+            // check that the signer_id exists in the config
+            let signer_public_keys = &self.config.signer_public_keys;
+            if !signer_public_keys.contains_key(&nonce_response.signer_id) {
+                warn!(signer_id = %nonce_response.signer_id, "No public key in config");
+                return Ok(());
+            };
+
+            // check that the key_ids match the config
+            let Some(signer_key_ids) = self.config.signer_key_ids.get(&nonce_response.signer_id)
+            else {
+                warn!(signer_id = %nonce_response.signer_id, "No keys IDs configured");
+                return Ok(());
+            };
+
+            let nonce_response_key_ids = nonce_response
+                .key_ids
+                .iter()
+                .cloned()
+                .collect::<HashSet<u32>>();
+            if *signer_key_ids != nonce_response_key_ids {
+                warn!(signer_id = %nonce_response.signer_id, "Nonce response key_ids didn't match config");
+                return Ok(());
+            }
+
+            for nonce in &nonce_response.nonces {
+                if !nonce.is_valid() {
+                    warn!(
+                        sign_id = %nonce_response.sign_id,
+                        sign_iter_id = %nonce_response.sign_iter_id,
+                        signer_id = %nonce_response.signer_id,
+                        "Received invalid nonce in NonceResponse"
+                    );
+                    return Ok(());
+                }
+            }
+
             if self
                 .malicious_signer_ids
                 .contains(&nonce_response.signer_id)
@@ -793,16 +843,11 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 .public_nonces
                 .insert(nonce_response.signer_id, nonce_response.clone());
 
-            for key_id in &nonce_response.key_ids {
-                if let Some(key_ids) = self.config.signer_key_ids.get(&nonce_response.signer_id) {
-                    if key_ids.contains(key_id) {
-                        nonce_info.nonce_recv_key_ids.insert(*key_id);
-                    } else {
-                        //TODO: should we mark this signer as malicious?
-                        warn!("Key id {} not in signer key ids {:?}", key_id, key_ids);
-                    }
-                }
+            // ignore the passed key_ids
+            for key_id in signer_key_ids {
+                nonce_info.nonce_recv_key_ids.insert(*key_id);
             }
+
             nonce_info
                 .sign_wait_signer_ids
                 .insert(nonce_response.signer_id);
@@ -879,6 +924,36 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                     self.current_sign_id,
                 ));
             }
+
+            // check that the signer_id exists in the config
+            let signer_public_keys = &self.config.signer_public_keys;
+            if !signer_public_keys.contains_key(&sig_share_response.signer_id) {
+                warn!(signer_id = %sig_share_response.signer_id, "No public key in config");
+                return Ok(());
+            };
+
+            // check that the key_ids match the config
+            let Some(signer_key_ids) = self
+                .config
+                .signer_key_ids
+                .get(&sig_share_response.signer_id)
+            else {
+                warn!(signer_id = %sig_share_response.signer_id, "No keys IDs configured");
+                return Ok(());
+            };
+
+            let mut sig_share_response_key_ids = HashSet::new();
+            for sig_share in &sig_share_response.signature_shares {
+                for key_id in &sig_share.key_ids {
+                    sig_share_response_key_ids.insert(*key_id);
+                }
+            }
+
+            if *signer_key_ids != sig_share_response_key_ids {
+                warn!(signer_id = %sig_share_response.signer_id, "SignatureShareResponse key_ids didn't match config");
+                return Ok(());
+            }
+
             self.signature_shares.insert(
                 sig_share_response.signer_id,
                 sig_share_response.signature_shares.clone(),
@@ -1289,9 +1364,9 @@ pub mod test {
                 fire::Coordinator as FireCoordinator,
                 test::{
                     bad_signature_share_request, check_signature_shares, coordinator_state_machine,
-                    equal_after_save_load, feedback_messages, feedback_mutated_messages,
-                    gen_nonces, new_coordinator, run_dkg_sign, setup, setup_with_timeouts,
-                    start_dkg_round,
+                    empty_private_shares, empty_public_shares, equal_after_save_load,
+                    feedback_messages, feedback_mutated_messages, gen_nonces, invalid_nonce,
+                    new_coordinator, run_dkg_sign, setup, setup_with_timeouts, start_dkg_round,
                 },
                 Config, Coordinator as CoordinatorTrait, State,
             },
@@ -2842,6 +2917,16 @@ pub mod test {
     }
 
     #[test]
+    fn invalid_nonce_v1() {
+        invalid_nonce::<FireCoordinator<v1::Aggregator>, v1::Signer>(5, 2);
+    }
+
+    #[test]
+    fn invalid_nonce_v2() {
+        invalid_nonce::<FireCoordinator<v2::Aggregator>, v2::Signer>(5, 2);
+    }
+
+    #[test]
     fn one_signer_bad_threshold_v1() {
         one_signer_bad_threshold::<v1::Aggregator, v1::Signer>();
     }
@@ -3028,5 +3113,25 @@ pub mod test {
                 panic!("Expected DkgEndFailure got {:?}", result);
             }
         }
+    }
+
+    #[test]
+    fn empty_public_shares_v1() {
+        empty_public_shares::<FireCoordinator<v1::Aggregator>, v1::Signer>(5, 2);
+    }
+
+    #[test]
+    fn empty_public_shares_v2() {
+        empty_public_shares::<FireCoordinator<v2::Aggregator>, v2::Signer>(5, 2);
+    }
+
+    #[test]
+    fn empty_private_shares_v1() {
+        empty_private_shares::<FireCoordinator<v1::Aggregator>, v1::Signer>(5, 2);
+    }
+
+    #[test]
+    fn empty_private_shares_v2() {
+        empty_private_shares::<FireCoordinator<v2::Aggregator>, v2::Signer>(5, 2);
     }
 }
