@@ -1364,9 +1364,9 @@ pub mod test {
                 fire::Coordinator as FireCoordinator,
                 test::{
                     bad_signature_share_request, check_signature_shares, coordinator_state_machine,
-                    equal_after_save_load, feedback_messages, feedback_mutated_messages,
-                    gen_nonces, invalid_nonce, new_coordinator, run_dkg_sign, setup,
-                    setup_with_timeouts, start_dkg_round,
+                    empty_private_shares, empty_public_shares, equal_after_save_load,
+                    feedback_messages, feedback_mutated_messages, gen_nonces, invalid_nonce,
+                    new_coordinator, run_dkg_sign, setup, setup_with_timeouts, start_dkg_round,
                 },
                 Config, Coordinator as CoordinatorTrait, State,
             },
@@ -3113,5 +3113,25 @@ pub mod test {
                 panic!("Expected DkgEndFailure got {:?}", result);
             }
         }
+    }
+
+    #[test]
+    fn empty_public_shares_v1() {
+        empty_public_shares::<FireCoordinator<v1::Aggregator>, v1::Signer>(5, 2);
+    }
+
+    #[test]
+    fn empty_public_shares_v2() {
+        empty_public_shares::<FireCoordinator<v2::Aggregator>, v2::Signer>(5, 2);
+    }
+
+    #[test]
+    fn empty_private_shares_v1() {
+        empty_private_shares::<FireCoordinator<v1::Aggregator>, v1::Signer>(5, 2);
+    }
+
+    #[test]
+    fn empty_private_shares_v2() {
+        empty_private_shares::<FireCoordinator<v2::Aggregator>, v2::Signer>(5, 2);
     }
 }

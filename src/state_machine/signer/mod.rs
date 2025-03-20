@@ -451,11 +451,15 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
 
         for signer_id in &signer_ids_set {
             if let Some(shares) = self.dkg_public_shares.get(signer_id) {
-                for (party_id, comm) in shares.comms.iter() {
-                    if !check_public_shares(comm, threshold) {
-                        bad_public_shares.insert(*signer_id);
-                    } else {
-                        self.commitments.insert(*party_id, comm.clone());
+                if shares.comms.is_empty() {
+                    missing_public_shares.insert(*signer_id);
+                } else {
+                    for (party_id, comm) in shares.comms.iter() {
+                        if !check_public_shares(comm, threshold) {
+                            bad_public_shares.insert(*signer_id);
+                        } else {
+                            self.commitments.insert(*party_id, comm.clone());
+                        }
                     }
                 }
             } else {
@@ -463,10 +467,14 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             }
             if let Some(shares) = self.dkg_private_shares.get(signer_id) {
                 // signer_id sent shares, but make sure that it sent shares for every one of this signer's key_ids
-                for dst_key_id in self.signer.get_key_ids() {
-                    for (_src_key_id, shares) in &shares.shares {
-                        if shares.get(&dst_key_id).is_none() {
-                            missing_private_shares.insert(*signer_id);
+                if shares.shares.is_empty() {
+                    missing_private_shares.insert(*signer_id);
+                } else {
+                    for dst_key_id in self.signer.get_key_ids() {
+                        for (_src_key_id, shares) in &shares.shares {
+                            if shares.get(&dst_key_id).is_none() {
+                                missing_private_shares.insert(*signer_id);
+                            }
                         }
                     }
                 }

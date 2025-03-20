@@ -7,14 +7,15 @@ use crate::{
     compute,
     curve::point::Point,
     net::{
-        DkgBegin, DkgEndBegin, DkgPrivateBegin, DkgPrivateShares, DkgPublicShares, Message,
-        NonceRequest, NonceResponse, Packet, Signable, SignatureShareRequest, SignatureType,
+        DkgBegin, DkgEnd, DkgEndBegin, DkgPrivateBegin, DkgPrivateShares, DkgPublicShares,
+        DkgStatus, Message, NonceRequest, NonceResponse, Packet, Signable, SignatureShareRequest,
+        SignatureType,
     },
     state_machine::{
         coordinator::{
             Config, Coordinator as CoordinatorTrait, Error, SavedState, SignRoundInfo, State,
         },
-        OperationResult, SignError, StateMachine,
+        DkgError, OperationResult, SignError, StateMachine,
     },
     taproot::SchnorrProof,
     traits::Aggregator as AggregatorTrait,
@@ -33,6 +34,7 @@ pub struct Coordinator<Aggregator: AggregatorTrait> {
     current_sign_iter_id: u64,
     dkg_public_shares: BTreeMap<u32, DkgPublicShares>,
     dkg_private_shares: BTreeMap<u32, DkgPrivateShares>,
+    dkg_end_messages: BTreeMap<u32, DkgEnd>,
     party_polynomials: HashMap<u32, PolyCommitment>,
     public_nonces: BTreeMap<u32, NonceResponse>,
     signature_shares: BTreeMap<u32, Vec<SignatureShare>>,
@@ -116,7 +118,18 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                     return Ok((Some(packet), None));
                 }
                 State::DkgEndGather => {
-                    self.gather_dkg_end(packet)?;
+                    if let Err(error) = self.gather_dkg_end(packet) {
+                        if let Error::DkgFailure(dkg_failures) = error {
+                            return Ok((
+                                None,
+                                Some(OperationResult::DkgError(DkgError::DkgEndFailure(
+                                    dkg_failures,
+                                ))),
+                            ));
+                        } else {
+                            return Err(error);
+                        }
+                    }
                     if self.state == State::DkgEndGather {
                         // We need more data
                         return Ok((None, None));
@@ -344,30 +357,62 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             if dkg_end.dkg_id != self.current_dkg_id {
                 return Err(Error::BadDkgId(dkg_end.dkg_id, self.current_dkg_id));
             }
-            self.ids_to_await.remove(&dkg_end.signer_id);
-            debug!(
-                dkg_id = %dkg_end.dkg_id,
-                signer_id = %dkg_end.signer_id,
-                waiting = ?self.ids_to_await,
-                "DkgEnd received"
-            );
+            if self.ids_to_await.contains(&dkg_end.signer_id) {
+                self.ids_to_await.remove(&dkg_end.signer_id);
+                self.dkg_end_messages
+                    .insert(dkg_end.signer_id, dkg_end.clone());
+                debug!(
+                    dkg_id = %dkg_end.dkg_id,
+                    signer_id = %dkg_end.signer_id,
+                    waiting = ?self.ids_to_await,
+                    "DkgEnd received"
+                );
+            }
         }
 
         if self.ids_to_await.is_empty() {
-            // Calculate the aggregate public key
-            let key = self
-                .party_polynomials
-                .iter()
-                .fold(Point::default(), |s, (_, comm)| s + comm.poly[0]);
+            let mut dkg_failures = HashMap::new();
 
-            info!(
-                %key,
-                "Aggregate public key"
-            );
-            self.aggregate_public_key = Some(key);
-            self.move_to(State::Idle)?;
+            for (signer_id, dkg_end) in &self.dkg_end_messages {
+                if let DkgStatus::Failure(dkg_failure) = &dkg_end.status {
+                    warn!(%signer_id, ?dkg_failure, "DkgEnd failure");
+                    dkg_failures.insert(*signer_id, dkg_failure.clone());
+                }
+            }
+
+            if dkg_failures.is_empty() {
+                self.dkg_end_gathered()?;
+            } else {
+                return Err(Error::DkgFailure(dkg_failures));
+            }
         }
         Ok(())
+    }
+
+    fn dkg_end_gathered(&mut self) -> Result<(), Error> {
+        // Cache the polynomials used in DKG for the aggregator
+        for signer_id in self.dkg_private_shares.keys() {
+            let Some(dkg_public_shares) = self.dkg_public_shares.get(signer_id) else {
+                warn!(%signer_id, "no DkgPublicShares");
+                return Err(Error::BadStateChange(format!("Should not have transitioned to DkgEndGather since we were missing DkgPublicShares from signer {signer_id}")));
+            };
+            for (party_id, comm) in &dkg_public_shares.comms {
+                self.party_polynomials.insert(*party_id, comm.clone());
+            }
+        }
+
+        // Calculate the aggregate public key
+        let key = self
+            .party_polynomials
+            .iter()
+            .fold(Point::default(), |s, (_, comm)| s + comm.poly[0]);
+
+        info!(
+            %key,
+            "Aggregate public key"
+        );
+        self.aggregate_public_key = Some(key);
+        self.move_to(State::Idle)
     }
 
     fn request_nonces(&mut self, signature_type: SignatureType) -> Result<Packet, Error> {
@@ -714,6 +759,7 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
             current_sign_iter_id: 0,
             dkg_public_shares: Default::default(),
             dkg_private_shares: Default::default(),
+            dkg_end_messages: Default::default(),
             party_polynomials: Default::default(),
             public_nonces: Default::default(),
             signature_shares: Default::default(),
@@ -735,6 +781,7 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
             current_sign_iter_id: state.current_sign_iter_id,
             dkg_public_shares: state.dkg_public_shares.clone(),
             dkg_private_shares: state.dkg_private_shares.clone(),
+            dkg_end_messages: state.dkg_end_messages.clone(),
             party_polynomials: state.party_polynomials.clone(),
             public_nonces: state.message_nonces[&Vec::new()].public_nonces.clone(),
             signature_shares: state.signature_shares.clone(),
@@ -765,7 +812,7 @@ impl<Aggregator: AggregatorTrait> CoordinatorTrait for Coordinator<Aggregator> {
             current_sign_iter_id: self.current_sign_iter_id,
             dkg_public_shares: self.dkg_public_shares.clone(),
             dkg_private_shares: self.dkg_private_shares.clone(),
-            dkg_end_messages: Default::default(),
+            dkg_end_messages: self.dkg_end_messages.clone(),
             party_polynomials: self.party_polynomials.clone(),
             message_nonces,
             signature_shares: self.signature_shares.clone(),
@@ -901,8 +948,8 @@ pub mod test {
             frost::Coordinator as FrostCoordinator,
             test::{
                 bad_signature_share_request, check_signature_shares, coordinator_state_machine,
-                equal_after_save_load, invalid_nonce, new_coordinator, run_dkg_sign,
-                start_dkg_round,
+                empty_private_shares, empty_public_shares, equal_after_save_load, invalid_nonce,
+                new_coordinator, run_dkg_sign, start_dkg_round,
             },
             Config, Coordinator as CoordinatorTrait, State,
         },
@@ -1166,5 +1213,25 @@ pub mod test {
         assert!(results.is_empty());
         assert_eq!(coordinator.state, State::Idle);
         assert_eq!(coordinator.current_sign_id, id);
+    }
+
+    #[test]
+    fn empty_public_shares_v1() {
+        empty_public_shares::<FrostCoordinator<v1::Aggregator>, v1::Signer>(5, 2);
+    }
+
+    #[test]
+    fn empty_public_shares_v2() {
+        empty_public_shares::<FrostCoordinator<v2::Aggregator>, v2::Signer>(5, 2);
+    }
+
+    #[test]
+    fn empty_private_shares_v1() {
+        empty_private_shares::<FrostCoordinator<v1::Aggregator>, v1::Signer>(5, 2);
+    }
+
+    #[test]
+    fn empty_private_shares_v2() {
+        empty_private_shares::<FrostCoordinator<v2::Aggregator>, v2::Signer>(5, 2);
     }
 }

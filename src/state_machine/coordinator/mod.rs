@@ -318,11 +318,12 @@ pub mod test {
         compute,
         curve::{ecdsa, point::Point, point::G, scalar::Scalar},
         errors::AggregatorError,
-        net::{Message, Packet, SignatureShareResponse, SignatureType},
+        net::{DkgFailure, Message, Packet, SignatureShareResponse, SignatureType},
         state_machine::{
             coordinator::{Config, Coordinator as CoordinatorTrait, Error, State},
             signer::{Error as SignerError, Signer},
-            Error as StateMachineError, OperationResult, PublicKeys, SignError, StateMachine,
+            DkgError, Error as StateMachineError, OperationResult, PublicKeys, SignError,
+            StateMachine,
         },
         traits::Signer as SignerTrait,
         util::create_rng,
@@ -1314,6 +1315,230 @@ pub mod test {
             Err(StateMachineError::Signer(SignerError::InvalidNonceResponse))
         ) {
             panic!("Should have received signer invalid nonce response error, got {result:?}");
+        }
+    }
+
+    pub fn empty_public_shares<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
+        num_signers: u32,
+        keys_per_signer: u32,
+    ) {
+        let (mut coordinators, mut signers) =
+            setup::<Coordinator, SignerType>(num_signers, keys_per_signer);
+
+        // We have started a dkg round
+        let message = coordinators.first_mut().unwrap().start_dkg_round().unwrap();
+        assert!(coordinators
+            .first_mut()
+            .unwrap()
+            .get_aggregate_public_key()
+            .is_none());
+        assert_eq!(
+            coordinators.first_mut().unwrap().get_state(),
+            State::DkgPublicGather
+        );
+
+        // Send the DKG Begin message to all signers and gather responses by sharing with all other signers and coordinator
+        let (outbound_messages, operation_results) = feedback_mutated_messages(
+            &mut coordinators,
+            &mut signers,
+            &[message],
+            |signer, packets| {
+                if signer.signer_id == 0 {
+                    packets
+                        .iter()
+                        .map(|packet| {
+                            if let Message::DkgPublicShares(shares) = &packet.msg {
+                                let public_shares = crate::net::DkgPublicShares {
+                                    dkg_id: shares.dkg_id,
+                                    signer_id: shares.signer_id,
+                                    comms: vec![],
+                                };
+                                Packet {
+                                    msg: Message::DkgPublicShares(public_shares),
+                                    sig: vec![],
+                                }
+                            } else {
+                                packet.clone()
+                            }
+                        })
+                        .collect()
+                } else {
+                    packets.clone()
+                }
+            },
+        );
+        assert!(operation_results.is_empty());
+        for coordinator in coordinators.iter() {
+            assert_eq!(coordinator.get_state(), State::DkgPrivateGather);
+        }
+
+        assert_eq!(outbound_messages.len(), 1);
+        match &outbound_messages[0].msg {
+            Message::DkgPrivateBegin(_) => {}
+            _ => {
+                panic!("Expected DkgPrivateBegin message")
+            }
+        }
+
+        // Send the DKG Private Begin message to all signers and share their responses with the coordinator and signers
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
+        assert_eq!(operation_results.len(), 0);
+        assert_eq!(outbound_messages.len(), 1);
+        match &outbound_messages[0].msg {
+            Message::DkgEndBegin(_) => {}
+            _ => {
+                panic!("Expected DkgEndBegin message");
+            }
+        }
+
+        // Send the DkgEndBegin message to all signers and share their responses with the coordinator and signers
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
+        assert_eq!(outbound_messages.len(), 0);
+        assert_eq!(operation_results.len(), 1);
+        match &operation_results[0] {
+            OperationResult::DkgError(dkg_error) => {
+                if let DkgError::DkgEndFailure(dkg_failures) = dkg_error {
+                    if dkg_failures.len() != num_signers as usize {
+                        panic!(
+                            "Expected {num_signers} DkgFailures got {}",
+                            dkg_failures.len()
+                        );
+                    }
+                    let expected_signer_ids = (0..1).collect::<HashSet<u32>>();
+                    for dkg_failure in dkg_failures {
+                        if let (_, DkgFailure::MissingPublicShares(signer_ids)) = dkg_failure {
+                            if &expected_signer_ids != signer_ids {
+                                panic!(
+                                    "Expected signer_ids {:?} got {:?}",
+                                    expected_signer_ids, signer_ids
+                                );
+                            }
+                        } else {
+                            panic!(
+                                "Expected DkgFailure::MissingPublicShares got {:?}",
+                                dkg_failure
+                            );
+                        }
+                    }
+                } else {
+                    panic!("Expected DkgError::DkgEndFailure got {:?}", dkg_error);
+                }
+            }
+            msg => panic!("Expected OperationResult::DkgError got {:?}", msg),
+        }
+    }
+
+    pub fn empty_private_shares<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
+        num_signers: u32,
+        keys_per_signer: u32,
+    ) {
+        let (mut coordinators, mut signers) =
+            setup::<Coordinator, SignerType>(num_signers, keys_per_signer);
+
+        // We have started a dkg round
+        let message = coordinators.first_mut().unwrap().start_dkg_round().unwrap();
+        assert!(coordinators
+            .first_mut()
+            .unwrap()
+            .get_aggregate_public_key()
+            .is_none());
+        assert_eq!(
+            coordinators.first_mut().unwrap().get_state(),
+            State::DkgPublicGather
+        );
+
+        // Send the DKG Begin message to all signers and gather responses by sharing with all other signers and coordinator
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &[message]);
+        assert!(operation_results.is_empty());
+        for coordinator in coordinators.iter() {
+            assert_eq!(coordinator.get_state(), State::DkgPrivateGather);
+        }
+
+        assert_eq!(outbound_messages.len(), 1);
+        match &outbound_messages[0].msg {
+            Message::DkgPrivateBegin(_) => {}
+            _ => {
+                panic!("Expected DkgPrivateBegin message");
+            }
+        }
+
+        // Send the DKG Begin message to all signers and gather responses by sharing with all other signers and coordinator
+        let (outbound_messages, operation_results) = feedback_mutated_messages(
+            &mut coordinators,
+            &mut signers,
+            &[outbound_messages[0].clone()],
+            |signer, packets| {
+                if signer.signer_id == 0 {
+                    packets
+                        .iter()
+                        .map(|packet| {
+                            if let Message::DkgPrivateShares(shares) = &packet.msg {
+                                let private_shares = crate::net::DkgPrivateShares {
+                                    dkg_id: shares.dkg_id,
+                                    signer_id: shares.signer_id,
+                                    shares: vec![],
+                                };
+                                Packet {
+                                    msg: Message::DkgPrivateShares(private_shares),
+                                    sig: vec![],
+                                }
+                            } else {
+                                packet.clone()
+                            }
+                        })
+                        .collect()
+                } else {
+                    packets.clone()
+                }
+            },
+        );
+        assert_eq!(operation_results.len(), 0);
+        assert_eq!(outbound_messages.len(), 1);
+        match &outbound_messages[0].msg {
+            Message::DkgEndBegin(_) => {}
+            _ => {
+                panic!("Expected DkgEndBegin message");
+            }
+        }
+
+        // Send the DkgEndBegin message to all signers and share their responses with the coordinator and signers
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
+        assert_eq!(outbound_messages.len(), 0);
+        assert_eq!(operation_results.len(), 1);
+        match &operation_results[0] {
+            OperationResult::DkgError(dkg_error) => {
+                if let DkgError::DkgEndFailure(dkg_failures) = dkg_error {
+                    if dkg_failures.len() != num_signers as usize {
+                        panic!(
+                            "Expected {num_signers} DkgFailures got {}",
+                            dkg_failures.len()
+                        );
+                    }
+                    let expected_signer_ids = (0..1).collect::<HashSet<u32>>();
+                    for dkg_failure in dkg_failures {
+                        if let (_, DkgFailure::MissingPrivateShares(signer_ids)) = dkg_failure {
+                            if &expected_signer_ids != signer_ids {
+                                panic!(
+                                    "Expected signer_ids {:?} got {:?}",
+                                    expected_signer_ids, signer_ids
+                                );
+                            }
+                        } else {
+                            panic!(
+                                "Expected DkgFailure::MissingPublicShares got {:?}",
+                                dkg_failure
+                            );
+                        }
+                    }
+                } else {
+                    panic!("Expected DkgError::DkgEndFailure got {:?}", dkg_error);
+                }
+            }
+            msg => panic!("Expected OperationResult::DkgError got {:?}", msg),
         }
     }
 }
