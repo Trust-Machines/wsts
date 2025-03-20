@@ -4,12 +4,12 @@ use hashbrown::{HashMap, HashSet};
 use thiserror::Error as ThisError;
 
 use crate::{
-    common::Signature,
+    common::{validate_key_id, validate_signer_id, Signature},
     curve::{ecdsa, point::Point},
     errors::AggregatorError,
     net::DkgFailure,
     state_machine::coordinator::Error as CoordinatorError,
-    state_machine::signer::Error as SignerError,
+    state_machine::signer::{ConfigError, Error as SignerError},
     taproot::SchnorrProof,
 };
 
@@ -94,6 +94,41 @@ pub struct PublicKeys {
     pub key_ids: HashMap<u32, ecdsa::PublicKey>,
     /// map of signer_id to controlled key_ids
     pub signer_key_ids: HashMap<u32, HashSet<u32>>,
+}
+
+impl PublicKeys {
+    /// Check that all of the signer_ids and key_ids are valid
+    pub fn validate(&self, num_signers: u32, num_keys: u32) -> Result<(), SignerError> {
+        for (signer_id, _key) in &self.signers {
+            if !validate_signer_id(*signer_id, num_signers) {
+                return Err(SignerError::Config(ConfigError::InvalidSignerId(
+                    *signer_id,
+                )));
+            }
+        }
+
+        for (key_id, _key) in &self.key_ids {
+            if !validate_key_id(*key_id, num_keys) {
+                return Err(SignerError::Config(ConfigError::InvalidKeyId(*key_id)));
+            }
+        }
+
+        for (signer_id, key_ids) in &self.signer_key_ids {
+            if !validate_signer_id(*signer_id, num_signers) {
+                return Err(SignerError::Config(ConfigError::InvalidSignerId(
+                    *signer_id,
+                )));
+            }
+
+            for key_id in key_ids {
+                if !validate_key_id(*key_id, num_keys) {
+                    return Err(SignerError::Config(ConfigError::InvalidKeyId(*key_id)));
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl std::fmt::Debug for PublicKeys {

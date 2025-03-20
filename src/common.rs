@@ -230,6 +230,16 @@ impl TupleProof {
     }
 }
 
+/// Check that the passed `signer_id` is valid
+pub fn validate_signer_id(signer_id: u32, num_signers: u32) -> bool {
+    signer_id < num_signers
+}
+
+/// Check that the passed `key_id` is valid
+pub fn validate_key_id(key_id: u32, num_keys: u32) -> bool {
+    key_id > 0 && key_id <= num_keys
+}
+
 /// Check that the PolyCommitment is properly signed and has the correct degree polynomial
 pub fn check_public_shares(poly_comm: &PolyCommitment, threshold: usize) -> bool {
     poly_comm.verify() && poly_comm.poly.len() == threshold

@@ -5,7 +5,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use tracing::{debug, info, trace, warn};
 
 use crate::{
-    common::{check_public_shares, PolyCommitment, PublicNonce, TupleProof},
+    common::{
+        check_public_shares, validate_key_id, validate_signer_id, PolyCommitment, PublicNonce,
+        TupleProof,
+    },
     curve::{
         point::{Compressed, Point, G},
         scalar::Scalar,
@@ -47,6 +50,12 @@ pub enum ConfigError {
     /// The threshold was invalid
     #[error("InvalidThreshold")]
     InvalidThreshold,
+    /// The signer ID was invalid
+    #[error("Invalid signer ID {0}")]
+    InvalidSignerId(u32),
+    /// The key ID was invalid
+    #[error("Invalid key ID {0}")]
+    InvalidKeyId(u32),
 }
 
 #[derive(thiserror::Error, Clone, Debug)]
@@ -214,6 +223,18 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         if dkg_threshold == 0 || dkg_threshold < threshold {
             return Err(Error::Config(ConfigError::InvalidThreshold));
         }
+
+        if !validate_signer_id(signer_id, total_signers) {
+            return Err(Error::Config(ConfigError::InvalidSignerId(signer_id)));
+        }
+
+        for key_id in &key_ids {
+            if !validate_key_id(*key_id, total_keys) {
+                return Err(Error::Config(ConfigError::InvalidKeyId(*key_id)));
+            }
+        }
+
+        public_keys.validate(total_signers, total_keys)?;
 
         let signer = SignerType::new(
             signer_id,
@@ -1043,7 +1064,7 @@ pub mod test {
                 1,
                 2,
                 1,
-                1,
+                0,
                 vec![1],
                 Default::default(),
                 Default::default(),
@@ -1059,7 +1080,7 @@ pub mod test {
                 1,
                 4,
                 4,
-                1,
+                0,
                 vec![1],
                 Default::default(),
                 Default::default(),
@@ -1075,7 +1096,7 @@ pub mod test {
                 0,
                 4,
                 4,
-                1,
+                0,
                 vec![1],
                 Default::default(),
                 Default::default(),
@@ -1091,7 +1112,7 @@ pub mod test {
                 5,
                 4,
                 4,
-                1,
+                0,
                 vec![1],
                 Default::default(),
                 Default::default(),
@@ -1107,7 +1128,7 @@ pub mod test {
                 1,
                 4,
                 4,
-                1,
+                0,
                 vec![1],
                 Default::default(),
                 Default::default(),
@@ -1115,6 +1136,56 @@ pub mod test {
             ),
             Err(Error::Config(ConfigError::InvalidThreshold))
         ));
+
+        // signer_id >= num_signers
+        assert!(matches!(
+            Signer::<SignerType>::new(
+                2,
+                2,
+                4,
+                4,
+                4,
+                vec![1],
+                Default::default(),
+                Default::default(),
+                &mut rng,
+            ),
+            Err(Error::Config(ConfigError::InvalidSignerId(4)))
+        ));
+
+        // key_id == 0
+        assert!(matches!(
+            Signer::<SignerType>::new(
+                2,
+                2,
+                4,
+                4,
+                0,
+                vec![0],
+                Default::default(),
+                Default::default(),
+                &mut rng,
+            ),
+            Err(Error::Config(ConfigError::InvalidKeyId(0)))
+        ));
+
+        // key_id > num_keys
+        assert!(matches!(
+            Signer::<SignerType>::new(
+                2,
+                2,
+                4,
+                4,
+                0,
+                vec![5],
+                Default::default(),
+                Default::default(),
+                &mut rng,
+            ),
+            Err(Error::Config(ConfigError::InvalidKeyId(5)))
+        ));
+
+        // public_keys: key_id == 0
     }
 
     #[test]
@@ -1175,7 +1246,7 @@ pub mod test {
             1,
             1,
             1,
-            1,
+            0,
             vec![1],
             Default::default(),
             Default::default(),
