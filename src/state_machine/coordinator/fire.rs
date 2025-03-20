@@ -809,6 +809,18 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 return Ok(());
             }
 
+            for nonce in &nonce_response.nonces {
+                if !nonce.is_valid() {
+                    warn!(
+                        sign_id = %nonce_response.sign_id,
+                        sign_iter_id = %nonce_response.sign_iter_id,
+                        signer_id = %nonce_response.signer_id,
+                        "Received invalid nonce in NonceResponse"
+                    );
+                    return Ok(());
+                }
+            }
+
             if self
                 .malicious_signer_ids
                 .contains(&nonce_response.signer_id)
@@ -1353,8 +1365,8 @@ pub mod test {
                 test::{
                     bad_signature_share_request, check_signature_shares, coordinator_state_machine,
                     equal_after_save_load, feedback_messages, feedback_mutated_messages,
-                    gen_nonces, new_coordinator, run_dkg_sign, setup, setup_with_timeouts,
-                    start_dkg_round,
+                    gen_nonces, invalid_nonce, new_coordinator, run_dkg_sign, setup,
+                    setup_with_timeouts, start_dkg_round,
                 },
                 Config, Coordinator as CoordinatorTrait, State,
             },
@@ -2902,6 +2914,16 @@ pub mod test {
     #[test]
     fn bad_signature_share_request_v2() {
         bad_signature_share_request::<FireCoordinator<v2::Aggregator>, v2::Signer>(5, 2);
+    }
+
+    #[test]
+    fn invalid_nonce_v1() {
+        invalid_nonce::<FireCoordinator<v1::Aggregator>, v1::Signer>(5, 2);
+    }
+
+    #[test]
+    fn invalid_nonce_v2() {
+        invalid_nonce::<FireCoordinator<v2::Aggregator>, v2::Signer>(5, 2);
     }
 
     #[test]

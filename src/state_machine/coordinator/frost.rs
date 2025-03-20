@@ -441,6 +441,18 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 return Ok(());
             }
 
+            for nonce in &nonce_response.nonces {
+                if !nonce.is_valid() {
+                    warn!(
+                        sign_id = %nonce_response.sign_id,
+                        sign_iter_id = %nonce_response.sign_iter_id,
+                        signer_id = %nonce_response.signer_id,
+                        "Received invalid nonce in NonceResponse"
+                    );
+                    return Ok(());
+                }
+            }
+
             self.public_nonces
                 .insert(nonce_response.signer_id, nonce_response.clone());
             self.ids_to_await.remove(&nonce_response.signer_id);
@@ -888,8 +900,9 @@ pub mod test {
         state_machine::coordinator::{
             frost::Coordinator as FrostCoordinator,
             test::{
-                check_signature_shares, coordinator_state_machine, equal_after_save_load,
-                new_coordinator, run_dkg_sign, start_dkg_round,
+                bad_signature_share_request, check_signature_shares, coordinator_state_machine,
+                equal_after_save_load, invalid_nonce, new_coordinator, run_dkg_sign,
+                start_dkg_round,
             },
             Config, Coordinator as CoordinatorTrait, State,
         },
@@ -1049,6 +1062,26 @@ pub mod test {
             SignatureType::Taproot(Some([23u8; 32])),
             vec![0],
         );
+    }
+
+    #[test]
+    fn bad_signature_share_request_v1() {
+        bad_signature_share_request::<FrostCoordinator<v1::Aggregator>, v1::Signer>(5, 2);
+    }
+
+    #[test]
+    fn bad_signature_share_request_v2() {
+        bad_signature_share_request::<FrostCoordinator<v2::Aggregator>, v2::Signer>(5, 2);
+    }
+
+    #[test]
+    fn invalid_nonce_v1() {
+        invalid_nonce::<FrostCoordinator<v1::Aggregator>, v1::Signer>(5, 2);
+    }
+
+    #[test]
+    fn invalid_nonce_v2() {
+        invalid_nonce::<FrostCoordinator<v2::Aggregator>, v2::Signer>(5, 2);
     }
 
     #[test]

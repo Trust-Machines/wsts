@@ -1,6 +1,6 @@
 use core::{
     fmt::{Debug, Display, Formatter, Result as FmtResult},
-    ops::Add,
+    ops::{Add, Mul},
 };
 use hashbrown::HashMap;
 use num_traits::{One, Zero};
@@ -81,6 +81,11 @@ impl Nonce {
 
         hash_to_scalar(&mut hasher)
     }
+
+    /// Check that the nonces are not zero since that can lead to attacks
+    pub fn is_valid(&self) -> bool {
+        !self.is_zero() && !self.is_one()
+    }
 }
 
 impl Zero for Nonce {
@@ -96,6 +101,24 @@ impl Zero for Nonce {
     }
 }
 
+impl One for Nonce {
+    fn one() -> Self {
+        Self {
+            d: Scalar::one(),
+            e: Scalar::one(),
+        }
+    }
+
+    fn set_one(&mut self) {
+        self.d = Scalar::one();
+        self.e = Scalar::one();
+    }
+
+    fn is_one(&self) -> bool {
+        self.d == Scalar::one() && self.e == Scalar::one()
+    }
+}
+
 impl Add for Nonce {
     type Output = Self;
 
@@ -103,6 +126,17 @@ impl Add for Nonce {
         Self {
             d: self.d + other.d,
             e: self.e + other.e,
+        }
+    }
+}
+
+impl Mul for Nonce {
+    type Output = Self;
+
+    fn mul(self, other: Self) -> Self {
+        Self {
+            d: self.d * other.d,
+            e: self.e * other.e,
         }
     }
 }
@@ -118,18 +152,54 @@ pub struct PublicNonce {
 }
 
 impl PublicNonce {
-    /// Construct a public nonce from a private nonce
-    pub fn from(n: &Nonce) -> Self {
-        Self {
-            D: &n.d * G,
-            E: &n.e * G,
-        }
+    /// Check that the nonces are not zero since that can lead to attacks
+    pub fn is_valid(&self) -> bool {
+        self.D != Point::identity() && self.E != Point::identity() && self.D != G && self.E != G
     }
 }
 
 impl Display for PublicNonce {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "{} {}", &self.D, &self.E)
+    }
+}
+
+impl From<Nonce> for PublicNonce {
+    fn from(nonce: Nonce) -> Self {
+        Self {
+            D: nonce.d * G,
+            E: nonce.e * G,
+        }
+    }
+}
+
+impl From<&Nonce> for PublicNonce {
+    fn from(nonce: &Nonce) -> Self {
+        Self {
+            D: nonce.d * G,
+            E: nonce.e * G,
+        }
+    }
+}
+
+impl Add for PublicNonce {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self {
+        Self {
+            D: self.D + other.E,
+            E: self.E + other.E,
+        }
+    }
+}
+
+impl Zero for PublicNonce {
+    fn zero() -> Self {
+        Self::from(Nonce::zero())
+    }
+
+    fn is_zero(&self) -> bool {
+        self.D == Point::identity() && self.E == Point::identity()
     }
 }
 

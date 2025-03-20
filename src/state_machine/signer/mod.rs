@@ -676,6 +676,22 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             return Err(Error::InvalidNonceResponse);
         }
 
+        let nonces = sign_request
+            .nonce_responses
+            .iter()
+            .flat_map(|nr| nr.nonces.clone())
+            .collect::<Vec<PublicNonce>>();
+
+        for nonce in &nonces {
+            if !nonce.is_valid() {
+                warn!(
+                    signer_id = %self.signer_id,
+                    "received an SignatureShareRequest with invalid nonce"
+                );
+                return Err(Error::InvalidNonceResponse);
+            }
+        }
+
         debug!(signer_id = %self.signer_id, "received a valid SignatureShareRequest");
 
         if signer_id_set.contains(&self.signer_id) {
@@ -684,11 +700,6 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                 .iter()
                 .flat_map(|nr| nr.key_ids.iter().copied())
                 .collect::<Vec<u32>>();
-            let nonces = sign_request
-                .nonce_responses
-                .iter()
-                .flat_map(|nr| nr.nonces.clone())
-                .collect::<Vec<PublicNonce>>();
 
             let signer_ids = signer_id_set.into_iter().collect::<Vec<_>>();
             let msg = &sign_request.message;
