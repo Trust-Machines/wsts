@@ -3,7 +3,7 @@ name: Cargo Publish
 on:
   push:
     branches:
-      - 'releases/**'
+      - 'release'
 
 jobs:
   publish:
