@@ -199,7 +199,7 @@ impl DkgPublicShares {
             &self.comms,
             &self.kex_public_key,
         );
-        &self.kex_proof.s * &G == &self.kex_proof.R + c * &self.kex_public_key
+        self.kex_proof.s * G == self.kex_proof.R + c * self.kex_public_key
     }
 
     /// construct a proof of knowledge of kex_private_key
