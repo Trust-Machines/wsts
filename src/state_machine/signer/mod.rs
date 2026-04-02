@@ -163,6 +163,10 @@ pub struct SavedState {
     pub dkg_private_begin_msg: Option<DkgPrivateBegin>,
     /// the DKG end begin message received in this round
     pub dkg_end_begin_msg: Option<DkgEndBegin>,
+    /// pending DkgPublicSharesDone waiting for all public shares to arrive
+    pending_public_shares_done: Option<DkgPublicSharesDone>,
+    /// pending DkgPrivateSharesDone waiting for all private shares to arrive
+    pending_private_shares_done: Option<DkgPrivateSharesDone>,
     /// whether to verify the signature on Packets
     pub verify_packet_sigs: bool,
     /// coordinator public key
@@ -246,6 +250,10 @@ pub struct Signer<SignerType: SignerTrait> {
     pub dkg_private_begin_msg: Option<DkgPrivateBegin>,
     /// the DKG end begin message received in this round
     pub dkg_end_begin_msg: Option<DkgEndBegin>,
+    /// pending DkgPublicSharesDone waiting for all public shares to arrive
+    pending_public_shares_done: Option<DkgPublicSharesDone>,
+    /// pending DkgPrivateSharesDone waiting for all private shares to arrive
+    pending_private_shares_done: Option<DkgPrivateSharesDone>,
     /// whether to verify the signature on Packets
     pub verify_packet_sigs: bool,
     /// coordinator public key
@@ -353,6 +361,8 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             dkg_private_shares: Default::default(),
             dkg_private_begin_msg: Default::default(),
             dkg_end_begin_msg: Default::default(),
+            pending_public_shares_done: None,
+            pending_private_shares_done: None,
             verify_packet_sigs: true,
             coordinator_public_key: None,
             kex_private_key: Scalar::random(rng),
@@ -384,6 +394,8 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             dkg_private_shares: state.dkg_private_shares.clone(),
             dkg_private_begin_msg: state.dkg_private_begin_msg.clone(),
             dkg_end_begin_msg: state.dkg_end_begin_msg.clone(),
+            pending_public_shares_done: state.pending_public_shares_done.clone(),
+            pending_private_shares_done: state.pending_private_shares_done.clone(),
             verify_packet_sigs: state.verify_packet_sigs,
             coordinator_public_key: state.coordinator_public_key,
             kex_private_key: state.kex_private_key,
@@ -415,6 +427,8 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             dkg_private_shares: self.dkg_private_shares.clone(),
             dkg_private_begin_msg: self.dkg_private_begin_msg.clone(),
             dkg_end_begin_msg: self.dkg_end_begin_msg.clone(),
+            pending_public_shares_done: self.pending_public_shares_done.clone(),
+            pending_private_shares_done: self.pending_private_shares_done.clone(),
             verify_packet_sigs: self.verify_packet_sigs,
             coordinator_public_key: self.coordinator_public_key,
             kex_private_key: self.kex_private_key,
@@ -435,6 +449,8 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         self.dkg_private_shares.clear();
         self.dkg_private_begin_msg = None;
         self.dkg_end_begin_msg = None;
+        self.pending_public_shares_done = None;
+        self.pending_private_shares_done = None;
         self.kex_private_key = Scalar::random(rng);
         self.kex_public_keys.clear();
         self.state = State::Idle;
@@ -482,10 +498,6 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             (_, Message::DkgBegin(msg)) => self.dkg_begin(msg, rng),
             // DKG public phase
             (State::DkgPublicGather, Message::DkgPublicShares(msg)) => self.dkg_public_share(msg),
-            // Late-arriving public shares are still stored even after we've acked done
-            (State::DkgPublicSharesDoneAck, Message::DkgPublicShares(msg)) => {
-                self.dkg_public_share(msg)
-            }
             (State::DkgPublicGather, Message::DkgPublicSharesDone(msg)) => {
                 self.dkg_public_shares_done(msg)
             }
@@ -496,15 +508,17 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             (State::DkgPrivateGather, Message::DkgPrivateShares(msg)) => {
                 self.dkg_private_shares(msg, rng)
             }
-            // Late-arriving private shares are still stored even after we've acked done
-            (State::DkgPrivateSharesDoneAck, Message::DkgPrivateShares(msg)) => {
-                self.dkg_private_shares(msg, rng)
-            }
             (State::DkgPrivateGather, Message::DkgPrivateSharesDone(msg)) => {
                 self.dkg_private_shares_done(msg)
             }
-            // DKG end phase
-            (State::DkgPrivateSharesDoneAck, Message::DkgEndBegin(msg)) => self.dkg_end_begin(msg),
+            // DKG end phase: by the time we reach DkgPrivateSharesDoneAck we have all
+            // public and private shares, so DkgEndBegin directly triggers dkg_ended
+            (State::DkgPrivateSharesDoneAck, Message::DkgEndBegin(msg)) => {
+                let mut out = self.dkg_end_begin(msg)?;
+                out.push(self.dkg_ended(rng)?);
+                self.move_to(State::Idle)?;
+                Ok(out)
+            }
             // Signing phase: NonceRequest accepted from Idle or SignGather (coordinator retry)
             (State::Idle | State::SignGather, Message::NonceRequest(msg)) => {
                 self.nonce_request(msg, rng)
@@ -533,17 +547,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             }
         };
 
-        match out_msgs {
-            Ok(mut out) => {
-                if self.can_dkg_end() {
-                    let dkg_end_msgs = self.dkg_ended(rng)?;
-                    out.push(dkg_end_msgs);
-                    self.move_to(State::Idle)?;
-                }
-                Ok(out)
-            }
-            Err(e) => Err(e),
-        }
+        out_msgs
     }
 
     /// DKG is done so compute secrets
@@ -920,12 +924,25 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             );
             return Ok(vec![]);
         }
-        let ack = DkgPublicSharesDoneAck {
-            dkg_id: self.dkg_id,
-            signer_id: self.signer_id,
-        };
-        self.move_to(State::DkgPublicSharesDoneAck)?;
-        Ok(vec![Message::DkgPublicSharesDoneAck(ack)])
+        let have_all = msg
+            .signer_ids
+            .iter()
+            .all(|id| self.dkg_public_shares.contains_key(id));
+        if have_all {
+            let ack = DkgPublicSharesDoneAck {
+                dkg_id: self.dkg_id,
+                signer_id: self.signer_id,
+            };
+            self.move_to(State::DkgPublicSharesDoneAck)?;
+            Ok(vec![Message::DkgPublicSharesDoneAck(ack)])
+        } else {
+            debug!(
+                signer_id = %self.signer_id,
+                "DkgPublicSharesDone received but missing some public shares, waiting"
+            );
+            self.pending_public_shares_done = Some(msg.clone());
+            Ok(vec![])
+        }
     }
 
     fn dkg_private_shares_done(
@@ -948,12 +965,25 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             );
             return Ok(vec![]);
         }
-        let ack = DkgPrivateSharesDoneAck {
-            dkg_id: self.dkg_id,
-            signer_id: self.signer_id,
-        };
-        self.move_to(State::DkgPrivateSharesDoneAck)?;
-        Ok(vec![Message::DkgPrivateSharesDoneAck(ack)])
+        let have_all = msg
+            .signer_ids
+            .iter()
+            .all(|id| self.dkg_private_shares.contains_key(id));
+        if have_all {
+            let ack = DkgPrivateSharesDoneAck {
+                dkg_id: self.dkg_id,
+                signer_id: self.signer_id,
+            };
+            self.move_to(State::DkgPrivateSharesDoneAck)?;
+            Ok(vec![Message::DkgPrivateSharesDoneAck(ack)])
+        } else {
+            debug!(
+                signer_id = %self.signer_id,
+                "DkgPrivateSharesDone received but missing some private shares, waiting"
+            );
+            self.pending_private_shares_done = Some(msg.clone());
+            Ok(vec![])
+        }
     }
 
     fn dkg_public_begin<R: RngCore + CryptoRng>(
@@ -1135,6 +1165,23 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
 
         self.dkg_public_shares
             .insert(dkg_public_shares.signer_id, dkg_public_shares.clone());
+
+        // If DkgPublicSharesDone arrived before this share, check if we now have everything
+        if let Some(pending) = self.pending_public_shares_done.take() {
+            if pending
+                .signer_ids
+                .iter()
+                .all(|id| self.dkg_public_shares.contains_key(id))
+            {
+                let ack = DkgPublicSharesDoneAck {
+                    dkg_id: self.dkg_id,
+                    signer_id: self.signer_id,
+                };
+                self.move_to(State::DkgPublicSharesDoneAck)?;
+                return Ok(vec![Message::DkgPublicSharesDoneAck(ack)]);
+            }
+            self.pending_public_shares_done = Some(pending);
+        }
         Ok(vec![])
     }
 
@@ -1219,6 +1266,23 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             self.decrypted_shares.len(),
             self.signer.get_num_parties(),
         );
+
+        // If DkgPrivateSharesDone arrived before this share, check if we now have everything
+        if let Some(pending) = self.pending_private_shares_done.take() {
+            if pending
+                .signer_ids
+                .iter()
+                .all(|id| self.dkg_private_shares.contains_key(id))
+            {
+                let ack = DkgPrivateSharesDoneAck {
+                    dkg_id: self.dkg_id,
+                    signer_id: self.signer_id,
+                };
+                self.move_to(State::DkgPrivateSharesDoneAck)?;
+                return Ok(vec![Message::DkgPrivateSharesDoneAck(ack)]);
+            }
+            self.pending_private_shares_done = Some(pending);
+        }
         Ok(vec![])
     }
 
