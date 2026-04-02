@@ -924,6 +924,10 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             );
             return Ok(vec![]);
         }
+        // Discard any shares already collected from signers not in the coordinator's accepted list
+        self.dkg_public_shares
+            .retain(|id, _| msg.signer_ids.contains(id));
+
         let have_all = msg
             .signer_ids
             .iter()
@@ -965,6 +969,10 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             );
             return Ok(vec![]);
         }
+        // Discard any shares already collected from signers not in the coordinator's accepted list
+        self.dkg_private_shares
+            .retain(|id, _| msg.signer_ids.contains(id));
+
         let have_all = msg
             .signer_ids
             .iter()
@@ -1139,6 +1147,14 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             }
         }
 
+        // If we already know which signers the coordinator accepted, discard others
+        if let Some(pending) = &self.pending_public_shares_done {
+            if !pending.signer_ids.contains(&signer_id) {
+                debug!(%signer_id, "discarding DkgPublicShares from signer not in DkgPublicSharesDone");
+                return Ok(vec![]);
+            }
+        }
+
         let have_shares = self
             .dkg_public_shares
             .contains_key(&dkg_public_shares.signer_id);
@@ -1211,6 +1227,14 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                 &self.public_keys.signer_key_ids,
             ) {
                 warn!("Signer {src_signer_id} sent a polynomial commitment for party {party_id}");
+                return Ok(vec![]);
+            }
+        }
+
+        // If we already know which signers the coordinator accepted, discard others
+        if let Some(pending) = &self.pending_private_shares_done {
+            if !pending.signer_ids.contains(&src_signer_id) {
+                debug!(%src_signer_id, "discarding DkgPrivateShares from signer not in DkgPrivateSharesDone");
                 return Ok(vec![]);
             }
         }
