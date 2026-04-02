@@ -20,9 +20,9 @@ use crate::{
     errors::{DkgError, EncryptionError},
     net::{
         BadPrivateShare, DkgBegin, DkgEnd, DkgEndBegin, DkgFailure, DkgPrivateBegin,
-        DkgPrivateShares, DkgPublicShares, DkgPublicSharesDone, DkgPublicSharesDoneAck, DkgStatus,
-        Message, NonceRequest, NonceResponse, Packet, SignatureShareRequest,
-        SignatureShareResponse, SignatureType,
+        DkgPrivateShares, DkgPrivateSharesDone, DkgPrivateSharesDoneAck, DkgPublicShares,
+        DkgPublicSharesDone, DkgPublicSharesDoneAck, DkgStatus, Message, NonceRequest,
+        NonceResponse, Packet, SignatureShareRequest, SignatureShareResponse, SignatureType,
     },
     state_machine::{PublicKeys, StateMachine},
     traits::{Signer as SignerTrait, SignerState as SignerSavedState},
@@ -484,12 +484,14 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             Message::DkgPrivateShares(dkg_private_shares) => {
                 self.dkg_private_shares(dkg_private_shares, rng)
             }
+            Message::DkgPrivateSharesDone(msg) => self.dkg_private_shares_done(msg),
             Message::SignatureShareRequest(sign_share_request) => {
                 self.sign_share_request(sign_share_request, rng)
             }
             Message::NonceRequest(nonce_request) => self.nonce_request(nonce_request, rng),
             Message::DkgEnd(_)
             | Message::DkgPublicSharesDoneAck(_)
+            | Message::DkgPrivateSharesDoneAck(_)
             | Message::NonceResponse(_)
             | Message::SignatureShareResponse(_) => Ok(vec![]), // TODO
         };
@@ -883,6 +885,33 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             signer_id: self.signer_id,
         };
         Ok(vec![Message::DkgPublicSharesDoneAck(ack)])
+    }
+
+    fn dkg_private_shares_done(
+        &mut self,
+        msg: &DkgPrivateSharesDone,
+    ) -> Result<Vec<Message>, Error> {
+        if msg.dkg_id != self.dkg_id {
+            warn!(
+                signer_id = %self.signer_id,
+                got = %msg.dkg_id,
+                expected = %self.dkg_id,
+                "DkgPrivateSharesDone dkg_id mismatch"
+            );
+            return Ok(vec![]);
+        }
+        if !msg.signer_ids.contains(&self.signer_id) {
+            warn!(
+                signer_id = %self.signer_id,
+                "signer_id not in DkgPrivateSharesDone, coordinator did not receive our private shares"
+            );
+            return Ok(vec![]);
+        }
+        let ack = DkgPrivateSharesDoneAck {
+            dkg_id: self.dkg_id,
+            signer_id: self.signer_id,
+        };
+        Ok(vec![Message::DkgPrivateSharesDoneAck(ack)])
     }
 
     fn dkg_public_begin<R: RngCore + CryptoRng>(

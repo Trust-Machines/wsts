@@ -13,8 +13,8 @@ use crate::{
     errors::AggregatorError,
     net::{
         DkgBegin, DkgEnd, DkgEndBegin, DkgFailure, DkgPrivateBegin, DkgPrivateShares,
-        DkgPublicShares, DkgPublicSharesDone, DkgStatus, Message, NonceRequest, NonceResponse,
-        Packet, Signable, SignatureShareRequest, SignatureType,
+        DkgPrivateSharesDone, DkgPublicShares, DkgPublicSharesDone, DkgStatus, Message,
+        NonceRequest, NonceResponse, Packet, Signable, SignatureShareRequest, SignatureType,
     },
     state_machine::{
         coordinator::{
@@ -138,9 +138,24 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                                 // we hit the timeout but met the threshold, continue
                                 warn!("Timeout gathering DkgPrivateShares for dkg round {} signing round {} iteration {}, dkg_threshold was met ({dkg_size}/{}), ", self.current_dkg_id, self.current_sign_id, self.current_sign_iter_id, self.config.dkg_threshold);
                                 self.private_shares_gathered()?;
-                                let packet = self.start_dkg_end()?;
+                                let packet = self.send_private_shares_done()?;
                                 return Ok((Some(packet), None));
                             }
+                        }
+                    }
+                }
+            }
+            State::DkgPrivateSharesDoneDistribute => {}
+            State::DkgPrivateSharesDoneGather => {
+                if let Some(start) = self.dkg_private_start {
+                    if let Some(timeout) = self.config.dkg_private_timeout {
+                        if now.duration_since(start) > timeout {
+                            error!("Timeout gathering DkgPrivateSharesDoneAck for dkg round {}, not all signers responded", self.current_dkg_id);
+                            let wait = self.dkg_wait_signer_ids.iter().copied().collect();
+                            return Ok((
+                                None,
+                                Some(OperationResult::DkgError(DkgError::DkgPrivateTimeout(wait))),
+                            ));
                         }
                     }
                 }
@@ -296,6 +311,17 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 State::DkgPrivateGather => {
                     self.gather_private_shares(packet)?;
                     if self.state == State::DkgPrivateGather {
+                        // We need more data
+                        return Ok((None, None));
+                    }
+                }
+                State::DkgPrivateSharesDoneDistribute => {
+                    let packet = self.send_private_shares_done()?;
+                    return Ok((Some(packet), None));
+                }
+                State::DkgPrivateSharesDoneGather => {
+                    self.gather_private_shares_done_ack(packet)?;
+                    if self.state == State::DkgPrivateSharesDoneGather {
                         // We need more data
                         return Ok((None, None));
                     }
@@ -652,7 +678,49 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
     }
 
     fn private_shares_gathered(&mut self) -> Result<(), Error> {
-        self.move_to(State::DkgEndDistribute)?;
+        self.move_to(State::DkgPrivateSharesDoneDistribute)?;
+        Ok(())
+    }
+
+    /// Notify signers that all private shares have been received
+    pub fn send_private_shares_done(&mut self) -> Result<Packet, Error> {
+        let signer_ids: Vec<u32> = self.dkg_private_shares.keys().cloned().collect();
+        self.dkg_wait_signer_ids = signer_ids.iter().cloned().collect();
+        info!(dkg_id = %self.current_dkg_id, "Sending DkgPrivateSharesDone");
+        let msg = DkgPrivateSharesDone {
+            dkg_id: self.current_dkg_id,
+            signer_ids,
+        };
+        let packet = Packet {
+            sig: msg
+                .sign(&self.config.message_private_key)
+                .expect("Failed to sign DkgPrivateSharesDone"),
+            msg: Message::DkgPrivateSharesDone(msg),
+        };
+        self.move_to(State::DkgPrivateSharesDoneGather)?;
+        self.dkg_private_start = Some(Instant::now());
+        Ok(packet)
+    }
+
+    fn gather_private_shares_done_ack(&mut self, packet: &Packet) -> Result<(), Error> {
+        if let Message::DkgPrivateSharesDoneAck(ack) = &packet.msg {
+            if ack.dkg_id != self.current_dkg_id {
+                return Err(Error::BadDkgId(ack.dkg_id, self.current_dkg_id));
+            }
+            if !self.config.public_keys.signers.contains_key(&ack.signer_id) {
+                warn!(signer_id = %ack.signer_id, "No public key in config");
+                return Ok(());
+            }
+            self.dkg_wait_signer_ids.remove(&ack.signer_id);
+            debug!(
+                dkg_id = %ack.dkg_id,
+                signer_id = %ack.signer_id,
+                "DkgPrivateSharesDoneAck received"
+            );
+        }
+        if self.dkg_wait_signer_ids.is_empty() {
+            self.move_to(State::DkgEndDistribute)?;
+        }
         Ok(())
     }
 
@@ -1396,7 +1464,12 @@ impl<Aggregator: AggregatorTrait> StateMachine<State, Error> for Coordinator<Agg
             State::DkgPrivateGather => {
                 prev_state == &State::DkgPrivateDistribute || prev_state == &State::DkgPrivateGather
             }
-            State::DkgEndDistribute => prev_state == &State::DkgPrivateGather,
+            State::DkgPrivateSharesDoneDistribute => prev_state == &State::DkgPrivateGather,
+            State::DkgPrivateSharesDoneGather => {
+                prev_state == &State::DkgPrivateSharesDoneDistribute
+                    || prev_state == &State::DkgPrivateSharesDoneGather
+            }
+            State::DkgEndDistribute => prev_state == &State::DkgPrivateSharesDoneGather,
             State::DkgEndGather => prev_state == &State::DkgEndDistribute,
             State::NonceRequest(signature_type) => {
                 prev_state == &State::Idle
@@ -2236,6 +2309,16 @@ pub mod test {
         assert!(operation_results.is_empty());
         assert_eq!(outbound_messages.len(), 1);
         assert!(
+            matches!(outbound_messages[0].msg, Message::DkgPrivateSharesDone(_)),
+            "Expected DkgPrivateSharesDone message"
+        );
+
+        // Send DkgPrivateSharesDone to signers and collect their acks back to the coordinator
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
+        assert!(operation_results.is_empty());
+        assert_eq!(outbound_messages.len(), 1);
+        assert!(
             matches!(outbound_messages[0].msg, Message::DkgEndBegin(_)),
             "Expected DkgEndBegin message"
         );
@@ -2520,8 +2603,25 @@ pub mod test {
         assert!(
             matches!(
                 outbound_message.clone().unwrap().msg,
-                Message::DkgEndBegin(_)
+                Message::DkgPrivateSharesDone(_)
             ),
+            "Expected DkgPrivateSharesDone message"
+        );
+        assert_eq!(
+            minimum_coordinators.first().unwrap().state,
+            State::DkgPrivateSharesDoneGather,
+        );
+
+        // Send DkgPrivateSharesDone to signers and collect their acks back to the coordinator
+        let (outbound_messages, operation_results) = feedback_messages(
+            &mut minimum_coordinators,
+            &mut minimum_signers,
+            &[outbound_message.unwrap()],
+        );
+        assert!(operation_results.is_empty());
+        assert_eq!(outbound_messages.len(), 1);
+        assert!(
+            matches!(outbound_messages[0].msg, Message::DkgEndBegin(_)),
             "Expected DkgEndBegin message"
         );
         assert_eq!(
@@ -2533,7 +2633,7 @@ pub mod test {
         let (outbound_messages, operation_results) = feedback_messages(
             &mut minimum_coordinators,
             &mut minimum_signers,
-            &[outbound_message.unwrap()],
+            &outbound_messages,
         );
         assert!(outbound_messages.is_empty());
         assert_eq!(operation_results.len(), 1);
@@ -2829,6 +2929,16 @@ pub mod test {
         assert!(operation_results.is_empty());
         assert_eq!(outbound_messages.len(), 1);
         assert!(
+            matches!(outbound_messages[0].msg, Message::DkgPrivateSharesDone(_)),
+            "Expected DkgPrivateSharesDone message"
+        );
+
+        // Send DkgPrivateSharesDone to signers and collect their acks back to the coordinator
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
+        assert!(operation_results.is_empty());
+        assert_eq!(outbound_messages.len(), 1);
+        assert!(
             matches!(outbound_messages[0].msg, Message::DkgEndBegin(_)),
             "Expected DkgEndBegin message"
         );
@@ -2953,6 +3063,16 @@ pub mod test {
             "Expected DkgPrivateBegin message"
         );
 
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
+        assert!(operation_results.is_empty());
+        assert_eq!(outbound_messages.len(), 1);
+        assert!(
+            matches!(outbound_messages[0].msg, Message::DkgPrivateSharesDone(_)),
+            "Expected DkgPrivateSharesDone message"
+        );
+
+        // Send DkgPrivateSharesDone to signers and collect their acks back to the coordinator
         let (outbound_messages, operation_results) =
             feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
         assert!(operation_results.is_empty());
@@ -3276,6 +3396,16 @@ pub mod test {
         );
 
         // Send the DKG Private Begin message to all signers and share their responses with the coordinators and signers
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
+        assert!(operation_results.is_empty());
+        assert_eq!(outbound_messages.len(), 1);
+        assert!(
+            matches!(&outbound_messages[0].msg, Message::DkgPrivateSharesDone(_)),
+            "Expected DkgPrivateSharesDone message"
+        );
+
+        // Send DkgPrivateSharesDone to signers and collect their acks back to the coordinator
         let (outbound_messages, operation_results) =
             feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
         assert!(operation_results.is_empty());
@@ -3772,6 +3902,16 @@ pub mod test {
         assert!(operation_results.is_empty());
         assert_eq!(outbound_messages.len(), 1);
         assert!(
+            matches!(outbound_messages[0].msg, Message::DkgPrivateSharesDone(_)),
+            "Expected DkgPrivateSharesDone message"
+        );
+
+        // Send DkgPrivateSharesDone to signers and collect their acks back to the coordinator
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
+        assert!(operation_results.is_empty());
+        assert_eq!(outbound_messages.len(), 1);
+        assert!(
             matches!(outbound_messages[0].msg, Message::DkgEndBegin(_)),
             "Expected DkgEndBegin message"
         );
@@ -3894,6 +4034,16 @@ pub mod test {
         );
 
         // Send the DKG Private Begin message to all signers and share their responses with the coordinator and signers
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
+        assert!(operation_results.is_empty());
+        assert_eq!(outbound_messages.len(), 1);
+        assert!(
+            matches!(&outbound_messages[0].msg, Message::DkgPrivateSharesDone(_)),
+            "Expected DkgPrivateSharesDone message"
+        );
+
+        // Send DkgPrivateSharesDone to signers and collect their acks back to the coordinator
         let (outbound_messages, operation_results) =
             feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
         assert!(operation_results.is_empty());
