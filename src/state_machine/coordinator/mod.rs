@@ -1586,11 +1586,7 @@ pub mod test {
             "Expected SignatureShareRequest message"
         );
 
-        let messages = outbound_messages.clone();
-        let result = feedback_messages_with_errors(&mut coordinators, &mut signers, &messages);
-        assert!(result.is_ok());
-
-        // test request with no NonceResponses
+        // test request with no NonceResponses — signers are in SignGather, errors before state change
         let mut packet = outbound_messages[0].clone();
         let Message::SignatureShareRequest(ref mut request) = packet.msg else {
             panic!("failed to match message");
@@ -1645,6 +1641,11 @@ pub mod test {
             ),
             "Should have received signer invalid nonce response error, got {result:?}"
         );
+
+        // send valid SSR last — signers are still in SignGather after all error cases
+        let messages = outbound_messages.clone();
+        let result = feedback_messages_with_errors(&mut coordinators, &mut signers, &messages);
+        assert!(result.is_ok());
     }
 
     pub fn invalid_nonce<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
@@ -1685,11 +1686,7 @@ pub mod test {
             "Expected SignatureShareRequest message"
         );
 
-        let messages = outbound_messages.clone();
-        let result = feedback_messages_with_errors(&mut coordinators, &mut signers, &messages);
-        assert!(result.is_ok());
-
-        // test request with NonceResponse having zero nonce
+        // test request with NonceResponse having zero nonce — signers are in SignGather, errors before state change
         let mut packet = outbound_messages[0].clone();
         let Message::SignatureShareRequest(ref mut request) = packet.msg else {
             panic!("failed to match message");
@@ -1772,6 +1769,11 @@ pub mod test {
             ),
             "Should have received signer invalid nonce response error, got {result:?}"
         );
+
+        // send valid SSR last — signers are still in SignGather after all error cases
+        let messages = outbound_messages.clone();
+        let result = feedback_messages_with_errors(&mut coordinators, &mut signers, &messages);
+        assert!(result.is_ok());
     }
 
     pub fn empty_public_shares<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
