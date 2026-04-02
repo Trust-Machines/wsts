@@ -8,8 +8,8 @@ use crate::{
     curve::{ecdsa, point::Point},
     net::{
         DkgBegin, DkgEnd, DkgEndBegin, DkgPrivateBegin, DkgPrivateShares, DkgPublicShares,
-        DkgStatus, Message, NonceRequest, NonceResponse, Packet, Signable, SignatureShareRequest,
-        SignatureType,
+        DkgPublicSharesDone, DkgStatus, Message, NonceRequest, NonceResponse, Packet, Signable,
+        SignatureShareRequest, SignatureType,
     },
     state_machine::{
         coordinator::{
@@ -103,6 +103,17 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 State::DkgPublicGather => {
                     self.gather_public_shares(packet)?;
                     if self.state == State::DkgPublicGather {
+                        // We need more data
+                        return Ok((None, None));
+                    }
+                }
+                State::DkgPublicSharesDoneDistribute => {
+                    let packet = self.send_public_shares_done()?;
+                    return Ok((Some(packet), None));
+                }
+                State::DkgPublicSharesDoneGather => {
+                    self.gather_public_shares_done_ack(packet)?;
+                    if self.state == State::DkgPublicSharesDoneGather {
                         // We need more data
                         return Ok((None, None));
                     }
@@ -327,6 +338,47 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             );
         }
 
+        if self.ids_to_await.is_empty() {
+            self.move_to(State::DkgPublicSharesDoneDistribute)?;
+        }
+        Ok(())
+    }
+
+    /// Notify signers that all public shares have been received
+    pub fn send_public_shares_done(&mut self) -> Result<Packet, Error> {
+        let signer_ids: Vec<u32> = self.dkg_public_shares.keys().cloned().collect();
+        self.ids_to_await = signer_ids.iter().cloned().collect();
+        info!(dkg_id = %self.current_dkg_id, "Sending DkgPublicSharesDone");
+        let msg = DkgPublicSharesDone {
+            dkg_id: self.current_dkg_id,
+            signer_ids,
+        };
+        let packet = Packet {
+            sig: msg
+                .sign(&self.config.message_private_key)
+                .expect("Failed to sign DkgPublicSharesDone"),
+            msg: Message::DkgPublicSharesDone(msg),
+        };
+        self.move_to(State::DkgPublicSharesDoneGather)?;
+        Ok(packet)
+    }
+
+    fn gather_public_shares_done_ack(&mut self, packet: &Packet) -> Result<(), Error> {
+        if let Message::DkgPublicSharesDoneAck(ack) = &packet.msg {
+            if ack.dkg_id != self.current_dkg_id {
+                return Err(Error::BadDkgId(ack.dkg_id, self.current_dkg_id));
+            }
+            if !self.config.public_keys.signers.contains_key(&ack.signer_id) {
+                warn!(signer_id = %ack.signer_id, "No public key in config");
+                return Ok(());
+            }
+            self.ids_to_await.remove(&ack.signer_id);
+            debug!(
+                dkg_id = %ack.dkg_id,
+                signer_id = %ack.signer_id,
+                "DkgPublicSharesDoneAck received"
+            );
+        }
         if self.ids_to_await.is_empty() {
             self.move_to(State::DkgPrivateDistribute)?;
         }
@@ -770,7 +822,12 @@ impl<Aggregator: AggregatorTrait> StateMachine<State, Error> for Coordinator<Agg
             State::DkgPublicGather => {
                 prev_state == &State::DkgPublicDistribute || prev_state == &State::DkgPublicGather
             }
-            State::DkgPrivateDistribute => prev_state == &State::DkgPublicGather,
+            State::DkgPublicSharesDoneDistribute => prev_state == &State::DkgPublicGather,
+            State::DkgPublicSharesDoneGather => {
+                prev_state == &State::DkgPublicSharesDoneDistribute
+                    || prev_state == &State::DkgPublicSharesDoneGather
+            }
+            State::DkgPrivateDistribute => prev_state == &State::DkgPublicSharesDoneGather,
             State::DkgPrivateGather => {
                 prev_state == &State::DkgPrivateDistribute || prev_state == &State::DkgPrivateGather
             }

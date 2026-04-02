@@ -95,6 +95,10 @@ pub enum Message {
     DkgBegin(DkgBegin),
     /// Send DKG public shares
     DkgPublicShares(DkgPublicShares),
+    /// Tell signers the coordinator has received all expected public shares
+    DkgPublicSharesDone(DkgPublicSharesDone),
+    /// Acknowledge receipt of DkgPublicSharesDone
+    DkgPublicSharesDoneAck(DkgPublicSharesDoneAck),
     /// Tell signers to send DKG private shares
     DkgPrivateBegin(DkgPrivateBegin),
     /// Send DKG private shares
@@ -118,6 +122,8 @@ impl Signable for Message {
         match self {
             Message::DkgBegin(msg) => msg.hash(hasher),
             Message::DkgPublicShares(msg) => msg.hash(hasher),
+            Message::DkgPublicSharesDone(msg) => msg.hash(hasher),
+            Message::DkgPublicSharesDoneAck(msg) => msg.hash(hasher),
             Message::DkgPrivateBegin(msg) => msg.hash(hasher),
             Message::DkgPrivateShares(msg) => msg.hash(hasher),
             Message::DkgEndBegin(msg) => msg.hash(hasher),
@@ -231,6 +237,42 @@ impl Signable for DkgPublicShares {
                 hasher.update(a.compress().as_bytes());
             }
         }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+/// DKG public shares done message from coordinator to signers
+pub struct DkgPublicSharesDone {
+    /// DKG round ID
+    pub dkg_id: u64,
+    /// Signer IDs that the coordinator received public shares from
+    pub signer_ids: Vec<u32>,
+}
+
+impl Signable for DkgPublicSharesDone {
+    fn hash(&self, hasher: &mut Sha256) {
+        hasher.update("DKG_PUBLIC_SHARES_DONE".as_bytes());
+        hasher.update(self.dkg_id.to_be_bytes());
+        for signer_id in &self.signer_ids {
+            hasher.update(signer_id.to_be_bytes());
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+/// DKG public shares done acknowledgment from signer to coordinator
+pub struct DkgPublicSharesDoneAck {
+    /// DKG round ID
+    pub dkg_id: u64,
+    /// Signer ID
+    pub signer_id: u32,
+}
+
+impl Signable for DkgPublicSharesDoneAck {
+    fn hash(&self, hasher: &mut Sha256) {
+        hasher.update("DKG_PUBLIC_SHARES_DONE_ACK".as_bytes());
+        hasher.update(self.dkg_id.to_be_bytes());
+        hasher.update(self.signer_id.to_be_bytes());
     }
 }
 
@@ -603,6 +645,28 @@ impl Packet {
                 } else {
                     warn!(
                         "Received a DkgPublicShares message with an unknown id: {}",
+                        msg.signer_id
+                    );
+                    return false;
+                }
+            }
+            Message::DkgPublicSharesDone(msg) => {
+                if !msg.verify(&self.sig, coordinator_public_key) {
+                    warn!("Received a DkgPublicSharesDone message with an invalid signature.");
+                    return false;
+                }
+            }
+            Message::DkgPublicSharesDoneAck(msg) => {
+                if let Some(public_key) = signers_public_keys.signers.get(&msg.signer_id) {
+                    if !msg.verify(&self.sig, public_key) {
+                        warn!(
+                            "Received a DkgPublicSharesDoneAck message with an invalid signature."
+                        );
+                        return false;
+                    }
+                } else {
+                    warn!(
+                        "Received a DkgPublicSharesDoneAck message with an unknown id: {}",
                         msg.signer_id
                     );
                     return false;
