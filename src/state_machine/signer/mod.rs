@@ -917,6 +917,21 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             );
             return Ok(vec![]);
         }
+        // Reject any unknown signer IDs
+        let unknown_ids: Vec<u32> = msg
+            .signer_ids
+            .iter()
+            .filter(|id| !self.public_keys.signers.contains_key(*id))
+            .copied()
+            .collect();
+        if !unknown_ids.is_empty() {
+            warn!(
+                signer_id = %self.signer_id,
+                ?unknown_ids,
+                "DkgPublicSharesDone contains unknown signer_ids"
+            );
+            return Ok(vec![]);
+        }
         if !msg.signer_ids.contains(&self.signer_id) {
             warn!(
                 signer_id = %self.signer_id,
@@ -959,6 +974,21 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                 got = %msg.dkg_id,
                 expected = %self.dkg_id,
                 "DkgPrivateSharesDone dkg_id mismatch"
+            );
+            return Ok(vec![]);
+        }
+        // Reject any unknown signer IDs
+        let unknown_ids: Vec<u32> = msg
+            .signer_ids
+            .iter()
+            .filter(|id| !self.public_keys.signers.contains_key(*id))
+            .copied()
+            .collect();
+        if !unknown_ids.is_empty() {
+            warn!(
+                signer_id = %self.signer_id,
+                ?unknown_ids,
+                "DkgPrivateSharesDone contains unknown signer_ids"
             );
             return Ok(vec![]);
         }
@@ -1120,6 +1150,35 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                 "DkgEndBegin dkg_id mismatch"
             );
             return Ok(vec![]);
+        }
+        // Reject any unknown signer IDs
+        let unknown_ids: Vec<u32> = dkg_end_begin
+            .signer_ids
+            .iter()
+            .filter(|id| !self.public_keys.signers.contains_key(*id))
+            .copied()
+            .collect();
+        if !unknown_ids.is_empty() {
+            warn!(
+                signer_id = %self.signer_id,
+                ?unknown_ids,
+                "DkgEndBegin contains unknown signer_ids"
+            );
+            return Ok(vec![]);
+        }
+        let num_keys: u32 = dkg_end_begin
+            .signer_ids
+            .iter()
+            .filter_map(|id| self.public_keys.signer_key_ids.get(id))
+            .map(|key_ids| key_ids.len() as u32)
+            .sum();
+        if num_keys < self.dkg_threshold {
+            warn!(
+                signer_id = %self.signer_id,
+                num_keys,
+                dkg_threshold = self.dkg_threshold,
+                "DkgEndBegin below dkg_threshold"
+            );
         }
         let msgs = vec![];
 
