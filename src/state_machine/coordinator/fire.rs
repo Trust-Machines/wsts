@@ -78,12 +78,13 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             State::DkgPublicGather => {
                 if let Some(start) = self.dkg_public_start {
                     if let Some(timeout) = self.config.dkg_public_timeout {
-                        if now.duration_since(start) > timeout {
+                        let elapsed = now.duration_since(start);
+                        if elapsed > timeout {
                             // check dkg_threshold to determine if we can continue
                             let dkg_size = self.compute_dkg_public_size()?;
 
                             if self.config.dkg_threshold > dkg_size {
-                                error!("Timeout gathering DkgPublicShares for dkg round {} signing round {} iteration {}, dkg_threshold not met ({dkg_size}/{}), unable to continue", self.current_dkg_id, self.current_sign_id, self.current_sign_iter_id, self.config.dkg_threshold);
+                                error!("Timeout gathering DkgPublicShares for dkg round {} signing round {} iteration {}, dkg_threshold not met ({dkg_size}/{}), unable to continue ({:?} > {:?})", self.current_dkg_id, self.current_sign_id, self.current_sign_iter_id, self.config.dkg_threshold, elapsed, timeout);
                                 let wait = self.dkg_wait_signer_ids.iter().copied().collect();
                                 return Ok((
                                     None,
@@ -93,7 +94,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                                 ));
                             } else {
                                 // we hit the timeout but met the threshold, continue
-                                warn!("Timeout gathering DkgPublicShares for dkg round {} signing round {} iteration {}, dkg_threshold was met ({dkg_size}/{}), ", self.current_dkg_id, self.current_sign_id, self.current_sign_iter_id, self.config.dkg_threshold);
+                                warn!("Timeout gathering DkgPublicShares for dkg round {} signing round {} iteration {}, dkg_threshold was met ({dkg_size}/{}), continue ({:?} > {:?})", self.current_dkg_id, self.current_sign_id, self.current_sign_iter_id, self.config.dkg_threshold, elapsed, timeout);
                                 self.public_shares_gathered()?;
                                 let packet = self.send_public_shares_done()?;
                                 return Ok((Some(packet), None));
@@ -106,8 +107,9 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             State::DkgPublicSharesDoneGather => {
                 if let Some(start) = self.dkg_public_start {
                     if let Some(timeout) = self.config.dkg_public_timeout {
-                        if now.duration_since(start) > timeout {
-                            error!("Timeout gathering DkgPublicSharesDoneAck for dkg round {}, not all signers responded", self.current_dkg_id);
+                        let elapsed = now.duration_since(start);
+                        if elapsed > timeout {
+                            error!("Timeout gathering DkgPublicSharesDoneAck for dkg round {}, not all signers responded  ({:?} > {:?})", self.current_dkg_id, elapsed, timeout);
                             let wait = self.dkg_wait_signer_ids.iter().copied().collect();
                             return Ok((
                                 None,
@@ -121,12 +123,13 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             State::DkgPrivateGather => {
                 if let Some(start) = self.dkg_private_start {
                     if let Some(timeout) = self.config.dkg_private_timeout {
-                        if now.duration_since(start) > timeout {
+                        let elapsed = now.duration_since(start);
+                        if elapsed > timeout {
                             // check dkg_threshold to determine if we can continue
                             let dkg_size = self.compute_dkg_private_size()?;
 
                             if self.config.dkg_threshold > dkg_size {
-                                error!("Timeout gathering DkgPrivateShares for dkg round {} signing round {} iteration {}, dkg_threshold not met ({dkg_size}/{}), unable to continue", self.current_dkg_id, self.current_sign_id, self.current_sign_iter_id, self.config.dkg_threshold);
+                                error!("Timeout gathering DkgPrivateShares for dkg round {} signing round {} iteration {}, dkg_threshold not met ({dkg_size}/{}), unable to continue ({:?} > {:?})", self.current_dkg_id, self.current_sign_id, self.current_sign_iter_id, self.config.dkg_threshold, elapsed, timeout);
                                 let wait = self.dkg_wait_signer_ids.iter().copied().collect();
                                 return Ok((
                                     None,
@@ -136,7 +139,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                                 ));
                             } else {
                                 // we hit the timeout but met the threshold, continue
-                                warn!("Timeout gathering DkgPrivateShares for dkg round {} signing round {} iteration {}, dkg_threshold was met ({dkg_size}/{}), ", self.current_dkg_id, self.current_sign_id, self.current_sign_iter_id, self.config.dkg_threshold);
+                                warn!("Timeout gathering DkgPrivateShares for dkg round {} signing round {} iteration {}, dkg_threshold was met ({dkg_size}/{}), continue ({:?} > {:?})", self.current_dkg_id, self.current_sign_id, self.current_sign_iter_id, self.config.dkg_threshold, elapsed, timeout);
                                 self.private_shares_gathered()?;
                                 let packet = self.send_private_shares_done()?;
                                 return Ok((Some(packet), None));
@@ -149,8 +152,9 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             State::DkgPrivateSharesDoneGather => {
                 if let Some(start) = self.dkg_private_start {
                     if let Some(timeout) = self.config.dkg_private_timeout {
-                        if now.duration_since(start) > timeout {
-                            error!("Timeout gathering DkgPrivateSharesDoneAck for dkg round {}, not all signers responded", self.current_dkg_id);
+                        let elapsed = now.duration_since(start);
+                        if elapsed > timeout {
+                            error!("Timeout gathering DkgPrivateSharesDoneAck for dkg round {}, not all signers responded ({:?} > {:?})", self.current_dkg_id, elapsed, timeout);
                             let wait = self.dkg_wait_signer_ids.iter().copied().collect();
                             return Ok((
                                 None,
@@ -164,8 +168,9 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             State::DkgEndGather => {
                 if let Some(start) = self.dkg_end_start {
                     if let Some(timeout) = self.config.dkg_end_timeout {
-                        if now.duration_since(start) > timeout {
-                            error!("Timeout gathering DkgEnd for dkg round {} signing round {} iteration {}, unable to continue", self.current_dkg_id, self.current_sign_id, self.current_sign_iter_id);
+                        let elapsed = now.duration_since(start);
+                        if elapsed > timeout {
+                            error!("Timeout gathering DkgEnd for dkg round {} signing round {} iteration {}, unable to continue ({:?} > {:?})", self.current_dkg_id, self.current_sign_id, self.current_sign_iter_id, elapsed, timeout);
                             let wait = self.dkg_wait_signer_ids.iter().copied().collect();
                             return Ok((
                                 None,
@@ -180,8 +185,9 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             State::NonceGather(_signature_type) => {
                 if let Some(start) = self.nonce_start {
                     if let Some(timeout) = self.config.nonce_timeout {
-                        if now.duration_since(start) > timeout {
-                            error!("Timeout gathering nonces for signing round {} iteration {}, unable to continue", self.current_sign_id, self.current_sign_iter_id);
+                        let elapsed = now.duration_since(start);
+                        if elapsed > timeout {
+                            error!("Timeout gathering nonces for signing round {} iteration {}, unable to continue ({:?} > {:?})", self.current_sign_id, self.current_sign_iter_id, elapsed, timeout);
                             let recv = self
                                 .message_nonces
                                 .get(&self.message)
@@ -204,8 +210,9 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             State::SigShareGather(signature_type) => {
                 if let Some(start) = self.sign_start {
                     if let Some(timeout) = self.config.sign_timeout {
-                        if now.duration_since(start) > timeout {
-                            warn!("Timeout gathering signature shares for signing round {} iteration {}", self.current_sign_id, self.current_sign_iter_id);
+                        let elapsed = now.duration_since(start);
+                        if elapsed > timeout {
+                            warn!("Timeout gathering signature shares for signing round {} iteration {} ({:?} > {:?})", self.current_sign_id, self.current_sign_iter_id, elapsed, timeout);
                             for signer_id in &self
                                 .message_nonces
                                 .get(&self.message)
@@ -2354,8 +2361,8 @@ pub mod test {
         num_signers: u32,
         keys_per_signer: u32,
     ) -> (Vec<FireCoordinator<Aggregator>>, Vec<Signer<SignerType>>) {
-        let timeout = Duration::from_millis(1024);
-        let expire = Duration::from_millis(1280);
+        let timeout = Duration::from_millis(2048);
+        let expire = Duration::from_millis(2222);
         let (mut coordinators, signers) =
             setup_with_timeouts::<FireCoordinator<Aggregator>, SignerType>(
                 num_signers,
@@ -2457,8 +2464,8 @@ pub mod test {
         num_signers: u32,
         keys_per_signer: u32,
     ) -> (Vec<FireCoordinator<Aggregator>>, Vec<Signer<SignerType>>) {
-        let timeout = Duration::from_millis(1024);
-        let expire = Duration::from_millis(1280);
+        let timeout = Duration::from_millis(2048);
+        let expire = Duration::from_millis(2222);
         let (coordinators, signers) = setup_with_timeouts::<FireCoordinator<Aggregator>, SignerType>(
             num_signers,
             keys_per_signer,
@@ -2661,8 +2668,8 @@ pub mod test {
     }
 
     fn insufficient_signers_dkg<Aggregator: AggregatorTrait, Signer: SignerTrait>() {
-        let timeout = Duration::from_millis(1024);
-        let expire = Duration::from_millis(1280);
+        let timeout = Duration::from_millis(2048);
+        let expire = Duration::from_millis(2222);
         let num_signers = 10;
         let keys_per_signer = 2;
         let (coordinators, signers) = setup_with_timeouts::<FireCoordinator<Aggregator>, Signer>(
