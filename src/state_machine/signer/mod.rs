@@ -1040,6 +1040,15 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         dkg_private_begin: &DkgPrivateBegin,
         rng: &mut R,
     ) -> Result<Vec<Message>, Error> {
+        if dkg_private_begin.dkg_id != self.dkg_id {
+            warn!(
+                signer_id = %self.signer_id,
+                got = %dkg_private_begin.dkg_id,
+                expected = %self.dkg_id,
+                "DkgPrivateBegin dkg_id mismatch"
+            );
+            return Ok(vec![]);
+        }
         let mut msgs = vec![];
         let mut private_shares = DkgPrivateShares {
             dkg_id: self.dkg_id,
@@ -1103,6 +1112,15 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
 
     /// handle incoming DkgEndBegin
     pub fn dkg_end_begin(&mut self, dkg_end_begin: &DkgEndBegin) -> Result<Vec<Message>, Error> {
+        if dkg_end_begin.dkg_id != self.dkg_id {
+            warn!(
+                signer_id = %self.signer_id,
+                got = %dkg_end_begin.dkg_id,
+                expected = %self.dkg_id,
+                "DkgEndBegin dkg_id mismatch"
+            );
+            return Ok(vec![]);
+        }
         let msgs = vec![];
 
         self.dkg_end_begin_msg = Some(dkg_end_begin.clone());
@@ -1121,6 +1139,15 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         &mut self,
         dkg_public_shares: &DkgPublicShares,
     ) -> Result<Vec<Message>, Error> {
+        if dkg_public_shares.dkg_id != self.dkg_id {
+            warn!(
+                signer_id = %self.signer_id,
+                got = %dkg_public_shares.dkg_id,
+                expected = %self.dkg_id,
+                "DkgPublicShares dkg_id mismatch"
+            );
+            return Ok(vec![]);
+        }
         debug!(
             "received DkgPublicShares from signer {} {}/{}",
             dkg_public_shares.signer_id,
@@ -1207,6 +1234,15 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         dkg_private_shares: &DkgPrivateShares,
         rng: &mut R,
     ) -> Result<Vec<Message>, Error> {
+        if dkg_private_shares.dkg_id != self.dkg_id {
+            warn!(
+                signer_id = %self.signer_id,
+                got = %dkg_private_shares.dkg_id,
+                expected = %self.dkg_id,
+                "DkgPrivateShares dkg_id mismatch"
+            );
+            return Ok(vec![]);
+        }
         // go ahead and decrypt here, since we know the signer_id and hence the pubkey of the sender
         let src_signer_id = dkg_private_shares.signer_id;
 
