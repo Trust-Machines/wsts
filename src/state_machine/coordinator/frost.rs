@@ -663,13 +663,20 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 "NonceResponse received"
             );
         }
-        if self.ids_to_await.is_empty() {
+        let recv_key_ids = self
+            .public_nonces
+            .values()
+            .flat_map(|nr| nr.key_ids.iter().copied())
+            .collect::<HashSet<u32>>();
+        if recv_key_ids.len() >= self.config.sign_threshold as usize {
             let aggregate_nonce = self.compute_aggregate_nonce()?;
             info!(
                 %aggregate_nonce,
                 "Aggregate nonce"
             );
 
+            // Lock in the set of signers that will participate in the signing round.
+            self.ids_to_await = self.public_nonces.keys().copied().collect();
             self.move_to(State::SigShareRequest(signature_type))?;
         }
         Ok(())
@@ -681,8 +688,10 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             sign_id = %self.current_sign_id,
             "Requesting Signature Shares"
         );
-        let nonce_responses = (0..self.config.num_signers)
-            .map(|i| self.public_nonces[&i].clone())
+        let nonce_responses = self
+            .public_nonces
+            .values()
+            .cloned()
             .collect::<Vec<NonceResponse>>();
         let sig_share_request = SignatureShareRequest {
             dkg_id: self.current_dkg_id,
@@ -698,7 +707,7 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 .expect(""),
             msg: Message::SignatureShareRequest(sig_share_request),
         };
-        self.ids_to_await = (0..self.config.num_signers).collect();
+        self.ids_to_await = self.public_nonces.keys().copied().collect();
         self.move_to(State::SigShareGather(signature_type))?;
 
         Ok(sig_share_request_msg)
@@ -784,9 +793,11 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
             );
         }
         if self.ids_to_await.is_empty() {
-            // Calculate the aggregate signature
-            let nonce_responses = (0..self.config.num_signers)
-                .map(|i| self.public_nonces[&i].clone())
+            // Calculate the aggregate signature using the signers that participated.
+            let nonce_responses = self
+                .public_nonces
+                .values()
+                .cloned()
                 .collect::<Vec<NonceResponse>>();
 
             let nonces = nonce_responses
@@ -1144,15 +1155,19 @@ pub mod test {
         curve::scalar::Scalar,
         net::{DkgBegin, Message, NonceRequest, Packet, SignatureShareResponse, SignatureType},
         schnorr::{self, ID},
-        state_machine::coordinator::{
-            frost::Coordinator as FrostCoordinator,
-            test::{
-                bad_signature_share_request, btc_sign_verify, check_signature_shares,
-                coordinator_state_machine, empty_private_shares, empty_public_shares,
-                equal_after_save_load, invalid_nonce, new_coordinator, run_dkg_sign, setup,
-                start_dkg_round, start_signing_round, verify_packet_sigs,
+        state_machine::{
+            coordinator::{
+                frost::Coordinator as FrostCoordinator,
+                test::{
+                    bad_signature_share_request, btc_sign_verify, check_signature_shares,
+                    coordinator_state_machine, empty_private_shares, empty_public_shares,
+                    equal_after_save_load, feedback_messages, invalid_nonce, new_coordinator,
+                    run_dkg, run_dkg_sign, setup, start_dkg_round, start_signing_round,
+                    verify_packet_sigs,
+                },
+                Config, Coordinator as CoordinatorTrait, State,
             },
-            Config, Coordinator as CoordinatorTrait, State,
+            OperationResult,
         },
         traits::{Aggregator as AggregatorTrait, Signer as SignerTrait},
         util::create_rng,
@@ -1574,6 +1589,84 @@ pub mod test {
     #[test]
     fn run_dkg_sign_v2() {
         run_dkg_sign::<FrostCoordinator<v2::Aggregator>, v2::Signer>(5, 2);
+    }
+
+    #[test]
+    #[cfg(feature = "with_v1")]
+    fn sign_threshold_sign_v1() {
+        sign_threshold_sign::<v1::Aggregator, v1::Signer>();
+    }
+
+    #[test]
+    fn sign_threshold_sign_v2() {
+        sign_threshold_sign::<v2::Aggregator, v2::Signer>();
+    }
+
+    fn sign_threshold_sign<Aggregator: AggregatorTrait, Signer: SignerTrait>() {
+        let (mut coordinators, mut signers) = run_dkg::<FrostCoordinator<Aggregator>, Signer>(5, 2);
+
+        // Require all key_ids to participate in the signing round.
+        for coordinator in &mut coordinators {
+            coordinator.config.sign_threshold = coordinator.config.num_keys;
+        }
+
+        let msg = "It was many and many a year ago, in a kingdom by the sea"
+            .as_bytes()
+            .to_vec();
+        let signature_type = SignatureType::Frost;
+        let message = coordinators
+            .first_mut()
+            .unwrap()
+            .start_signing_round(&msg, signature_type, None)
+            .unwrap();
+        assert_eq!(
+            coordinators.first().unwrap().state,
+            State::NonceGather(signature_type)
+        );
+
+        // Drive nonce gathering: every signer responds, so we should reach the threshold.
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &[message]);
+        assert!(operation_results.is_empty());
+        for coordinator in &coordinators {
+            assert_eq!(coordinator.state, State::SigShareGather(signature_type));
+        }
+
+        // All signers contributed nonces.
+        for coordinator in &coordinators {
+            assert_eq!(coordinator.public_nonces.len(), signers.len());
+        }
+
+        assert_eq!(outbound_messages.len(), 1);
+        assert!(
+            matches!(outbound_messages[0].msg, Message::SignatureShareRequest(_)),
+            "Expected SignatureShareRequest message"
+        );
+
+        // Drive sig share gathering and aggregation.
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
+
+        for coordinator in &coordinators {
+            assert_eq!(coordinator.signature_shares.len(), signers.len());
+        }
+
+        assert!(outbound_messages.is_empty());
+        assert_eq!(operation_results.len(), 1);
+        let OperationResult::Sign(sig) = &operation_results[0] else {
+            panic!("Expected Signature Operation result")
+        };
+        assert!(sig.verify(
+            &coordinators
+                .first()
+                .unwrap()
+                .aggregate_public_key
+                .expect("No aggregate public key set!"),
+            &msg
+        ));
+        for coordinator in &coordinators {
+            assert_eq!(coordinator.state, State::Idle);
+        }
     }
 
     #[test]
