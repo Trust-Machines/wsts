@@ -775,6 +775,15 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         nonce_request: &NonceRequest,
         rng: &mut R,
     ) -> Result<Vec<Message>, Error> {
+        if nonce_request.dkg_id != self.dkg_id {
+            warn!(
+                signer_id = %self.signer_id,
+                got = %nonce_request.dkg_id,
+                expected = %self.dkg_id,
+                "NonceRequest dkg_id mismatch"
+            );
+            return Ok(vec![]);
+        }
         let mut msgs = vec![];
         let signer_id = self.signer_id;
         let key_ids = self.signer.get_key_ids();
@@ -810,6 +819,15 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         sign_request: &SignatureShareRequest,
         rng: &mut R,
     ) -> Result<Vec<Message>, Error> {
+        if sign_request.dkg_id != self.dkg_id {
+            warn!(
+                signer_id = %self.signer_id,
+                got = %sign_request.dkg_id,
+                expected = %self.dkg_id,
+                "SignatureShareRequest dkg_id mismatch"
+            );
+            return Ok(vec![]);
+        }
         let signer_id_set = sign_request
             .nonce_responses
             .iter()
