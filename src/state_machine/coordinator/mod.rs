@@ -28,10 +28,18 @@ pub enum State {
     DkgPublicDistribute,
     /// The coordinator is gathering public shares
     DkgPublicGather,
+    /// The coordinator is notifying signers that all public shares are done
+    DkgPublicSharesDoneDistribute,
+    /// The coordinator is gathering acknowledgments of DkgPublicSharesDone
+    DkgPublicSharesDoneGather,
     /// The coordinator is asking signers to send private shares
     DkgPrivateDistribute,
     /// The coordinator is gathering private shares
     DkgPrivateGather,
+    /// The coordinator is notifying signers that all private shares are done
+    DkgPrivateSharesDoneDistribute,
+    /// The coordinator is gathering acknowledgments of DkgPrivateSharesDone
+    DkgPrivateSharesDoneGather,
     /// The coordinator is asking signers to compute shares and send end
     DkgEndDistribute,
     /// The coordinator is gathering DKG End messages
@@ -444,12 +452,35 @@ pub mod test {
             .is_err());
         assert!(coordinator.can_move_to(&State::DkgPublicGather).is_ok());
         assert!(coordinator
-            .can_move_to(&State::DkgPrivateDistribute)
+            .can_move_to(&State::DkgPublicSharesDoneDistribute)
             .is_ok());
+        assert!(coordinator
+            .can_move_to(&State::DkgPrivateDistribute)
+            .is_err());
         assert!(coordinator.can_move_to(&State::DkgPrivateGather).is_err());
         assert!(coordinator.can_move_to(&State::DkgEndDistribute).is_err());
         assert!(coordinator.can_move_to(&State::DkgEndGather).is_err());
         assert!(coordinator.can_move_to(&State::Idle).is_ok());
+
+        coordinator
+            .move_to(State::DkgPublicSharesDoneDistribute)
+            .unwrap();
+        assert!(coordinator
+            .can_move_to(&State::DkgPublicSharesDoneGather)
+            .is_ok());
+        assert!(coordinator
+            .can_move_to(&State::DkgPrivateDistribute)
+            .is_err());
+
+        coordinator
+            .move_to(State::DkgPublicSharesDoneGather)
+            .unwrap();
+        assert!(coordinator
+            .can_move_to(&State::DkgPublicSharesDoneGather)
+            .is_ok());
+        assert!(coordinator
+            .can_move_to(&State::DkgPrivateDistribute)
+            .is_ok());
 
         coordinator.move_to(State::DkgPrivateDistribute).unwrap();
         assert!(coordinator
@@ -473,9 +504,28 @@ pub mod test {
             .can_move_to(&State::DkgPrivateDistribute)
             .is_err());
         assert!(coordinator.can_move_to(&State::DkgPrivateGather).is_ok());
-        assert!(coordinator.can_move_to(&State::DkgEndDistribute).is_ok());
+        assert!(coordinator
+            .can_move_to(&State::DkgPrivateSharesDoneDistribute)
+            .is_ok());
+        assert!(coordinator.can_move_to(&State::DkgEndDistribute).is_err());
         assert!(coordinator.can_move_to(&State::DkgEndGather).is_err());
         assert!(coordinator.can_move_to(&State::Idle).is_ok());
+
+        coordinator
+            .move_to(State::DkgPrivateSharesDoneDistribute)
+            .unwrap();
+        assert!(coordinator
+            .can_move_to(&State::DkgPrivateSharesDoneGather)
+            .is_ok());
+        assert!(coordinator.can_move_to(&State::DkgEndDistribute).is_err());
+
+        coordinator
+            .move_to(State::DkgPrivateSharesDoneGather)
+            .unwrap();
+        assert!(coordinator
+            .can_move_to(&State::DkgPrivateSharesDoneGather)
+            .is_ok());
+        assert!(coordinator.can_move_to(&State::DkgEndDistribute).is_ok());
 
         coordinator.move_to(State::DkgEndDistribute).unwrap();
         assert!(coordinator.can_move_to(&State::DkgEndGather).is_ok());
@@ -767,6 +817,20 @@ pub mod test {
             feedback_messages(&mut coordinators, &mut signers, &[message]);
         assert!(operation_results.is_empty());
         for coordinator in coordinators.iter() {
+            assert_eq!(coordinator.get_state(), State::DkgPublicSharesDoneGather);
+        }
+
+        assert_eq!(outbound_messages.len(), 1);
+        assert!(
+            matches!(&outbound_messages[0].msg, Message::DkgPublicSharesDone(_)),
+            "Expected DkgPublicSharesDone message"
+        );
+
+        // Send DkgPublicSharesDone to signers and collect their acks back to the coordinator
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
+        assert!(operation_results.is_empty());
+        for coordinator in coordinators.iter() {
             assert_eq!(coordinator.get_state(), State::DkgPrivateGather);
         }
 
@@ -796,6 +860,16 @@ pub mod test {
         signers = new_signers;
 
         // Send the DKG Private Begin message to all signers and share their responses with the coordinator and signers
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
+        assert_eq!(operation_results.len(), 0);
+        assert_eq!(outbound_messages.len(), 1);
+        assert!(
+            matches!(outbound_messages[0].msg, Message::DkgPrivateSharesDone(_)),
+            "Expected DkgPrivateSharesDone message"
+        );
+
+        // Send DkgPrivateSharesDone to signers and collect their acks back to the coordinator
         let (outbound_messages, operation_results) =
             feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
         assert_eq!(operation_results.len(), 0);
@@ -1054,6 +1128,20 @@ pub mod test {
             feedback_messages(&mut coordinators, &mut signers, &[message]);
         assert!(operation_results.is_empty());
         for coordinator in coordinators.iter() {
+            assert_eq!(coordinator.get_state(), State::DkgPublicSharesDoneGather);
+        }
+
+        assert_eq!(outbound_messages.len(), 1);
+        assert!(
+            matches!(&outbound_messages[0].msg, Message::DkgPublicSharesDone(_)),
+            "Expected DkgPublicSharesDone message"
+        );
+
+        // Send DkgPublicSharesDone to signers and collect their acks back to the coordinator
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
+        assert!(operation_results.is_empty());
+        for coordinator in coordinators.iter() {
             assert_eq!(coordinator.get_state(), State::DkgPrivateGather);
         }
 
@@ -1066,6 +1154,18 @@ pub mod test {
         }
 
         // Send the DKG Private Begin message to all signers and share their responses with the coordinator and signers
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
+        assert_eq!(operation_results.len(), 0);
+        assert_eq!(outbound_messages.len(), 1);
+        match &outbound_messages[0].msg {
+            Message::DkgPrivateSharesDone(_) => {}
+            _ => {
+                panic!("Expected DkgPrivateSharesDone message");
+            }
+        }
+
+        // Send DkgPrivateSharesDone to signers and collect their acks back to the coordinator
         let (outbound_messages, operation_results) =
             feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
         assert_eq!(operation_results.len(), 0);
@@ -1486,11 +1586,7 @@ pub mod test {
             "Expected SignatureShareRequest message"
         );
 
-        let messages = outbound_messages.clone();
-        let result = feedback_messages_with_errors(&mut coordinators, &mut signers, &messages);
-        assert!(result.is_ok());
-
-        // test request with no NonceResponses
+        // test request with no NonceResponses — signers are in SignGather, errors before state change
         let mut packet = outbound_messages[0].clone();
         let Message::SignatureShareRequest(ref mut request) = packet.msg else {
             panic!("failed to match message");
@@ -1545,6 +1641,11 @@ pub mod test {
             ),
             "Should have received signer invalid nonce response error, got {result:?}"
         );
+
+        // send valid SSR last — signers are still in SignGather after all error cases
+        let messages = outbound_messages.clone();
+        let result = feedback_messages_with_errors(&mut coordinators, &mut signers, &messages);
+        assert!(result.is_ok());
     }
 
     pub fn invalid_nonce<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
@@ -1585,11 +1686,7 @@ pub mod test {
             "Expected SignatureShareRequest message"
         );
 
-        let messages = outbound_messages.clone();
-        let result = feedback_messages_with_errors(&mut coordinators, &mut signers, &messages);
-        assert!(result.is_ok());
-
-        // test request with NonceResponse having zero nonce
+        // test request with NonceResponse having zero nonce — signers are in SignGather, errors before state change
         let mut packet = outbound_messages[0].clone();
         let Message::SignatureShareRequest(ref mut request) = packet.msg else {
             panic!("failed to match message");
@@ -1672,6 +1769,11 @@ pub mod test {
             ),
             "Should have received signer invalid nonce response error, got {result:?}"
         );
+
+        // send valid SSR last — signers are still in SignGather after all error cases
+        let messages = outbound_messages.clone();
+        let result = feedback_messages_with_errors(&mut coordinators, &mut signers, &messages);
+        assert!(result.is_ok());
     }
 
     pub fn empty_public_shares<Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
@@ -1732,6 +1834,20 @@ pub mod test {
         );
         assert!(operation_results.is_empty());
         for coordinator in coordinators.iter() {
+            assert_eq!(coordinator.get_state(), State::DkgPublicSharesDoneGather);
+        }
+
+        assert_eq!(outbound_messages.len(), 1);
+        assert!(
+            matches!(&outbound_messages[0].msg, Message::DkgPublicSharesDone(_)),
+            "Expected DkgPublicSharesDone message"
+        );
+
+        // Send DkgPublicSharesDone to signers and collect their acks back to the coordinator
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
+        assert!(operation_results.is_empty());
+        for coordinator in coordinators.iter() {
             assert_eq!(coordinator.get_state(), State::DkgPrivateGather);
         }
 
@@ -1741,6 +1857,16 @@ pub mod test {
             "Expected DkgPrivateBegin message"
         );
         // Send the DKG Private Begin message to all signers and share their responses with the coordinator and signers
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
+        assert_eq!(operation_results.len(), 0);
+        assert_eq!(outbound_messages.len(), 1);
+        assert!(
+            matches!(outbound_messages[0].msg, Message::DkgPrivateSharesDone(_)),
+            "Expected DkgPrivateSharesDone message"
+        );
+
+        // Send DkgPrivateSharesDone to signers and collect their acks back to the coordinator
         let (outbound_messages, operation_results) =
             feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
         assert_eq!(operation_results.len(), 0);
@@ -1810,6 +1936,20 @@ pub mod test {
             feedback_messages(&mut coordinators, &mut signers, &[message]);
         assert!(operation_results.is_empty());
         for coordinator in coordinators.iter() {
+            assert_eq!(coordinator.get_state(), State::DkgPublicSharesDoneGather);
+        }
+
+        assert_eq!(outbound_messages.len(), 1);
+        assert!(
+            matches!(&outbound_messages[0].msg, Message::DkgPublicSharesDone(_)),
+            "Expected DkgPublicSharesDone message"
+        );
+
+        // Send DkgPublicSharesDone to signers and collect their acks back to the coordinator
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
+        assert!(operation_results.is_empty());
+        for coordinator in coordinators.iter() {
             assert_eq!(coordinator.get_state(), State::DkgPrivateGather);
         }
 
@@ -1847,6 +1987,16 @@ pub mod test {
                     .collect()
             },
         );
+        assert_eq!(operation_results.len(), 0);
+        assert_eq!(outbound_messages.len(), 1);
+        assert!(
+            matches!(&outbound_messages[0].msg, Message::DkgPrivateSharesDone(_)),
+            "Expected DkgPrivateSharesDone message"
+        );
+
+        // Send DkgPrivateSharesDone to signers and collect their acks back to the coordinator
+        let (outbound_messages, operation_results) =
+            feedback_messages(&mut coordinators, &mut signers, &outbound_messages);
         assert_eq!(operation_results.len(), 0);
         assert_eq!(outbound_messages.len(), 1);
         assert!(

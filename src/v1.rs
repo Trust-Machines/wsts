@@ -813,7 +813,7 @@ pub mod test_helpers {
         for signer in signers.iter_mut() {
             if let Err(signer_secret_errors) = signer.compute_secrets(&private_shares, &comms, &ctx)
             {
-                secret_errors.extend(signer_secret_errors.into_iter());
+                secret_errors.extend(signer_secret_errors);
             }
         }
 
