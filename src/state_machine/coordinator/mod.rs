@@ -190,6 +190,8 @@ impl fmt::Debug for Config {
 
 impl Config {
     /// Create a new config object with no timeouts
+    /// dkg_threshold defaults to num_keys
+    /// sign_threshold defaults to threshold, and must be >= threshold
     pub fn new(
         num_signers: u32,
         num_keys: u32,
@@ -215,6 +217,7 @@ impl Config {
 
     #[allow(clippy::too_many_arguments)]
     /// Create a new config object with the passed timeouts
+    /// sign_threshold defaults to threshold, and must be >= threshold
     pub fn with_timeouts(
         num_signers: u32,
         num_keys: u32,
