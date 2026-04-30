@@ -1358,8 +1358,8 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
 
             let shares = message_nonce
                 .public_nonces
-                .iter()
-                .flat_map(|(i, _)| {
+                .keys()
+                .flat_map(|i| {
                     if let Some(shares) = self.signature_shares.get(i) {
                         shares.clone()
                     } else {
