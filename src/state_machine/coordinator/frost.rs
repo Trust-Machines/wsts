@@ -603,6 +603,15 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 return Ok(());
             };
 
+            // check that the signer participated in the current DKG round
+            if !self
+                .dkg_end_messages
+                .contains_key(&nonce_response.signer_id)
+            {
+                warn!(signer_id = %nonce_response.signer_id, "NonceResponse rejected: signer not a DKG participant");
+                return Ok(());
+            }
+
             // check that the key_ids match the config
             let Some(signer_key_ids) = self
                 .config
@@ -720,6 +729,15 @@ impl<Aggregator: AggregatorTrait> Coordinator<Aggregator> {
                 warn!(signer_id = %sig_share_response.signer_id, "No public key in config");
                 return Ok(());
             };
+
+            // check that the signer participated in the current DKG round
+            if !self
+                .dkg_end_messages
+                .contains_key(&sig_share_response.signer_id)
+            {
+                warn!(signer_id = %sig_share_response.signer_id, "SignatureShareResponse rejected: signer not a DKG participant");
+                return Ok(());
+            }
 
             // check that the key_ids match the config
             let Some(signer_key_ids) = self
@@ -1403,6 +1421,17 @@ pub mod test {
         let message = vec![0u8];
         coordinator.state = State::NonceGather(signature_type);
         coordinator.aggregate_public_key = Some(Point::from(Scalar::random(&mut rng)));
+        // Populate dkg_end_messages so the DKG participation check passes
+        for signer_id in 0..coordinator.config.num_signers {
+            coordinator.dkg_end_messages.insert(
+                signer_id,
+                DkgEnd {
+                    dkg_id: 0,
+                    signer_id,
+                    status: DkgStatus::Success,
+                },
+            );
+        }
 
         let nonce_response = NonceResponse {
             dkg_id: 0,
@@ -1470,6 +1499,17 @@ pub mod test {
 
         coordinator.ids_to_await = (0..coordinator.config.num_signers).collect();
         coordinator.state = State::SigShareGather(signature_type);
+        // Populate dkg_end_messages so the DKG participation check passes
+        for signer_id in 0..coordinator.config.num_signers {
+            coordinator.dkg_end_messages.insert(
+                signer_id,
+                DkgEnd {
+                    dkg_id: 0,
+                    signer_id,
+                    status: DkgStatus::Success,
+                },
+            );
+        }
 
         let signature_share = SignatureShare {
             id: 1,

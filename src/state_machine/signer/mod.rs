@@ -175,6 +175,8 @@ pub struct SavedState {
     kex_private_key: Scalar,
     /// Ephemeral public keys for key exchange indexed by key_id
     kex_public_keys: HashMap<u32, Point>,
+    /// whether this signer successfully completed DKG for the current dkg_id
+    dkg_completed: bool,
 }
 
 impl fmt::Debug for SavedState {
@@ -262,6 +264,8 @@ pub struct Signer<SignerType: SignerTrait> {
     kex_private_key: Scalar,
     /// Ephemeral public keys for key exchange indexed by key_id
     kex_public_keys: HashMap<u32, Point>,
+    /// whether this signer successfully completed DKG for the current dkg_id
+    dkg_completed: bool,
 }
 
 impl<SignerType: SignerTrait> fmt::Debug for Signer<SignerType> {
@@ -367,6 +371,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             coordinator_public_key: None,
             kex_private_key: Scalar::random(rng),
             kex_public_keys: Default::default(),
+            dkg_completed: false,
         })
     }
 
@@ -400,6 +405,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             coordinator_public_key: state.coordinator_public_key,
             kex_private_key: state.kex_private_key,
             kex_public_keys: state.kex_public_keys.clone(),
+            dkg_completed: state.dkg_completed,
         }
     }
 
@@ -433,6 +439,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             coordinator_public_key: self.coordinator_public_key,
             kex_private_key: self.kex_private_key,
             kex_public_keys: self.kex_public_keys.clone(),
+            dkg_completed: self.dkg_completed,
         }
     }
 
@@ -453,6 +460,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
         self.pending_private_shares_done = None;
         self.kex_private_key = Scalar::random(rng);
         self.kex_public_keys.clear();
+        self.dkg_completed = false;
         self.state = State::Idle;
     }
 
@@ -709,6 +717,10 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             }
         };
 
+        if matches!(dkg_end.status, DkgStatus::Success) {
+            self.dkg_completed = true;
+        }
+
         info!(
             signer_id = %self.signer_id,
             dkg_id = %self.dkg_id,
@@ -784,6 +796,14 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
             );
             return Ok(vec![]);
         }
+        if !self.dkg_completed {
+            warn!(
+                signer_id = %self.signer_id,
+                dkg_id = %self.dkg_id,
+                "NonceRequest rejected: DKG not completed"
+            );
+            return Ok(vec![]);
+        }
         let mut msgs = vec![];
         let signer_id = self.signer_id;
         let key_ids = self.signer.get_key_ids();
@@ -825,6 +845,14 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                 got = %sign_request.dkg_id,
                 expected = %self.dkg_id,
                 "SignatureShareRequest dkg_id mismatch"
+            );
+            return Ok(vec![]);
+        }
+        if !self.dkg_completed {
+            warn!(
+                signer_id = %self.signer_id,
+                dkg_id = %self.dkg_id,
+                "SignatureShareRequest rejected: DKG not completed"
             );
             return Ok(vec![]);
         }
@@ -955,6 +983,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                 signer_id = %self.signer_id,
                 "signer_id not in DkgPublicSharesDone, coordinator did not receive our public shares"
             );
+            self.move_to(State::Idle)?;
             return Ok(vec![]);
         }
         // Discard any shares already collected from signers not in the coordinator's accepted list
@@ -1015,6 +1044,7 @@ impl<SignerType: SignerTrait> Signer<SignerType> {
                 signer_id = %self.signer_id,
                 "signer_id not in DkgPrivateSharesDone, coordinator did not receive our private shares"
             );
+            self.move_to(State::Idle)?;
             return Ok(vec![]);
         }
         // Discard any shares already collected from signers not in the coordinator's accepted list
